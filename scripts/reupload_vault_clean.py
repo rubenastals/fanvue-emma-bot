@@ -160,10 +160,14 @@ def main() -> None:
         old_uuid = item.get("fanvue_media_uuid")
         c2pa = has_c2pa(path)
         idx = order_index.get(item["file"], n)
-        name = item.get("fanvue_name") or _display_name(idx, item)
-        folder = None if args.no_folder else (item.get("fanvue_folder") or _folder_for(item))
-        caption = (item.get("caption") or "")[:5000]
+        # Always derive name/folder from current level (catalog may be stale).
+        name = _display_name(idx, item)
+        folder = None if args.no_folder else _folder_for(item)
+        # Keep captions short — long Grok blurbs are unnecessary for vault.
+        caption = (item.get("vault_label") or item.get("file") or "")[:200]
         price_cents = _price_cents(item)
+        item["fanvue_name"] = name
+        item["fanvue_folder"] = folder
 
         print(
             f"[{n}/{len(to_process)}] {path.name} c2pa={c2pa} "

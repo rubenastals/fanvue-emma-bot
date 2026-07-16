@@ -397,15 +397,12 @@ class FanvueConnector:
         stripped = False
         tmp_to_delete: Optional[str] = None
         if media_type == "image" and strip_ai_metadata:
-            try:
-                from utils.strip_c2pa import strip_to_temp_jpeg
+            from utils.strip_c2pa import strip_to_temp_jpeg
 
-                tmp_to_delete, stripped = strip_to_temp_jpeg(path)
-                upload_path = Path(tmp_to_delete)
-            except Exception:
-                # If strip fails, fall back to original file
-                upload_path = path
-                stripped = False
+            # Never fall back to the original: WaveSpeed JPEGs carry C2PA and
+            # Fanvue will label them "modified by AI".
+            tmp_to_delete, stripped = strip_to_temp_jpeg(path)
+            upload_path = Path(tmp_to_delete)
 
         try:
             size = upload_path.stat().st_size
