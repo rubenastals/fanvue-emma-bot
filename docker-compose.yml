@@ -1,0 +1,84 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: emma_postgres
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: fanvue_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - emma_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d fanvue_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: emma_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: poller-path tables + seed account emma
+  init-db:
+    build: .
+    command: python scripts/init_db.py
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://user:password@postgres:5432/fanvue_db
+      REDIS_URL: redis://redis:6379/0
+      ACCOUNT_ID: emma
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # Production path — Fanvue DM poller
+  poller:
+    build: .
+    container_name: emma_poller
+    command: python scripts/poll_inbox.py --interval 10
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://user:password@postgres:5432/fanvue_db
+      REDIS_URL: redis://redis:6379/0
+      ACCOUNT_ID: emma
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      init-db:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Optional legacy webhook API (not required for Emma poller)
+  api:
+    build: .
+    container_name: emma_api
+    profiles: ["legacy"]
+    command: uvicorn api.webhook:app --host 0.0.0.0 --port 8000
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://user:password@postgres:5432/fanvue_db
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  emma_pgdata:

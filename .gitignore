@@ -1,0 +1,39 @@
+# Secrets & local credentials
+.env
+.env.*
+!.env.example
+.fanvue_tokens.json
+.oauth_*.json
+.oauth_*.txt
+.local_cert.pem
+.local_key.pem
+*.pem
+
+# Runtime state (Postgres/Redis in prod; local JSON fallback)
+.fan_memory.json
+.lessons.json
+.fix_queue.json
+.processed_messages.json
+_me.json
+_chats.json
+webhook_inbox/
+exports/
+logs/
+
+# Scratch / API dumps
+body_*.txt
+body*.txt
+support_message_fanvue_api.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*.log
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Node (Cursor fixer SDK)
+node_modules/
+tools/fixer/node_modules/
