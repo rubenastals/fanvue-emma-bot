@@ -13,6 +13,7 @@
 .fan_memory.json
 .lessons.json
 .fix_queue.json
+.improve_board.json
 .processed_messages.json
 _me.json
 _chats.json

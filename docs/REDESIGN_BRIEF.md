@@ -1,76 +1,81 @@
-# Redesign agent brief
+# Redesign agent + continuous improvement
 
-Use this when a change is **too big for auto-fix** (structure, new modules, memory model, deploy safety). Fill every section **before** editing code. One thesis per PR. Never merge to `main` or redeploy without human approval.
+## What you actually do day-to-day (minimal)
 
-Auto-fix (`scripts/auto_fix.py`) stays for tiny steering diffs only. This brief is for serious redesigns.
+Live chats already feed the DeepSeek critic. You do **not** read conversations one by one.
 
----
-
-## Template (copy into the agent chat)
-
-```markdown
-### 1. Problema medible
-(What fails in real chats / ops? Quote examples. Not "improve Emma".)
-
-### 2. Por qué auto-fix no basta
-(Needs new module / schema / deploy behavior / multi-file design.)
-
-### 3. Diseño propuesto
-- Files to touch:
-- Data / flow change:
-- Soft or Hard: Soft | Hard
-
-### 4. Qué NO cambia
-(Default: OAuth, vault prices, tokens, secrets, unrelated refactors.)
-
-### 5. Criterio de éxito + verificación
-- Success looks like:
-- Verify with: `python -c "import scripts.poll_inbox"` + …
-
-### 6. Rollback
-(Revert commit / feature flag / restore previous Railway deploy.)
+```bash
+# Once a day (or when logs say "improve board"):
+python scripts/improve_once.py --all
 ```
+
+That command:
+
+1. Aggregates critic errors + pending lessons + autofix queue from **live** chats  
+2. Asks DeepSeek for **Soft** vs **Hard** proposals  
+3. Writes `docs/IMPROVE_BOARD.md` (human-readable)  
+4. **Soft:** auto-approves pending lessons + runs Cursor autofix (tiny code/prompt fixes)  
+5. **Hard:** writes filled briefs under `docs/briefs/`  
+
+Your only manual steps:
+
+- Soft code changes: glance `git diff` → push / `railway up` when happy  
+- Hard: open a brief file → paste into Cursor → review → you say merge + deploy  
+
+The poller also refreshes the board every ~30 min and prints Soft/Hard counts in Railway logs.
 
 ---
 
 ## Soft vs Hard
 
-| Class | Examples | Production |
+| Class | Examples | How it ships |
 |---|---|---|
-| **Soft** | Lessons approve, client-card facts, lorebook JSON tweaks | Prefer **no** process kill. Lorebook hot-reloads from disk ~every 5 min. Lessons/memory already load from Postgres per turn. |
-| **Hard** | `turn_policy`, `reply_engine`, extractors, schema, OAuth, poller loop | Needs redeploy. Poller **drains**: finishes current fan turn, releases Redis lock, then exits so the new replica can start in seconds. |
-
-Rules:
-
-- Prefer Soft if it solves the problem.
-- Hard changes must stay backward-compatible (read old JSON keys; migrate write-path carefully).
-- No drive-by refactors. No new dependencies unless the brief says so.
-- Reject “improvements” with no measurable failure.
+| **Soft** | Lessons, lorebook JSON, tiny `turn_policy` / prompt tweaks via autofix | `improve_once.py --apply-soft` then you deploy |
+| **Hard** | New modules, schema, memory architecture, deploy behavior | Auto brief → redesign agent → **your** OK |
 
 ---
 
-## Agent constraints (paste with the filled template)
+## Template for a Hard brief chat (usually auto-written)
+
+If you open `docs/briefs/*.md`, it is already filled. Paste the file contents into Cursor.
+
+Manual template (only if you invent a Hard change yourself):
+
+```markdown
+### 1. Problema medible
+…
+
+### 2. Por qué auto-fix no basta
+…
+
+### 3. Diseño propuesto
+- Soft or Hard: Hard
+- Files / flow:
+
+### 4. Qué NO cambia
+OAuth, tokens, .env, vault prices, secrets.
+
+### 5. Criterio de éxito + verificación
+…
+
+### 6. Rollback
+…
+```
+
+Agent constraints:
 
 ```
-You are the Emma Fanvue redesign agent.
-1. Fill / respect the brief above. If a section is empty, stop and ask.
-2. Soft first. Hard only if Soft cannot fix it.
-3. Minimal coherent diff. One thesis. No unrelated cleanup.
-4. NEVER touch: .env, .fanvue_tokens.json, vault prices, secrets.
-5. NEVER push to main or run railway up unless the human explicitly asks.
-6. After edits: python -c "import scripts.poll_inbox"
-7. End with: root cause, files changed, Soft/Hard, how to verify, rollback.
+You are the Emma Fanvue redesign agent. Follow docs/REDESIGN_BRIEF.md.
+Soft first. One thesis. Branch only. NEVER push main / railway up unless human asks.
 ```
 
 ---
 
-## Deploy checklist (Hard changes)
+## Deploy checklist (Hard / Soft code)
 
-1. Review `git diff`. Merge only with human OK.
-2. Do **not** deploy mid-OAuth experiment.
-3. `railway up --service poller` (or your usual push/deploy).
-4. Old poller gets SIGTERM → finishes current turn → releases Redis lock → exits.
-5. Watch logs 1–2 min: `redis lock: acquired`, then `.` / `--- handled`.
-6. If boot fails, Railway `ON_FAILURE` retries (`railway.toml`).
+1. Review `git diff`  
+2. Push / `railway up --service poller`  
+3. Poller drains on SIGTERM (finishes current turn, releases Redis lock)  
+4. Logs: `redis lock: acquired` then `.` / `handled`  
 
-Honest limit: a few seconds of gap while the new container starts. Fanvue DMs are not live sockets; pending messages are picked up after restart. `processed` is marked before send to avoid double-replies.
+Honest limit: a few seconds gap on redeploy. DMs are not live sockets.

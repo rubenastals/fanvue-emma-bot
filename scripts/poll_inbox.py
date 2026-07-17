@@ -623,18 +623,27 @@ def main():
                     except Exception as e:
                         print(f"\n⚠️ Re-engagement error: {e}")
 
-                # Every 30 min: aggregate critic errors into code-fix proposals
+                # Every 30 min: aggregate critic errors + Soft/Hard improve board
                 if not shutting_down() and time.time() - last_fix_scan >= 1800:
                     last_fix_scan = time.time()
                     try:
-                        from core import auto_fix
+                        from core import auto_fix, improve_board
 
                         new = auto_fix.scan_and_queue()
                         if new:
                             rules = ", ".join(i["rule"] for i in new)
                             print(
                                 f"\n🧠 self-repair: {len(new)} proposal(s) queued ({rules}). "
-                                "Apply with: python scripts/auto_fix.py --run\n"
+                                "Apply with: python scripts/improve_once.py --apply-soft\n"
+                            )
+                        board = improve_board.build_board(ask_deepseek=True)
+                        improve_board.save_board(board)
+                        soft_n = len((board.get("proposals") or {}).get("soft") or [])
+                        hard_n = len((board.get("proposals") or {}).get("hard") or [])
+                        if soft_n or hard_n:
+                            print(
+                                f"\n📋 improve board: Soft={soft_n} Hard={hard_n} "
+                                f"→ docs/IMPROVE_BOARD.md | python scripts/improve_once.py --all\n"
                             )
                     except Exception as e:
                         print(f"\n⚠️ fix-scan error: {e}")
