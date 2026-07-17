@@ -10,9 +10,9 @@ Never spam locks — cooloffs and daily caps still win.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 # Modes (least → most sales pressure)
 MODE_CHILL = "chill"
@@ -108,6 +108,12 @@ class TurnDecision:
     allow_ppv_talk: bool
     allow_price: bool
     allow_free_tease: bool = False
+    # Scheme meta (filled by reply_engine for logs / critic / guard)
+    pack_id: str = ""
+    technique: str = ""
+    phase: str = ""
+    lock_active: Optional[bool] = None
+    scheme_errors: List[Dict[str, Any]] = field(default_factory=list)
 
 
 def _parse_iso(s: Optional[str]) -> Optional[datetime]:

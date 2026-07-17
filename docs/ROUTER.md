@@ -11,6 +11,18 @@ One turn    = CORE + CARD + HISTORY + 1 PACK
 
 Never dump Soft lessons or fat essays into the live prompt.
 
+## How we know DeepSeek follows the scheme
+
+| Layer | What | When |
+|-------|------|------|
+| **Hard gates** | Code chooses pack, blocks 2nd PPV, attaches media, unsends locks | every turn |
+| **Loud prompt** | LOCK STATUS + MANIPULATION ENGINE + 1 pack MUST/NEVER | every turn |
+| **scheme_guard** | Deterministic check after reply (invented candado, banned nick, pack rails) | every turn → logs `⚠ scheme_fail` |
+| **Critic SCHEME** | DeepSeek scores pack/lock/technique obedience | async after turn |
+| **scheme_check** | Offline report of packs/techs/guard hits | `python scripts/scheme_check.py [--critic]` |
+
+DeepSeek is creative Soft — it can still drift. Hard gates + guard catch the expensive lies; critic/board catch soft drift for pack enrichment.
+
 ## Pipeline
 
 1. **HardGates** — unpaid PPV, free_in_chat, fan media, chill/reject windows  

@@ -21,6 +21,11 @@ def log_turn(
     mode: str,
     mode_reason: str,
     offer: Optional[Dict[str, Any]] = None,
+    pack_id: str = "",
+    technique: str = "",
+    phase: str = "",
+    lock_active: Optional[bool] = None,
+    scheme_errors: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
     convo_store.append_event(
         fan_uuid,
@@ -32,6 +37,11 @@ def log_turn(
             "bubbles": bubbles,
             "mode": mode,
             "mode_reason": mode_reason,
+            "pack_id": pack_id or None,
+            "technique": technique or None,
+            "phase": phase or None,
+            "lock_active": lock_active,
+            "scheme_errors": scheme_errors or None,
             "offer": (
                 {
                     "media_uuid": offer.get("media_uuid"),

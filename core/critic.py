@@ -47,13 +47,24 @@ Review the conversation log and Emma's latest reply. Judge ONLY against this rub
    Flag inventing facts he never said (jobs, gifts, plans, quotes, names, events) as HUMANITY errors.
    Flag inventing technical glitches ("app ate the photo") to cover a missed delivery.
 6. ENGAGEMENT: is the fan warming up or cooling down (shorter replies, longer gaps, ignoring)?
+7. SCHEME (pack / lock / technique obedience): When a turn log includes pack_id / lock_active /
+   technique, judge if Emma's reply followed that situation:
+   - pack=ppv_unpaid + lock_active=true → must push THAT unlock, not invent another / free
+   - lock_active=false → must NOT invent a waiting candado / "unlock above"
+   - pack=reward_purchase → no instant upsell
+   - pack=billing_clarify → answer money/tax first, no FOMO stack
+   - pack=react_fan_media → react to HIS media, no PPV pitch
+   - technique named → reply should reflect that angle (not generic cute ignoring it)
+   - NEVER invent names, fake [Transmite], or app glitches
+   Flag violations as rule SCHEME.
 
 Return ONLY valid JSON:
 {
-  "errors": [{"rule": "LANGUAGE|NICKNAMES|RHYTHM|SELLING|HUMANITY|ENGAGEMENT", "severity": 1, "what": "short description"}],
+  "errors": [{"rule": "LANGUAGE|NICKNAMES|RHYTHM|SELLING|HUMANITY|ENGAGEMENT|SCHEME", "severity": 1, "what": "short description"}],
   "fan_lesson": "PERSONALIZATION about THIS man only — or empty string",
   "global_lesson": "behavioral rule for ALL chats — or empty string",
-  "fan_temperature": "heating|stable|cooling"
+  "fan_temperature": "heating|stable|cooling",
+  "scheme_score": 1
 }
 
 LESSON ROUTING (critical):
@@ -87,7 +98,23 @@ def _conversation_text(records: List[Dict[str, Any]]) -> str:
             lines.append(f"FAN: {r.get('fan_message', '')}")
             offer = r.get("offer")
             extra = f" [locked photo L{offer['level']} ${offer['price']}]" if offer else ""
-            lines.append(f"EMMA ({r.get('mode', '?')}){extra}: {r.get('reply', '')}")
+            scheme = []
+            if r.get("pack_id"):
+                scheme.append(f"pack={r['pack_id']}")
+            if r.get("technique"):
+                scheme.append(f"tech={r['technique']}")
+            if r.get("phase"):
+                scheme.append(f"phase={r['phase']}")
+            if r.get("lock_active") is True:
+                scheme.append("lock=ACTIVE")
+            elif r.get("lock_active") is False:
+                scheme.append("lock=NONE")
+            if r.get("scheme_errors"):
+                scheme.append(f"guard={len(r['scheme_errors'])}hits")
+            meta = f" {{{'; '.join(scheme)}}}" if scheme else ""
+            lines.append(
+                f"EMMA ({r.get('mode', '?')}){extra}{meta}: {r.get('reply', '')}"
+            )
         elif r.get("type") == "offer_outcome":
             lines.append(f"[OFFER {r.get('outcome', '?').upper()}"
                          + (f" ${r.get('amount')}" if r.get("amount") else "") + "]")

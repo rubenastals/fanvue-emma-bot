@@ -31,6 +31,7 @@ from core import (
     phase_analyst,
     prompt_audit,
     prompt_layers,
+    scheme_guard,
     vault_catalog,
 )
 from core.intent_router import RouteResult, decision_for_pack, route as route_intent
@@ -238,6 +239,7 @@ def generate_emma_reply(
         hard_pack = route_result.facts.hard_pack
     analysis = None
     force_tech = None
+    phase_name = ""
     try:
         analysis = phase_analyst.analyze(
             fan_message=fan_message,
@@ -250,6 +252,7 @@ def generate_emma_reply(
         print(f"   phase-analyst error: {type(e).__name__}: {e}")
 
     if analysis:
+        phase_name = analysis.phase or ""
         print(
             f"   analyst: phase={analysis.phase} pack={analysis.pack_id} "
             f"name={analysis.name_to_use or '-'} "
@@ -544,6 +547,30 @@ def generate_emma_reply(
                 )
             except Exception:
                 pass
+
+    # Scheme meta + deterministic guard (does not rewrite Soft — logs + critic food)
+    lock_active = None
+    if ppv_status is not None:
+        if ppv_status.get("purchased"):
+            lock_active = False
+        else:
+            lock_active = bool(ppv_status.get("active"))
+    elif delivery_truth is not None:
+        lock_active = bool(delivery_truth.get("ppv_unpaid"))
+
+    decision.pack_id = pack_id or ""
+    decision.technique = tech_name or ""
+    decision.phase = phase_name
+    decision.lock_active = lock_active
+    decision.scheme_errors = scheme_guard.check_reply(
+        reply,
+        pack_id=pack_id or "",
+        lock_active=lock_active,
+        media_attached=bool(offer),
+        technique=tech_name or "",
+    )
+    if decision.scheme_errors:
+        print(f"   ⚠️ {scheme_guard.summarize(decision.scheme_errors)}")
 
     return reply, decision
 

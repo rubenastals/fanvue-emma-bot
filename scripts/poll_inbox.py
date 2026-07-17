@@ -917,6 +917,12 @@ def _handle_fan_chat_body(
                 mode=decision.mode,
                 mode_reason=decision.reason,
                 offer=offer if not barged else None,
+                pack_id=getattr(decision, "pack_id", "")
+                or getattr(route_result, "pack_id", ""),
+                technique=getattr(decision, "technique", "") or "",
+                phase=getattr(decision, "phase", "") or "",
+                lock_active=getattr(decision, "lock_active", None),
+                scheme_errors=getattr(decision, "scheme_errors", None),
             )
             critic.review_fan_async(fan_uuid, fan_handle)
             memory_extractor.update_fan_card_async(fan_uuid, fan_handle)
