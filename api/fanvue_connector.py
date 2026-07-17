@@ -285,13 +285,21 @@ class FanvueConnector:
             text=description,
         )
 
-    def get_messages(self, fan_uuid: str, size: int = 5) -> list:
-        """Fetch recent messages (newest first). Paginates when size > page cap."""
+    def get_messages(
+        self, fan_uuid: str, size: int = 5, *, max_pages: Optional[int] = None
+    ) -> list:
+        """
+        Fetch messages (newest first). Paginates when size > page cap.
+        For deep PPV purge, pass size=500+ (up to ~40 pages / ~2000 msgs).
+        """
         want = max(1, int(size))
         page_size = min(50, want)  # Fanvue page size is typically capped
+        if max_pages is None:
+            # Enough pages to satisfy `want`, hard-capped for API safety
+            max_pages = min(40, max(4, (want + page_size - 1) // page_size))
         out: list = []
         page = 1
-        while len(out) < want and page <= 4:
+        while len(out) < want and page <= max_pages:
             data = self._request(
                 "GET",
                 f"/chats/{fan_uuid}/messages",

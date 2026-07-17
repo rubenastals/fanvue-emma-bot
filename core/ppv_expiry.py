@@ -58,30 +58,50 @@ def _sender_uuid(msg: dict) -> Optional[str]:
     return sender
 
 
+def _msg_has_pricing(msg: dict) -> bool:
+    """True if message is a paid lock (pricing object or legacy price fields)."""
+    if msg.get("pricing"):
+        return True
+    if msg.get("price") not in (None, 0, "0", 0.0):
+        return True
+    if msg.get("isPaid") or msg.get("isLocked") or msg.get("locked"):
+        return True
+    return False
+
+
 def list_unpaid_locks(
     messages: list,
     creator_uuid: str,
     *,
-    lookback_hours: int = 72,
+    lookback_hours: Optional[int] = 72,
 ) -> List[dict]:
     """
     All unpaid priced locks from Emma in this chat (newest first).
-    Each: message_uuid, media_uuid, price, sent_at, purchased=False
+    lookback_hours=None → no age filter (use for deep purge of ancient locks).
     """
     now = datetime.now(timezone.utc)
     out: List[dict] = []
     for msg in messages or []:
         if _sender_uuid(msg) != creator_uuid:
             continue
-        if not (msg.get("pricing") or {}):
+        if not _msg_has_pricing(msg):
             continue
         media = msg.get("mediaUuids") or []
+        if not media:
+            # some payloads nest media
+            for m in msg.get("media") or []:
+                if isinstance(m, dict) and m.get("uuid"):
+                    media.append(m["uuid"])
         if not media:
             continue
         if msg.get("purchasedAt"):
             continue
         sent = _msg_sent_at(msg)
-        if sent and now - sent > timedelta(hours=lookback_hours):
+        if (
+            lookback_hours is not None
+            and sent
+            and now - sent > timedelta(hours=lookback_hours)
+        ):
             continue
         uid = (msg.get("uuid") or "").strip()
         if not uid:
@@ -316,18 +336,24 @@ def purge_unpaid_in_chat(
     *,
     handle: str = "",
     keep_newest: bool = False,
+    deep: bool = True,
 ) -> int:
     """
-    Delete unpaid locks in one chat.
-    keep_newest=False → delete ALL (clean slate).
-    keep_newest=True → delete stacked extras only (oldest).
+    Delete unpaid locks in one chat (including ancient ones when deep=True).
+    keep_newest=False → delete ALL unpaid (clean slate).
+    keep_newest=True → delete stacked extras only (keep newest).
+    Note: Fanvue refuses delete on already-purchased locks.
     """
     try:
-        msgs = fv.get_messages(fan_uuid, size=40)
+        # Deep: walk far enough back to catch old candados still sitting in chat
+        size = 800 if deep else 40
+        msgs = fv.get_messages(fan_uuid, size=size)
     except Exception as e:
         print(f"   ⚠️ PPV purge fetch @{handle}: {e}")
         return 0
-    unpaid = list_unpaid_locks(msgs, creator_uuid)
+    unpaid = list_unpaid_locks(
+        msgs, creator_uuid, lookback_hours=None if deep else 72
+    )
     if not unpaid:
         fan_memory.clear_pending_ppv(
             fan_uuid, fan_handle=handle, reason="purge_none_found"
@@ -336,12 +362,15 @@ def purge_unpaid_in_chat(
     targets = unpaid[1:] if keep_newest else unpaid
     deleted = 0
     for lock in targets:
+        age = ""
+        if lock.get("sent_at"):
+            age = f" sent={lock['sent_at'][:16]}"
         if _delete_one(
             fv,
             fan_uuid,
             lock["message_uuid"],
             handle=handle,
-            label="stacked/purge",
+            label=f"purge{age}",
         ):
             deleted += 1
     if keep_newest and unpaid:
@@ -404,26 +433,35 @@ def purge_all_unpaid(
             continue
         if not isinstance(mem, dict):
             continue
-        if mem.get("last_ppv_media_uuid") or mem.get("last_ppv_pending"):
+        # Any known fan — ancient locks may still sit in their thread
+        if int(mem.get("messages") or 0) > 0 or mem.get("last_ppv_media_uuid"):
             seen.add(fan_uuid)
             targets.append((fan_uuid, mem.get("handle") or ""))
 
     for fan_uuid, handle in targets:
+        if fan_uuid == creator_uuid:
+            continue
         scanned += 1
         try:
-            msgs = fv.get_messages(fan_uuid, size=40)
+            msgs = fv.get_messages(fan_uuid, size=800)
         except Exception as e:
             print(f"   ⚠️ PPV purge fetch @{handle or fan_uuid[:8]}: {e}")
             continue
-        unpaid = list_unpaid_locks(msgs, creator_uuid)
+        unpaid = list_unpaid_locks(msgs, creator_uuid, lookback_hours=None)
         if unpaid:
             found += len(unpaid)
+            oldest = unpaid[-1].get("sent_at") or "?"
             print(
                 f"   ⏳ PPV purge @{handle or fan_uuid[:8]}: "
-                f"{len(unpaid)} unpaid lock(s)"
+                f"{len(unpaid)} unpaid (oldest {str(oldest)[:16]})"
             )
         deleted += purge_unpaid_in_chat(
-            fv, fan_uuid, creator_uuid, handle=handle, keep_newest=False
+            fv,
+            fan_uuid,
+            creator_uuid,
+            handle=handle,
+            keep_newest=False,
+            deep=True,
         )
 
     for fan_uuid, mem in fan_memory.pending_ppv_candidates():
