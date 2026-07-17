@@ -52,12 +52,55 @@ def _sender_uuid(msg: dict) -> Optional[str]:
     return None
 
 
+def _parse_msg_time(msg: dict):
+    raw = msg.get("sentAt") or msg.get("createdAt") or msg.get("created_at")
+    if not raw:
+        return None
+    try:
+        from datetime import datetime, timezone
+
+        if isinstance(raw, (int, float)):
+            return datetime.fromtimestamp(float(raw) / (1000 if raw > 1e12 else 1), tz=timezone.utc)
+        return datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except (ValueError, TypeError, OSError):
+        return None
+
+
+def filter_messages_for_context(
+    messages: List[dict],
+    *,
+    hours: int = 48,
+    max_messages: int = 50,
+    min_messages: int = 8,
+) -> List[dict]:
+    """
+    Newest-first Fanvue list → keep last `hours`, capped at max_messages.
+    If the window is too thin, fall back to the newest min_messages.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    if not messages:
+        return []
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=hours)
+    in_window: List[dict] = []
+    for m in messages:
+        ts = _parse_msg_time(m)
+        if ts is None or ts >= cutoff:
+            in_window.append(m)
+        if len(in_window) >= max_messages:
+            break
+    if len(in_window) >= min_messages:
+        return in_window[:max_messages]
+    return list(messages[: max(min_messages, max_messages)])
+
+
 def fanvue_messages_to_turns(
     messages: List[dict],
     fan_uuid: str,
     creator_uuid: str,
     *,
-    max_messages: int = 28,
+    max_messages: int = 50,
 ) -> List[Dict[str, str]]:
     """Newest-first Fanvue msgs → chronological OpenAI turns."""
     chronological = list(reversed(messages[:max_messages]))
@@ -200,9 +243,9 @@ def generate_emma_reply(
         {
             "role": "system",
             "content": (
-                "GROUNDING: Treat the chat history above as the only source of what HE said. "
-                "Do not invent quotes, gifts, plans, jobs, names, or details missing from that history. "
-                "If something is unclear, ask — never assume."
+                "GROUNDING: Recent chat history + CLIENT CARD are the ONLY sources of truth "
+                "about him. Do not invent quotes, gifts, jobs, plans, names, divorces, hobbies, "
+                "or details missing from both. If unclear, ask a short question — never assume."
             ),
         }
     )

@@ -24,9 +24,10 @@ sys.path.insert(0, _ROOT)
 
 from api.fanvue_connector import FanvueConnector
 from api.fanvue_oauth import load_tokens
-from core import convo_log, critic, fan_memory, fan_vision, reengagement, vault_catalog
+from core import convo_log, critic, fan_memory, fan_vision, memory_extractor, reengagement, vault_catalog
 from core.reply_engine import (
     fanvue_messages_to_turns,
+    filter_messages_for_context,
     generate_emma_reply,
     split_into_messages,
 )
@@ -176,7 +177,7 @@ def _handle_fan_chat(
     handled = 0
     # Cap turns per poll so one chat can't starve others
     for _ in range(4):
-        messages = fv.get_messages(fan_uuid, size=40)
+        messages = fv.get_messages(fan_uuid, size=50)
         if not messages:
             break
 
@@ -190,8 +191,11 @@ def _handle_fan_chat(
         text = "\n".join(t for t in texts if t)
         pending_ids = {m["uuid"] for m in pending_chrono if m.get("uuid")}
 
+        ctx_messages = filter_messages_for_context(
+            messages, hours=48, max_messages=50, min_messages=8
+        )
         turns = fanvue_messages_to_turns(
-            messages, fan_uuid, creator_uuid, max_messages=28
+            ctx_messages, fan_uuid, creator_uuid, max_messages=50
         )
 
         mem = fan_memory.observe_message(fan_uuid, fan_handle, text)
@@ -395,6 +399,7 @@ def _handle_fan_chat(
                 offer=offer if not barged else None,
             )
             critic.review_fan_async(fan_uuid, fan_handle)
+            memory_extractor.update_fan_card_async(fan_uuid, fan_handle)
         except Exception as e:
             print(f"   ⚠️ learning-loop log failed: {e}")
 
