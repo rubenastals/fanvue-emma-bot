@@ -235,6 +235,13 @@ def _handle_fan_chat_body(
         )
 
         mem = fan_memory.observe_message(fan_uuid, fan_handle, text)
+        # Sync media Emma already sent in Fanvue history → client card (no repeats)
+        synced = fan_memory.merge_sent_from_chat(
+            fan_uuid, messages, creator_uuid, fan_handle=fan_handle
+        )
+        if synced:
+            print(f"   sent-sync: +{synced} media uuid(s) from chat history")
+            mem = fan_memory.get(fan_uuid) or mem
         decision = decide_turn(mem, text)
 
         preview = text.replace("\n", " | ")[:80]
@@ -321,19 +328,12 @@ def _handle_fan_chat_body(
                     print("   ppv: no catalog item available")
         elif getattr(decision, "allow_free_tease", False):
             offer = vault_catalog.select_free_tease(mem)
-            if not offer:
-                # Delivery recovery — re-gift softest L0 if unused ones are gone
-                offer = vault_catalog.select_free_tease(mem, allow_repeat=True)
-                if offer:
-                    print(
-                        f"   free L0: {offer['label'][:50]} ({offer['media_uuid'][:8]}…) [repeat]"
-                    )
-                else:
-                    print("   free L0: none in catalog")
-            else:
+            if offer:
                 print(
                     f"   free L0: {offer['label'][:50]} ({offer['media_uuid'][:8]}…)"
                 )
+            else:
+                print("   free L0: none left unused for this fan")
 
         reply, decision = generate_emma_reply(
             text,

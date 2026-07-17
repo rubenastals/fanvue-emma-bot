@@ -130,8 +130,8 @@ def _free_tease_ok(
         return False
 
     if force_ask:
-        # Delivery recovery / explicit ask — do not block on last_free or burn count
-        return msgs >= 2
+        # Explicit ask / missing free — only if he still has an unused L0
+        return msgs >= 2 and vault_catalog.l0_remaining(mem) > 0
 
     if vault_catalog.l0_remaining(mem) <= 0:
         return False

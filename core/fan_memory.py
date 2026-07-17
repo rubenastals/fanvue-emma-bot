@@ -93,6 +93,7 @@ def _blank(fan_handle: str) -> dict:
         "last_mode": None,
         "last_offer_level": 0,
         "sent_media_uuids": [],
+        "sent_content": [],  # [{uuid, label, level, kind, at}]
         "free_teases_sent": 0,
         "last_free_at": None,
         "prefer_spanish": False,
@@ -120,6 +121,161 @@ def _ensure_card_fields(mem: dict) -> None:
         mem["summary"] = ""
     if "name_confirmed" not in mem:
         mem["name_confirmed"] = False
+    if not isinstance(mem.get("sent_media_uuids"), list):
+        mem["sent_media_uuids"] = []
+    if not isinstance(mem.get("sent_content"), list):
+        mem["sent_content"] = []
+
+
+_MAX_SENT_UUIDS = 200
+_MAX_SENT_CONTENT = 60
+
+
+def _catalog_lookup() -> Dict[str, Dict[str, Any]]:
+    """media_uuid (+ previous aliases) → catalog item."""
+    try:
+        from core import vault_catalog
+
+        items = vault_catalog.load_items()
+    except Exception:
+        return {}
+    by: Dict[str, Dict[str, Any]] = {}
+    for it in items:
+        uid = it.get("media_uuid")
+        if uid:
+            by[uid] = it
+        prev = it.get("media_uuid_previous")
+        if prev:
+            by.setdefault(prev, it)
+    return by
+
+
+def _append_sent(
+    mem: dict,
+    media_uuid: str,
+    *,
+    label: str = "",
+    level: Optional[int] = None,
+    kind: str = "ppv",
+) -> None:
+    """Idempotent: record UUID + ficha entry so this fan never gets it again."""
+    if not media_uuid:
+        return
+    catalog = _catalog_lookup()
+    item = catalog.get(media_uuid) or {}
+    aliases = {media_uuid}
+    if item.get("media_uuid"):
+        aliases.add(item["media_uuid"])
+    if item.get("media_uuid_previous"):
+        aliases.add(item["media_uuid_previous"])
+
+    sent = list(mem.get("sent_media_uuids") or [])
+    for a in aliases:
+        if a and a not in sent:
+            sent.append(a)
+    mem["sent_media_uuids"] = sent[-_MAX_SENT_UUIDS:]
+
+    lab = (label or item.get("label") or "").strip() or media_uuid[:8]
+    lvl = int(level if level is not None else item.get("level") or 0)
+    content = list(mem.get("sent_content") or [])
+    already = {str(c.get("uuid") or "") for c in content if isinstance(c, dict)}
+    if media_uuid not in already and item.get("media_uuid") not in already:
+        content.append(
+            {
+                "uuid": item.get("media_uuid") or media_uuid,
+                "label": lab[:80],
+                "level": lvl,
+                "kind": kind,
+                "at": _now(),
+            }
+        )
+    mem["sent_content"] = content[-_MAX_SENT_CONTENT:]
+
+
+def merge_sent_from_chat(
+    fan_uuid: str,
+    messages: List[dict],
+    creator_uuid: str,
+    *,
+    fan_handle: str = "",
+) -> int:
+    """
+    Scan Fanvue history for media Emma already sent; merge into the client card.
+    Truth source when memory lagged or a prior deploy forgot to record.
+    """
+    if not messages or not creator_uuid:
+        return 0
+
+    def _sid(msg: dict) -> str:
+        sender = msg.get("sender")
+        if isinstance(sender, dict):
+            return str(sender.get("uuid") or "")
+        if isinstance(sender, str):
+            return sender
+        return str(msg.get("senderUuid") or msg.get("sender_uuid") or "")
+
+    found: List[str] = []
+    for msg in messages:
+        if _sid(msg) != creator_uuid:
+            continue
+        for uid in msg.get("mediaUuids") or []:
+            if uid:
+                found.append(str(uid))
+    if not found:
+        return 0
+    return merge_sent_media(fan_uuid, found, fan_handle=fan_handle)
+
+
+def merge_sent_media(
+    fan_uuid: str,
+    media_uuids: List[str],
+    *,
+    fan_handle: str = "",
+) -> int:
+    """Merge known-sent UUIDs into memory. Returns how many were newly added."""
+    added = 0
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        if fan_handle:
+            mem["handle"] = fan_handle
+        before = set(mem.get("sent_media_uuids") or [])
+        catalog = _catalog_lookup()
+        for uid in media_uuids:
+            if not uid:
+                continue
+            item = catalog.get(uid) or {}
+            kind = "free" if int(item.get("level") or -1) == 0 else "ppv"
+            _append_sent(
+                mem,
+                uid,
+                label=str(item.get("label") or ""),
+                level=item.get("level"),
+                kind=kind,
+            )
+        after = set(mem.get("sent_media_uuids") or [])
+        added = len(after - before)
+        # Keep free_teases_sent coherent with L0 UUIDs actually on the card
+        l0 = sum(
+            1
+            for c in (mem.get("sent_content") or [])
+            if isinstance(c, dict) and int(c.get("level") or -1) == 0
+        )
+        mem["free_teases_sent"] = max(int(mem.get("free_teases_sent") or 0), l0)
+        _put(fan_uuid, mem)
+    return added
+
+
+def already_sent(fan_uuid: str, media_uuid: str) -> bool:
+    mem = get(fan_uuid) or {}
+    sent = set(mem.get("sent_media_uuids") or [])
+    if media_uuid in sent:
+        return True
+    item = _catalog_lookup().get(media_uuid) or {}
+    return bool(
+        (item.get("media_uuid") and item["media_uuid"] in sent)
+        or (item.get("media_uuid_previous") and item["media_uuid_previous"] in sent)
+    )
 
 
 def _dedupe_keep_order(items: List[str], *, limit: int) -> List[str]:
@@ -335,10 +491,13 @@ def set_last_offer(
         if level is not None:
             mem["last_offer_level"] = int(level)
         if media_uuid:
-            sent = list(mem.get("sent_media_uuids") or [])
-            if media_uuid not in sent:
-                sent.append(media_uuid)
-            mem["sent_media_uuids"] = sent[-80:]
+            _append_sent(
+                mem,
+                media_uuid,
+                label=label or "",
+                level=level,
+                kind="ppv",
+            )
             mem["last_ppv_media_uuid"] = media_uuid
             mem["last_ppv_at"] = _now()
             mem["last_ppv_price"] = float(price) if price is not None else None
@@ -356,14 +515,17 @@ def record_free_tease(
     label: str = "",
     level: int = 0,
 ) -> None:
-    """Record an unlocked L0 tease — tracks UUID so it never repeats in this chat."""
+    """Record an unlocked L0 tease — tracks UUID so it never repeats for this fan."""
     with _LOCK:
         mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
         _ensure_card_fields(mem)
-        sent = list(mem.get("sent_media_uuids") or [])
-        if media_uuid not in sent:
-            sent.append(media_uuid)
-        mem["sent_media_uuids"] = sent[-80:]
+        _append_sent(
+            mem,
+            media_uuid,
+            label=label or "",
+            level=level,
+            kind="free",
+        )
         mem["last_free_at"] = _now()
         mem["last_free_media_uuid"] = media_uuid
         mem["last_free_label"] = label or ""
@@ -509,6 +671,22 @@ def render_block(fan_uuid: str) -> str:
         lines.append(f"- Into: {', '.join(mem['interests'])}")
     if mem.get("last_offer"):
         lines.append(f"- Last offer: ${mem['last_offer']}")
+
+    # Content already delivered — never re-gift / re-lock the same shot
+    sent_content = [c for c in (mem.get("sent_content") or []) if isinstance(c, dict)]
+    if sent_content:
+        lines.append(
+            "- ALREADY SENT to him (NEVER re-send the same photo / same media):"
+        )
+        for c in sent_content[-12:]:
+            kind = "FREE" if (c.get("kind") == "free" or int(c.get("level") or -1) == 0) else "PPV"
+            lines.append(
+                f"  • {kind} L{c.get('level', '?')}: {c.get('label') or c.get('uuid', '')[:8]}"
+            )
+    elif mem.get("sent_media_uuids"):
+        n = len(mem["sent_media_uuids"])
+        lines.append(f"- Already sent media: {n} item(s) on file — never repeat those UUIDs")
+
     if mem.get("note"):
         lines.append(f"- Operator note: {mem['note']}")
     if mem.get("last_fan_image_desc"):

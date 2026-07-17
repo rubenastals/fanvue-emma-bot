@@ -66,20 +66,26 @@ def select_free_tease(
     allow_repeat: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """
-    Next unused L0 photo for this conversation (soft → hotter within L0).
-    Never repeats a media_uuid already in sent_media_uuids unless allow_repeat
-    (delivery recovery when Fanvue showed an empty placeholder).
+    Next unused L0 photo for this fan (soft → hotter within L0).
+    Never repeats a media_uuid already in sent_media_uuids.
+    allow_repeat is ignored (kept for call-site compat) — same shot never twice.
     """
+    del allow_repeat  # never re-send the same L0 to the same fan
     items = _l0_items(load_items())
     if not items:
         return None
     sent = _already_sent(mem)
-    available = [i for i in items if i["media_uuid"] not in sent]
-    if available:
-        return _pick_softest_l0(available)
-    if allow_repeat:
-        return _pick_softest_l0(items)
-    return None
+    # Also treat previous-uuid aliases as already sent
+    blocked = set(sent)
+    for i in items:
+        prev = i.get("media_uuid_previous")
+        if prev and (i["media_uuid"] in sent or prev in sent):
+            blocked.add(i["media_uuid"])
+            blocked.add(prev)
+    available = [i for i in items if i["media_uuid"] not in blocked and i.get("media_uuid_previous") not in blocked]
+    if not available:
+        return None
+    return _pick_softest_l0(available)
 
 
 def l0_count() -> int:
@@ -89,7 +95,17 @@ def l0_count() -> int:
 def l0_remaining(mem: dict) -> int:
     items = _l0_items(load_items())
     sent = _already_sent(mem)
-    return sum(1 for i in items if i["media_uuid"] not in sent)
+    blocked = set(sent)
+    for i in items:
+        prev = i.get("media_uuid_previous")
+        if prev and (i["media_uuid"] in sent or prev in sent):
+            blocked.add(i["media_uuid"])
+            blocked.add(prev)
+    return sum(
+        1
+        for i in items
+        if i["media_uuid"] not in blocked and i.get("media_uuid_previous") not in blocked
+    )
 
 
 def select_offer(
