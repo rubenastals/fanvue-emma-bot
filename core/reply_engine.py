@@ -222,8 +222,11 @@ def generate_emma_reply(
                     "FORBIDDEN: claiming you sent/left/locked a photo, "
                     "'check your inbox/DMs', 'revisa tu bandeja', "
                     "'ya lo dejé', 'recarga el chat', or inventing a technical glitch. "
-                    "If he asks where the photo is, tease that you will lock one when he's ready — "
-                    "do not pretend it already arrived."
+                    "FORBIDDEN: writing bracket stage directions like "
+                    "'[You can send him the free tease…]' or '[Transmite Mira Mis Piernas…]' — "
+                    "that does NOT send anything. "
+                    "If he asks where a free photo is, apologize briefly and tease — "
+                    "do not pretend it already arrived and do not invent media titles."
                 ),
             }
         )
@@ -455,6 +458,25 @@ def _strip_photo_script_dump(text: str) -> str:
     """
     if not text:
         return text
+    # Fake "tool" / stage directions the model invents instead of a real attach
+    text = re.sub(
+        r"(?is)\[\s*(?:"
+        r"you can send[^]\n]*|"
+        r"transmite[^]\n]*|"
+        r"send (?:him|her|the)[^]\n]*|"
+        r"free tease[^]\n]*|"
+        r"(?:envi[aáo]|manda|env[ií]a)[^]\n]*|"
+        r"[🥺😏🔥💕😈]\s*(?:transmite|send|env[ií]a)[^]\n]*"
+        r")\s*\]",
+        "",
+        text,
+    )
+    # Bracket-only lines that look like media titles / director notes
+    text = re.sub(
+        r"(?im)^\s*\[[^\]\n]{2,80}\]\s*$",
+        "",
+        text,
+    )
     # Meta / placeholder lines
     text = re.sub(
         r"(?im)^\s*\[?\s*(?:envi[oó]|envió|sent|sending)\s+(?:una\s+)?foto(?:\s+gratis)?\s*\]?\s*$",

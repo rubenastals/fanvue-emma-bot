@@ -60,19 +60,30 @@ def _pick_softest_l0(pool: List[Dict[str, Any]]) -> Dict[str, Any]:
     return ranked[0]
 
 
-def select_free_tease(mem: dict) -> Optional[Dict[str, Any]]:
+def select_free_tease(
+    mem: dict,
+    *,
+    allow_repeat: bool = False,
+) -> Optional[Dict[str, Any]]:
     """
     Next unused L0 photo for this conversation (soft → hotter within L0).
-    Never repeats a media_uuid already in sent_media_uuids.
+    Never repeats a media_uuid already in sent_media_uuids unless allow_repeat
+    (delivery recovery when Fanvue showed an empty placeholder).
     """
     items = _l0_items(load_items())
     if not items:
         return None
     sent = _already_sent(mem)
     available = [i for i in items if i["media_uuid"] not in sent]
-    if not available:
-        return None
-    return _pick_softest_l0(available)
+    if available:
+        return _pick_softest_l0(available)
+    if allow_repeat:
+        return _pick_softest_l0(items)
+    return None
+
+
+def l0_count() -> int:
+    return len(_l0_items(load_items()))
 
 
 def l0_remaining(mem: dict) -> int:
@@ -214,7 +225,10 @@ def catalog_summary_block(max_items: int = 12) -> str:
         by_lvl[i["level"]] = by_lvl.get(i["level"], 0) + 1
     lines = [
         "YOUR REAL VAULT (photos only — sell ONLY from this):",
-        "L0 = soft free teases (rare warm-up hooks). L1+ = locked PPV.",
+        "L0 = soft FREE teases the SYSTEM attaches as real image files (warm-up gifts).",
+        "You NEVER attach media by writing titles, brackets, or '[send him…]' / '[Transmite…]'.",
+        "Only the system can attach. If no free gift is attached this turn, do not pretend.",
+        "L1+ = locked PPV.",
         "SALES LADDER: first locked pitch = mid/high (L3–L5, pricey). "
         "Do NOT open paid pitches with the cheapest lingerie. Anchor high, then negotiate down if he resists.",
     ]

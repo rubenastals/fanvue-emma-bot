@@ -321,12 +321,19 @@ def _handle_fan_chat_body(
                     print("   ppv: no catalog item available")
         elif getattr(decision, "allow_free_tease", False):
             offer = vault_catalog.select_free_tease(mem)
-            if offer:
+            if not offer:
+                # Delivery recovery — re-gift softest L0 if unused ones are gone
+                offer = vault_catalog.select_free_tease(mem, allow_repeat=True)
+                if offer:
+                    print(
+                        f"   free L0: {offer['label'][:50]} ({offer['media_uuid'][:8]}…) [repeat]"
+                    )
+                else:
+                    print("   free L0: none in catalog")
+            else:
                 print(
                     f"   free L0: {offer['label'][:50]} ({offer['media_uuid'][:8]}…)"
                 )
-            else:
-                print("   free L0: none left for this chat")
 
         reply, decision = generate_emma_reply(
             text,

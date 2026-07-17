@@ -120,9 +120,18 @@ def _free_tease_ok(
     """
     Occasional L0 free hook while warming — never spam, never repeat.
     Soft lingerie 1→2; paid L1+ comes later via soft_sell.
-    force_ask: fan explicitly asked for free — ignore paid-offer cooloffs.
+    force_ask: fan explicitly asked for free / missing free — ignore cooloffs
+    and allow a catalog L0 even if we already "sent" one that may have failed.
     """
     from core import vault_catalog
+
+    items = vault_catalog.l0_count()
+    if items <= 0:
+        return False
+
+    if force_ask:
+        # Delivery recovery / explicit ask — do not block on last_free or burn count
+        return msgs >= 2
 
     if vault_catalog.l0_remaining(mem) <= 0:
         return False
@@ -133,11 +142,6 @@ def _free_tease_ok(
     last_free = _parse_iso(mem.get("last_free_at"))
     if last_free and now - last_free < timedelta(minutes=25):
         return False
-
-    if force_ask:
-        # Explicit "foto gratis" — still need a little rapport, but don't block
-        # just because we pitched a paid lock recently.
-        return msgs >= 3
 
     if msgs < 5:
         return False
@@ -204,16 +208,21 @@ def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
 
     fan_sent_media = bool(re.search(_FAN_SENT_MEDIA, low))
     ask_free = bool(re.search(_ASK_FREE, low)) and not fan_sent_media
+    missing = bool(re.search(_MISSING_DELIVERY, low)) and not fan_sent_media
+    # "no llegó mi foto gratis" = free delivery recovery, not paid PPV
+    missing_free = missing and bool(
+        re.search(r"\b(gratis|grastis|gratiz|free)\b", low)
+    )
+    want_free = ask_free or missing_free
     buying = (
         bool(re.search(_BUYING, low) or re.search(_ACCEPT, low))
         and not fan_sent_media
-        and not ask_free
+        and not want_free
     )
-    missing = bool(re.search(_MISSING_DELIVERY, low)) and not fan_sent_media
     want_another = bool(re.search(_WANT_ANOTHER, low))
 
-    # Explicit free ask — gift L0 even during paid-offer cooloff
-    if ask_free and _free_tease_ok(mem, msgs=msgs, now=now, force_ask=True):
+    # Explicit free ask / missing free — ALWAYS try L0 (even during PPV cooloff)
+    if want_free and _free_tease_ok(mem, msgs=msgs, now=now, force_ask=True):
         return TurnDecision(
             mode=MODE_TEASE,
             reason="fan asked for free photo — gift L0",
