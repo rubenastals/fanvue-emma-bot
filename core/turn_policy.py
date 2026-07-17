@@ -2,8 +2,10 @@
 Turn policy — decide WHETHER Emma should sell this turn.
 
 Does not rewrite the persona. Only picks a mode so the reply engine
-can soften/harden the author's note. Rules are conservative: when unsure,
-prefer rapport/tease over hard sell.
+can soften/harden the author's note.
+
+Balance: bond and heat first, then soft-close so chats don't stall forever.
+Never spam locks — cooloffs and daily caps still win.
 """
 from __future__ import annotations
 
@@ -251,6 +253,7 @@ def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
         )
 
     horny = bool(re.search(_HORNY, low))
+    heated = status in ("warm", "spender", "whale") or msgs >= 6
 
     # Cap soft pitches per day
     if offers_today >= 3 and not buying:
@@ -280,10 +283,30 @@ def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
             allow_price=True,
         )
 
+    # Soft close after heat — don't stall in endless flirt
+    # (cooloffs / reject windows / daily cap already handled above)
+    if horny and msgs >= 4:
+        return TurnDecision(
+            mode=MODE_SOFT_SELL,
+            reason="horny + enough rapport — soft close with one real lock",
+            max_bubbles=2,
+            allow_ppv_talk=True,
+            allow_price=True,
+        )
+
+    if heated and msgs >= 7:
+        return TurnDecision(
+            mode=MODE_SOFT_SELL,
+            reason="long warm chat — soft close so it doesn't stall forever",
+            max_bubbles=2,
+            allow_ppv_talk=True,
+            allow_price=True,
+        )
+
     if horny or msgs >= 5:
         return TurnDecision(
             mode=MODE_TEASE,
-            reason="warming up",
+            reason="warming up — build heat before the close",
             max_bubbles=2,
             allow_ppv_talk=True,
             allow_price=False,
@@ -336,16 +359,15 @@ def author_note_for(decision: TurnDecision, *, want_spanish: bool = False) -> st
             "Be a person he enjoys chatting with."
         ),
         MODE_TEASE: (
-            "MODE=tease: Build heat and curiosity. If he's sharing a fantasy, stay in it — "
-            "match his energy; do NOT pivot to selling this turn. "
-            "You may hint you have something naughty, but do NOT drop a price or hard close yet. "
+            "MODE=tease: Build heat and curiosity. Stay in his fantasy. "
+            "Hint you have something naughty for him, but do NOT drop a price or lock yet. "
             "CRITICAL: do NOT say you already sent / left / locked anything in his inbox — "
             "no real photo is attached this turn. No 'revisa tu bandeja / check your DMs'."
         ),
         MODE_SOFT_SELL: (
-            "MODE=soft_sell: Only when HE asked for content/photos. "
-            "One locked tease if a real offer exists — own the premium price, never sound cheap. "
-            "Never stack two locks. If he hesitates, back off — don't dump a cheaper second photo."
+            "MODE=soft_sell: Keep the chemistry — then naturally lock ONE real photo. "
+            "Don't sound like a store. Tease the shot, own the premium price, one clear close. "
+            "Never stack two locks. Never beg. If he hesitates, flirt — don't dump a cheaper second photo."
         ),
         MODE_HARD_SELL: (
             "MODE=hard_sell: He's ready — push ONE clear locked offer with confidence. "
