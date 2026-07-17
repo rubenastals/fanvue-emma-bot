@@ -102,15 +102,17 @@ def language_system_block(want_spanish: bool) -> str:
             "LANGUAGE LOCK (STRICT):\n"
             "- Write this ENTIRE reply in correct, natural Spanish only.\n"
             "- Zero English words. Zero Spanglish.\n"
-            "- Perfect spelling and grammar (no 'se me acabó lo generosa').\n"
-            "- You may mention you use the chat translator if needed.\n"
+            "- Perfect spelling in YOUR words only — never pedantically 'fix' or quote back his typos.\n"
+            "- Do NOT blame the chat app, translator, or glitches — stay in character.\n"
             "- Never use the word 'caro' as a pet name."
         )
     return (
         "LANGUAGE LOCK (STRICT):\n"
         "- Write this ENTIRE reply in correct, natural English only.\n"
         "- ZERO Spanish words. No Spanglish. No 'mira', 'bebé', 'ábrelo', 'caro', 'papi', 'nena'.\n"
-        "- Perfect spelling and grammar. You are a native LA English speaker.\n"
+        "- Perfect spelling in YOUR words only — never pedantically 'fix' his typos.\n"
+        "- Do NOT blame the chat app or glitches — stay in character.\n"
+        "- You are a native LA English speaker.\n"
         "- WRONG: 'Ay bebé, revísalo...' then English.\n"
         "- RIGHT: 'Hey baby, look again... I locked a hot photo for you yesterday.'"
     )
@@ -120,10 +122,11 @@ def rewrite_instruction(want_spanish: bool) -> str:
     if want_spanish:
         return (
             "Rewrite your last reply in correct Spanish only. "
-            "No English. No typos. Keep the same meaning and flirty tone."
+            "No English. Clean grammar in your words — don't 'fix' his typos. "
+            "Keep the same meaning and flirty tone."
         )
     return (
         "Rewrite your last reply in correct English only. "
-        "No Spanish words at all. No Spanglish. No typos. "
+        "No Spanish words at all. No Spanglish. Clean grammar in your words — don't 'fix' his typos. "
         "Keep the same meaning and flirty tone. Native American English."
     )

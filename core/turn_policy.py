@@ -27,8 +27,7 @@ _BUYING = (
     r"show me|vid|video|content|custom|locked|ppv|"
     r"env[ií]a(me|la|lo)?|m[aá]nda(me|la|mela)?|"
     r"(p[aá]sa(me|la|mela)?|quiero|m[aá]ndame).{0,12}(foto|pic|pics|photo)|"
-    r"(foto|pic|pics|photo).{0,12}(por ?favor|ya|ahora)|"
-    r"d[oó]nde|where(?:'?s| is)|bandeja)\b|"
+    r"(foto|pic|pics|photo).{0,12}(por ?favor|ya|ahora))\b|"
     r"s[ií]+\s*quiero|lo quiero|dale\b"
 )
 # Fan is talking about media HE sent (react, don't pitch)
@@ -62,11 +61,22 @@ _REJECT = (
 )
 # Billing confusion / checkout friction — empathize, don't re-pitch
 _PRICE_ISSUE = (
-    r"\b(impuesto|tax|iva|checkout|billing|cobr|factur|"
+    r"\b(?:impuestos?|tax(?:es)?|iva|checkout|billing|cobr|factur|"
     r"tarjeta|card.*pay|pay.*card|"
     r"€\s*\d|\$\s*\d|"
     r"por qu[eé].*pag|why.*pay|why.*charge|"
-    r"cu[aá]nto.*pag|how much.*pay)\b|pag[aá]r"
+    r"cu[aá]nto.*pag|how much.*pay|pag[aá]r)\b|"
+    r"\d+[.,]\d{1,2}.{0,40}(?:dijiste|said|vs|versus|pero tu|but you)|"
+    r"(?:dijiste|you said|tu dijiste).{0,25}\d+[.,]\d{1,2}|"
+    r"(?:sale|cobr|charge).{0,30}\d+[.,]\d{1,2}"
+)
+# Fan cooling — calls out a mistake or asks a direct logistical question
+_FAN_PUSHBACK = (
+    r"\b(?:quien es|qui[eé]n es|who is|who'?s that|wrong name|"
+    r"donde (?:has )?visto|where did you (?:see|get)|"
+    r"no me llamo|that'?s not my name|"
+    r"por qu[eé] (?:dices|dijiste|llamas|me llamas)|"
+    r"why (?:did you|do you) (?:call|say))\b"
 )
 # ...but an ACCEPTANCE mentioning the price is a buy signal, not friction
 _ACCEPT = (
@@ -232,6 +242,18 @@ def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
             allow_free_tease=True,
         )
 
+    # Cooling / confusion — answer plainly before delivery or buy paths mis-fire
+    if re.search(_FAN_PUSHBACK, low) or (
+        re.search(_PRICE_ISSUE, low) and not re.search(_ACCEPT, low)
+    ):
+        return TurnDecision(
+            mode=MODE_CHILL,
+            reason="fan pushback or billing confusion — clarify, don't sell",
+            max_bubbles=2,
+            allow_ppv_talk=False,
+            allow_price=False,
+        )
+
     # He sent US a photo — react like a person, never auto-pitch PPV
     if fan_sent_media and not want_another:
         return TurnDecision(
@@ -256,8 +278,12 @@ def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
             allow_free_tease=free_ok,
         )
 
-    # He says nothing arrived / asks where it is → send a REAL locked photo now
-    if missing or (buying and re.search(r"\b(d[oó]nde|where|bandeja)\b", low)):
+    # He says nothing arrived / asks where content is → send a REAL locked photo now
+    if missing or re.search(
+        r"\b(d[oó]nde|where).{0,30}\b(foto|photo|pic|inbox|bandeja|unlock|ppv|media|it)\b|"
+        r"\b(bandeja|inbox)\b",
+        low,
+    ):
         return TurnDecision(
             mode=MODE_SOFT_SELL,
             reason="fan expects a delivery — attach real PPV",
@@ -295,15 +321,6 @@ def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
         return TurnDecision(
             mode=MODE_CHILL,
             reason="price/delay objection in this message",
-            max_bubbles=2,
-            allow_ppv_talk=False,
-            allow_price=False,
-        )
-
-    if re.search(_PRICE_ISSUE, low) and not re.search(_ACCEPT, low):
-        return TurnDecision(
-            mode=MODE_CHILL,
-            reason="billing/price confusion — explain, don't push unlock",
             max_bubbles=2,
             allow_ppv_talk=False,
             allow_price=False,
@@ -427,12 +444,14 @@ def author_note_for(decision: TurnDecision, *, want_spanish: bool = False) -> st
     if want_spanish:
         lang = (
             "LANGUAGE: He wrote in Spanish → reply in FULL correct Spanish this turn. "
-            "Zero English. No Spanglish. No typos. Never 'caro/papi/nena' as nicknames."
+            "Zero English. No Spanglish. Clean grammar in YOUR words only — never pedantically "
+            "correct or re-spell HIS typos. Never 'caro/papi/nena' as nicknames."
         )
     else:
         lang = (
             "LANGUAGE: FULL correct English only this turn. Zero Spanish words. "
-            "No Spanglish. No 'mira/bebé/ábrelo/caro/papi'. Native LA English, clean grammar."
+            "No Spanglish. No 'mira/bebé/ábrelo/caro/papi'. Native LA English, clean grammar "
+            "in YOUR words only — never pedantically correct HIS typos."
         )
     base = (
         "[Stay in character as Emma. Reply like real texting — natural, not scripted. "
@@ -441,20 +460,26 @@ def author_note_for(decision: TurnDecision, *, want_spanish: bool = False) -> st
         "EMOJIS: natural middle — ~half of replies get 1 emoji, some get 0, rarely 2; "
         "never stamp 2–3 every line, but don't go bone-dry / zero forever. "
         "Warm short lines > cold clipped ones. "
-        "Don't repeat your previous openings. React to his LAST message. "
+        "Don't repeat your previous openings. React to what he MEANT in his LAST message — "
+        "never quote him back with 'corrected' spelling or play grammar police. "
+        "If you slip (wrong name, awkward phrase): blush and apologize simply in character — "
+        "never blame the app, chat, translator, or glitches. "
         "Never promise vague bonus perks (extra attention, protection). "
         "Only gift a free photo when the system attaches a real L0 tease this turn. "
         f"{lang} "
         "ADDRESSING: usually a light pet name (babe/baby/handsome/trouble) or none. "
         "His real name at most once every few turns — never every message. "
+        "Never invent a first name (no Jamie/Carlos/Alex). "
         "Spanish pet names only in full-Spanish replies.]"
     )
 
     mode_lines = {
         MODE_CHILL: (
             "MODE=chill: Be warm and human. NO locked content, NO prices, NO 'unlock' talk. "
-            "If he's confused about billing/taxes/fees, explain simply in character — "
-            "do NOT push him to buy or unlock. Just connect."
+            "Answer his direct question FIRST — billing/taxes, price mismatch, or a slip like "
+            "a wrong name. Empathize, then ONE plain sentence (Fanvue adds tax/VAT at checkout; "
+            "you don't control fees). Skip jokes, guilt/FOMO, and price-objection scripts — "
+            "clarity beats selling. Then gently reconnect."
         ),
         MODE_RAPPORT: (
             "MODE=rapport: Flirt lightly if it fits, but do NOT pitch PPV or prices this turn. "

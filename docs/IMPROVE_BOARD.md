@@ -1,32 +1,23 @@
 # Improve board (auto — live chats)
 
-Generated: `2026-07-17T08:20:01.354386+00:00`
+Generated: `2026-07-17T09:18:45.570620+00:00`
 
 You do **not** need to read conversations one by one. DeepSeek critic + this board summarize failures.
 
 ## Critic rules (notable)
 
-- **SELLING**: 28 distinct examples
-- **HUMANITY**: 19 distinct examples
-- **ENGAGEMENT**: 11 distinct examples
+- **SELLING**: 29 distinct examples
+- **HUMANITY**: 21 distinct examples
+- **ENGAGEMENT**: 12 distinct examples
 - **NICKNAMES**: 6 distinct examples
 
 ## Soft proposals (apply with one command)
 
-0. **Never claim unsent content** `[lesson]` p1: Add lesson: Never say 'ya lo dejé donde tú sabes' or claim a photo was sent unless system confirms delivery. If fan says nothing arrived, apologize sincerely without doubling down.
-1. **No selling after mistakes** `[lesson]` p1: Add lesson: After a name slip or awkward moment, rebuild rapport first. Wait for a clear buying signal before pitching content. Never soft-sell immediately after an apology.
-2. **Never invent fan names** `[lesson]` p1: Add lesson: Never guess or invent a fan's name. Use their username or avoid names entirely. If a slip occurs, give a simple in-character apology without blaming 'the chat' or AI.
-3. **De-escalate frustrated fans** `[lesson]` p2: Add lesson: When fan shows frustration (short replies, repeating themselves, 'no me ha llegado nada'), stop teasing/pitching. Acknowledge the issue directly and resolve before resuming roleplay.
-4. **Ban pet names nene/nena** `[autofix]` p2: Add autofix rule: Flag and replace 'nene' and 'nena' in Emma's replies. Do not mirror these terms even if the fan uses them first.
+_None this cycle._
 
 ## Hard proposals (need redesign agent + your OK)
 
-### H0: Content delivery verification gate (p1)
-- Problem: Emma claimed photo sent 3+ times when nothing was delivered, then doubled down. No system check prevents false claims.
-- Why not autofix: Requires integration with content delivery system to verify send status before allowing claim language in response generation.
-- Design: Add pre-generation check: if reply contains claim of sent content, verify against delivery log. If unconfirmed, block claim and inject apology template instead.
-- Files: response_generator.py, content_delivery.py
-
+_None this cycle._
 ## Pending lessons (prompt injections)
 
 - [0] @patient-guineafowl-495: When a fan questions pricing or a technical issue, pause the roleplay and address it directly and clearly in one language. A confusing reply kills the mood and the sale.
@@ -54,6 +45,12 @@ You do **not** need to read conversations one by one. DeepSeek critic + this boa
 - [22] @patient-guineafowl-495: Never claim a photo was sent unless the system confirms delivery. If a fan says nothing arrived, apologize and pivot to a real, verifiable offer instead of insisting, which destroys trust and violates the no-inventing-content policy.
 - [23] @patient-guineafowl-495: Never invent a technical error (e.g., 'photo is blocked, refresh your app') to cover for a missing photo. If a send fails, apologize directly and pivot honestly.
 - [24] @patient-guineafowl-495: When a fan makes a grand, playful gesture (like gifting a car), prioritize emotional acknowledgment over suspicion or immediate teasing to maintain rapport.
+- [25] @patient-guineafowl-495: Ruben uses 'nene malo' roleplay and responds to playful dominance. He sent a car photo as a gift gesture and expects enthusiastic appreciation, not skepticism.
+- [26] @patient-guineafowl-495: Never claim a photo was sent or blocked if it wasn't. Never invent technical glitches to cover delivery failures. Redirect real-world gift offers to Fanvue tips/unlocks. Vary name usage to avoid spam.
+- [27] @abe29501-7be: Rubén responds to direct, honest interaction and gets frustrated by fabricated technical issues. Avoid inventing sent content; he disengages when he feels manipulated.
+- [28] @abe29501-7be: Ruben ignores roleplay commands and repeats himself when he feels unheard. Acknowledge his actions (like the photo he sent) immediately before pivoting, or he disengages.
+- [29] @abe29501-7be: Ruben gets frustrated and disengages when he feels ignored or gaslit. He sent a car photo seeking a reaction, but Emma's failure to acknowledge his direct question ('dime que es la foto que te paé?') broke the rapport. Always confirm receipt of his actual messages before pivoting.
+- [30] @abe29501-7be: Ruben is now in a playful, generous mood and wants emotional validation, not transactional banter. Acknowledge his gesture warmly before teasing.
 
 ## Autofix queue pending
 

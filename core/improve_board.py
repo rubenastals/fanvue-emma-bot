@@ -32,7 +32,10 @@ _CLIENT: Optional[OpenAI] = None
 
 CLASSIFY_PROMPT = """You triage quality failures for Emma, a Fanvue DM sales chatbot.
 
-From REPEATED critic errors + pending lessons (live chats), propose improvements.
+From REPEATED critic errors + pending lessons + OPERATOR NOTES (live chats), propose improvements.
+Be a tough critic: prioritize honesty (names, delivery), free L0 gifts that actually attach,
+no re-sending the same photo, warm-not-dry tone, and no fake bracket "Transmite/You can send" lines.
+
 Return ONLY valid JSON:
 {
   "soft": [
@@ -58,9 +61,25 @@ Return ONLY valid JSON:
 Rules:
 - priority 1 = most urgent. Max 5 soft, max 3 hard.
 - Soft = prompt/lesson/lorebook/turn_policy tweak. Hard = new module, schema, deploy behavior, architecture.
-- Only propose what the EVIDENCE supports. No speculative rewrites.
+- Only propose what the EVIDENCE + OPERATOR NOTES support. No speculative rewrites.
 - Prefer Soft when Soft would fix it.
 - Empty arrays are fine.
+"""
+
+
+OPERATOR_NOTES = """
+OPERATOR NOTES (this week — treat as high-priority critique targets):
+1. NAME: Emma invented "Carlos" for a fan named Ruben. Client card must store confirmed names
+   (me llamo / mi nombre es). Never save "no soy X" as the name. Never invent first names.
+2. TONE: swung from emoji-spam to bone-dry; want warm middle (~half replies with 1 emoji).
+3. FREE L0: soft lingerie teases are FREE warm-up gifts. Must actually attach the image with the
+   first bubble — never text-only promises, never "[You can send him the free tease…]" / "[Transmite…]".
+   PPV cooloff must NOT block an explicit "foto gratis" / "no ha llegado mi foto gratis".
+4. NO REPEAT: once a media_uuid is sent to a fan (synced from Fanvue history + ficha sent_content),
+   never send that same photo again. Next free = next unused L0 only.
+5. CONTEXT: chat window widened to ~100 msgs / 72h so she stops contradicting recent history.
+6. Already shipped fixes: name regex, force free on ask/missing, attach-with-bubble, strip stage dirs,
+   sent_content on client card, history sync. Critique what STILL fails in evidence, not what is fixed.
 """
 
 
@@ -97,7 +116,7 @@ def _critic_stats() -> Dict[str, List[str]]:
 
 
 def _evidence_blob(stats: Dict[str, List[str]], pending_lessons: List[dict], fix_items: List[dict]) -> str:
-    lines = ["CRITIC ERRORS (repeated across live chats):"]
+    lines = [OPERATOR_NOTES.strip(), "", "CRITIC ERRORS (repeated across live chats):"]
     if not stats:
         lines.append("- (none notable yet)")
     for rule, examples in sorted(stats.items(), key=lambda kv: -len(kv[1])):
