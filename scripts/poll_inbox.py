@@ -176,7 +176,7 @@ def _handle_fan_chat(
     handled = 0
     # Cap turns per poll so one chat can't starve others
     for _ in range(4):
-        messages = fv.get_messages(fan_uuid, size=20)
+        messages = fv.get_messages(fan_uuid, size=40)
         if not messages:
             break
 
@@ -191,7 +191,7 @@ def _handle_fan_chat(
         pending_ids = {m["uuid"] for m in pending_chrono if m.get("uuid")}
 
         turns = fanvue_messages_to_turns(
-            messages, fan_uuid, creator_uuid, max_messages=14
+            messages, fan_uuid, creator_uuid, max_messages=28
         )
 
         mem = fan_memory.observe_message(fan_uuid, fan_handle, text)

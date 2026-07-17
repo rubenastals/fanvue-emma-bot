@@ -57,7 +57,7 @@ def fanvue_messages_to_turns(
     fan_uuid: str,
     creator_uuid: str,
     *,
-    max_messages: int = 14,
+    max_messages: int = 28,
 ) -> List[Dict[str, str]]:
     """Newest-first Fanvue msgs → chronological OpenAI turns."""
     chronological = list(reversed(messages[:max_messages]))
@@ -195,6 +195,17 @@ def generate_emma_reply(
     name_note = _name_budget_note(mem.get("name") or "", turns)
     if name_note:
         messages.append({"role": "system", "content": name_note})
+
+    messages.append(
+        {
+            "role": "system",
+            "content": (
+                "GROUNDING: Treat the chat history above as the only source of what HE said. "
+                "Do not invent quotes, gifts, plans, jobs, names, or details missing from that history. "
+                "If something is unclear, ask — never assume."
+            ),
+        }
+    )
 
     note = author_note_for(decision, want_spanish=want_spanish)
     if offer:
