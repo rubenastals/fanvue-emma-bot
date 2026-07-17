@@ -211,6 +211,9 @@ def _pending_fan_messages(messages: list, fan_uuid: str, processed: set) -> list
     Includes media-only (no caption). Critical: do NOT require messages[0]
     to be from the fan — if Emma already bubbled after he wrote, his msg
     sits in the middle and must still be answered.
+
+    Unstick: if the fan spoke LAST but that uuid was marked processed without
+    a later Emma reply (crash / empty send), retry it.
     """
     pending = []
     for msg in messages:
@@ -221,6 +224,19 @@ def _pending_fan_messages(messages: list, fan_uuid: str, processed: set) -> list
         if not uid or not text or uid in processed:
             continue
         pending.append(msg)
+
+    if not pending and messages:
+        newest = messages[0]
+        if _sender_uuid(newest) == fan_uuid:
+            uid = newest.get("uuid")
+            text = _fan_message_text(newest)
+            if uid and text and uid in processed:
+                print(
+                    f"   ♻️ unstick: fan spoke last (msg {uid[:8]}…) "
+                    "was marked processed with no Emma reply after — retrying"
+                )
+                processed_store.remove(uid, processed)
+                pending = [newest]
     return pending
 
 
@@ -553,25 +569,35 @@ def _handle_fan_chat_body(
             else:
                 print("   free L0: none left unused for this fan")
 
-        reply, decision = generate_emma_reply(
-            text,
-            history_turns=turns,
-            fan_handle=fan_handle,
-            fan_uuid=fan_uuid,
-            decision=decision,
-            offer=offer,
-            ppv_status=ppv_status,
-            fan_vision=vision,
-            delivery_truth=delivery_truth,
-            pack_id=route_result.pack_id,
-            route_result=route_result,
-        )
+        try:
+            reply, decision = generate_emma_reply(
+                text,
+                history_turns=turns,
+                fan_handle=fan_handle,
+                fan_uuid=fan_uuid,
+                decision=decision,
+                offer=offer,
+                ppv_status=ppv_status,
+                fan_vision=vision,
+                delivery_truth=delivery_truth,
+                pack_id=route_result.pack_id,
+                route_result=route_result,
+            )
+        except Exception as e:
+            import traceback
+
+            print(f"   ❌ generate_emma_reply failed: {type(e).__name__}: {e}")
+            traceback.print_exc()
+            break
+
         bubbles = split_into_messages(reply, max_bubbles=3, vary=True)
         print(f"💬 Emma ({len(bubbles)} msg) [{decision.mode}]: {reply[:120]}")
 
-        # Mark ALL absorbed fan msgs before sending (crash-safe, no double-reply)
-        for uid in pending_ids:
-            _mark_processed(processed, uid)
+        # Do NOT mark processed until we actually send — otherwise a crash/empty
+        # reply permanently silences the fan.
+        if not (reply or "").strip() or not bubbles:
+            print("   ⚠️ empty reply — NOT marking processed; will retry next poll")
+            break
 
         barged = False
         bubbles_sent = 0
@@ -836,6 +862,13 @@ def _handle_fan_chat_body(
                 barged = True
                 break
 
+        # Mark processed only after at least one bubble / media actually went out
+        if bubbles_sent > 0 or free_sent or ppv_sent:
+            for uid in pending_ids:
+                _mark_processed(processed, uid)
+        else:
+            print("   ⚠️ no bubble sent — leaving fan msgs unprocessed for retry")
+
         # Legacy fallback: paid offer still pending (e.g. no bubbles) — verify before memory
         if offer and not barged and not ppv_sent and not is_free_offer:
             try:
@@ -947,6 +980,11 @@ def _handle_fan_chat_body(
     return handled
 
 
+def _looks_like_uuid(value: str) -> bool:
+    v = (value or "").strip()
+    return len(v) >= 32 and v.count("-") >= 4
+
+
 def poll_once(fv: FanvueConnector, processed: set, creator_uuid: str) -> int:
     if shutting_down():
         return 0
@@ -970,6 +1008,26 @@ def poll_once(fv: FanvueConnector, processed: set, creator_uuid: str) -> int:
         if len(candidates) >= 25:
             break
 
+    # Memory fans (covers chats missing from list_chats page / stuck threads)
+    try:
+        from db import fan_memory_store
+
+        for fid, mem in (fan_memory_store.load_all() or {}).items():
+            if not _looks_like_uuid(fid) or fid in seen or fid == creator_uuid:
+                continue
+            if not isinstance(mem, dict):
+                continue
+            if int(mem.get("messages") or 0) < 1:
+                continue
+            seen.add(fid)
+            candidates.append(
+                {"user": {"uuid": fid, "handle": mem.get("handle") or "fan"}}
+            )
+            if len(candidates) >= 40:
+                break
+    except Exception:
+        pass
+
     for chat in candidates:
         if shutting_down():
             break
@@ -978,9 +1036,15 @@ def poll_once(fv: FanvueConnector, processed: set, creator_uuid: str) -> int:
         fan_handle = user.get("handle", "fan")
         if not fan_uuid:
             continue
-        handled += _handle_fan_chat(
-            fv, processed, creator_uuid, fan_uuid, fan_handle
-        )
+        try:
+            handled += _handle_fan_chat(
+                fv, processed, creator_uuid, fan_uuid, fan_handle
+            )
+        except Exception as e:
+            import traceback
+
+            print(f"   ❌ handle @{fan_handle} failed: {type(e).__name__}: {e}")
+            traceback.print_exc()
 
     return handled
 
@@ -1032,6 +1096,14 @@ def main():
                     mem["handle"] = mem.get("handle") or "patient-guineafowl-495"
                     _fms.set_fan(rid, mem)
                     print("   lean: client card → Ruben (confirmed)")
+                # Drop junk test fans that break purge/list (invalid UUIDs)
+                for junk_id, junk_mem in list((_fms.load_all() or {}).items()):
+                    if junk_id.count("-") < 4 or len(junk_id) < 32:
+                        try:
+                            _fms.set_fan(junk_id, {"_deleted": True, "handle": ""})
+                        except Exception:
+                            pass
+                        print(f"   lean: drop junk fan entry {junk_id[:24]!r}")
         except Exception as e:
             print(f"   ⚠️ lean reset skipped: {e}")
     else:

@@ -62,3 +62,24 @@ def add(msg_uuid: str, processed: Optional[Set[str]] = None, aid: Optional[str] 
     else:
         _file_save(processed)
     return processed
+
+
+def remove(
+    msg_uuid: str, processed: Optional[Set[str]] = None, aid: Optional[str] = None
+) -> Set[str]:
+    """Un-mark a message so the poller can retry (stuck / failed send)."""
+    aid = aid or account_id()
+    if processed is None:
+        processed = load(aid)
+    processed.discard(msg_uuid)
+    if use_redis():
+        from db import redis_client
+
+        try:
+            redis_client.processed_remove(msg_uuid, aid)
+        except Exception:
+            pass
+        _file_save(processed)
+    else:
+        _file_save(processed)
+    return processed

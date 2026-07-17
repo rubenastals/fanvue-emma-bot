@@ -47,6 +47,11 @@ def processed_add(msg_uuid: str, aid: Optional[str] = None) -> None:
             r.spop(key)
 
 
+def processed_remove(msg_uuid: str, aid: Optional[str] = None) -> None:
+    r = get_redis()
+    r.srem(_processed_key(aid), msg_uuid)
+
+
 def processed_contains(msg_uuid: str, aid: Optional[str] = None) -> bool:
     return bool(get_redis().sismember(_processed_key(aid), msg_uuid))
 
