@@ -182,12 +182,25 @@ class FanvueConnector:
         )
 
     def get_messages(self, fan_uuid: str, size: int = 5) -> list:
-        data = self._request(
-            "GET",
-            f"/chats/{fan_uuid}/messages",
-            params={"size": size, "page": 1},
-        )
-        return data.get("data", data if isinstance(data, list) else [])
+        """Fetch recent messages (newest first). Paginates when size > page cap."""
+        want = max(1, int(size))
+        page_size = min(50, want)  # Fanvue page size is typically capped
+        out: list = []
+        page = 1
+        while len(out) < want and page <= 4:
+            data = self._request(
+                "GET",
+                f"/chats/{fan_uuid}/messages",
+                params={"size": page_size, "page": page},
+            )
+            chunk = data.get("data", data if isinstance(data, list) else [])
+            if not chunk:
+                break
+            out.extend(chunk)
+            if len(chunk) < page_size:
+                break
+            page += 1
+        return out[:want]
 
     def get_message_media(
         self,

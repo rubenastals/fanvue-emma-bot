@@ -69,8 +69,8 @@ def _parse_msg_time(msg: dict):
 def filter_messages_for_context(
     messages: List[dict],
     *,
-    hours: int = 48,
-    max_messages: int = 50,
+    hours: int = 72,
+    max_messages: int = 100,
     min_messages: int = 8,
 ) -> List[dict]:
     """
@@ -100,7 +100,7 @@ def fanvue_messages_to_turns(
     fan_uuid: str,
     creator_uuid: str,
     *,
-    max_messages: int = 50,
+    max_messages: int = 100,
 ) -> List[Dict[str, str]]:
     """Newest-first Fanvue msgs → chronological OpenAI turns."""
     chronological = list(reversed(messages[:max_messages]))

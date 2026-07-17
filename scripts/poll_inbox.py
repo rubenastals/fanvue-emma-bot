@@ -213,7 +213,7 @@ def _handle_fan_chat_body(
     for _ in range(4):
         if shutting_down() and handled > 0:
             break
-        messages = fv.get_messages(fan_uuid, size=50)
+        messages = fv.get_messages(fan_uuid, size=100)
         if not messages:
             break
 
@@ -228,10 +228,10 @@ def _handle_fan_chat_body(
         pending_ids = {m["uuid"] for m in pending_chrono if m.get("uuid")}
 
         ctx_messages = filter_messages_for_context(
-            messages, hours=48, max_messages=50, min_messages=8
+            messages, hours=72, max_messages=100, min_messages=8
         )
         turns = fanvue_messages_to_turns(
-            ctx_messages, fan_uuid, creator_uuid, max_messages=50
+            ctx_messages, fan_uuid, creator_uuid, max_messages=100
         )
 
         mem = fan_memory.observe_message(fan_uuid, fan_handle, text)

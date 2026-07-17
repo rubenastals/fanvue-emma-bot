@@ -56,14 +56,14 @@ def _client() -> OpenAI:
 
 
 def _snippet(fan_uuid: str) -> str:
-    records = convo_log.read_recent(fan_uuid, max_records=24)
+    records = convo_log.read_recent(fan_uuid, max_records=48)
     lines: List[str] = []
     for r in records:
         if r.get("type") != "turn":
             continue
         lines.append(f"FAN: {r.get('fan_message', '')}")
         lines.append(f"EMMA: {r.get('reply', '')}")
-    return "\n".join(lines[-40:])
+    return "\n".join(lines[-80:])
 
 
 def _current_card_text(mem: dict) -> str:
