@@ -181,6 +181,23 @@ def approve_global(index: int) -> Optional[str]:
         return lesson["text"]
 
 
+def auto_approve_pending(*, max_n: int = 40) -> List[str]:
+    """
+    Soft path: activate all pending global lessons without human review.
+    Behavioral rules become active for every fan immediately.
+    """
+    activated: List[str] = []
+    for _ in range(max_n):
+        pen = pending()
+        if not pen:
+            break
+        text = approve_global(0)
+        if not text:
+            break
+        activated.append(text)
+    return activated
+
+
 def reject_global(index: int) -> Optional[str]:
     with _LOCK:
         data = _load()

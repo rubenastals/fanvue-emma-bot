@@ -623,7 +623,7 @@ def main():
                     except Exception as e:
                         print(f"\n⚠️ Re-engagement error: {e}")
 
-                # Every 30 min: aggregate critic errors + Soft/Hard improve board
+                # Every 30 min: Soft autopilot (auto-approve global lessons) + board
                 if not shutting_down() and time.time() - last_fix_scan >= 1800:
                     last_fix_scan = time.time()
                     try:
@@ -633,17 +633,22 @@ def main():
                         if new:
                             rules = ", ".join(i["rule"] for i in new)
                             print(
-                                f"\n🧠 self-repair: {len(new)} proposal(s) queued ({rules}). "
-                                "Apply with: python scripts/improve_once.py --apply-soft\n"
+                                f"\n🧠 self-repair queue: {len(new)} ({rules}) "
+                                f"— Soft lessons auto-approve; code autofix still manual\n"
                             )
-                        board = improve_board.build_board(ask_deepseek=True)
-                        improve_board.save_board(board)
-                        soft_n = len((board.get("proposals") or {}).get("soft") or [])
-                        hard_n = len((board.get("proposals") or {}).get("hard") or [])
-                        if soft_n or hard_n:
+                        result = improve_board.run_soft_autopilot(ask_deepseek=True)
+                        n_act = len(result.get("activated") or [])
+                        if n_act:
+                            print(
+                                f"\n✅ Soft auto-approved {n_act} global lesson(s) "
+                                f"(shared Emma behavior)\n"
+                            )
+                        soft_n = result.get("soft_n") or 0
+                        hard_n = result.get("hard_n") or 0
+                        if soft_n or hard_n or n_act:
                             print(
                                 f"\n📋 improve board: Soft={soft_n} Hard={hard_n} "
-                                f"→ docs/IMPROVE_BOARD.md | python scripts/improve_once.py --all\n"
+                                f"activated={n_act} → docs/IMPROVE_BOARD.md\n"
                             )
                     except Exception as e:
                         print(f"\n⚠️ fix-scan error: {e}")

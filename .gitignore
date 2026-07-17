@@ -14,6 +14,7 @@
 .lessons.json
 .fix_queue.json
 .improve_board.json
+.improve_journal.json
 .processed_messages.json
 _me.json
 _chats.json

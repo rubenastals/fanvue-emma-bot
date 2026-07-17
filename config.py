@@ -72,5 +72,15 @@ class Config:
         "fancyfeast/llama-joycaption-beta-one-hf-llava",
     )
 
+    # Soft autopilot + daily digest
+    AUTO_APPROVE_SOFT_LESSONS = os.getenv("AUTO_APPROVE_SOFT_LESSONS", "1") == "1"
+    DIGEST_WEBHOOK_URL = os.getenv("DIGEST_WEBHOOK_URL", "")  # Discord/Slack incoming webhook
+    DIGEST_EMAIL = os.getenv("DIGEST_EMAIL", "")
+    SMTP_HOST = os.getenv("SMTP_HOST", "")
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER = os.getenv("SMTP_USER", "")
+    SMTP_PASS = os.getenv("SMTP_PASS", "")
+    SMTP_FROM = os.getenv("SMTP_FROM", "")
+
 
 config = Config()

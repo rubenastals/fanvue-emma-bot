@@ -1,81 +1,37 @@
 # Redesign agent + continuous improvement
 
-## What you actually do day-to-day (minimal)
+## Day-to-day (mostly automatic)
 
-Live chats already feed the DeepSeek critic. You do **not** read conversations one by one.
+Live chats → DeepSeek critic → Soft/Hard board.
+
+**Soft global lessons auto-approve** every ~30 min on the poller (`AUTO_APPROVE_SOFT_LESSONS=1`).
+Emma's shared behavior updates without you clicking approve.
+
+**Daily digest** (after 09:00 Los Angeles, once/day): Soft applied + Hard pending + critic errors.
+Set one of:
+
+- `DIGEST_WEBHOOK_URL` — Discord or Slack incoming webhook (recommended)
+- `DIGEST_EMAIL` + `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM`
+
+Also written to `docs/DAILY_DIGEST.md` and printed in Railway logs.
 
 ```bash
-# Once a day (or when logs say "improve board"):
-python scripts/improve_once.py --all
+# Optional manual refresh / force digest:
+python scripts/improve_once.py
+python -c "from core import daily_digest; daily_digest.send_digest(force=True)"
 ```
-
-That command:
-
-1. Aggregates critic errors + pending lessons + autofix queue from **live** chats  
-2. Asks DeepSeek for **Soft** vs **Hard** proposals  
-3. Writes `docs/IMPROVE_BOARD.md` (human-readable)  
-4. **Soft:** auto-approves pending lessons + runs Cursor autofix (tiny code/prompt fixes)  
-5. **Hard:** writes filled briefs under `docs/briefs/`  
-
-Your only manual steps:
-
-- Soft code changes: glance `git diff` → push / `railway up` when happy  
-- Hard: open a brief file → paste into Cursor → review → you say merge + deploy  
-
-The poller also refreshes the board every ~30 min and prints Soft/Hard counts in Railway logs.
-
----
 
 ## Soft vs Hard
 
-| Class | Examples | How it ships |
+| Class | What | Your role |
 |---|---|---|
-| **Soft** | Lessons, lorebook JSON, tiny `turn_policy` / prompt tweaks via autofix | `improve_once.py --apply-soft` then you deploy |
-| **Hard** | New modules, schema, memory architecture, deploy behavior | Auto brief → redesign agent → **your** OK |
+| **Soft** | Global lessons (behavior for all fans) | **None** — auto-approved |
+| **Soft personal** | Fan facts/kinks only | Auto on that fan |
+| **Hard** | Structure / multi-file | Brief in `docs/briefs/` → you OK merge/deploy |
+| **Code autofix** | Cursor tiny edits | Still review `git diff` + deploy |
 
----
+Turn Soft auto-approve off: `AUTO_APPROVE_SOFT_LESSONS=0`.
 
-## Template for a Hard brief chat (usually auto-written)
+## Hard brief chat
 
-If you open `docs/briefs/*.md`, it is already filled. Paste the file contents into Cursor.
-
-Manual template (only if you invent a Hard change yourself):
-
-```markdown
-### 1. Problema medible
-…
-
-### 2. Por qué auto-fix no basta
-…
-
-### 3. Diseño propuesto
-- Soft or Hard: Hard
-- Files / flow:
-
-### 4. Qué NO cambia
-OAuth, tokens, .env, vault prices, secrets.
-
-### 5. Criterio de éxito + verificación
-…
-
-### 6. Rollback
-…
-```
-
-Agent constraints:
-
-```
-You are the Emma Fanvue redesign agent. Follow docs/REDESIGN_BRIEF.md.
-Soft first. One thesis. Branch only. NEVER push main / railway up unless human asks.
-```
-
----
-
-## Deploy checklist (Hard / Soft code)
-
-1. Review `git diff`  
-2. Push / `railway up --service poller`  
-3. Poller drains on SIGTERM (finishes current turn, releases Redis lock)  
-4. Logs: `redis lock: acquired` then `.` / `handled`  
-
-Honest limit: a few seconds gap on redeploy. DMs are not live sockets.
+Open `docs/briefs/*.md`, paste into Cursor redesign agent, review, then you say merge + deploy.

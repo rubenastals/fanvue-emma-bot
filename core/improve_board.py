@@ -329,17 +329,77 @@ Soft first if possible. Branch only. NEVER push main / railway up unless human a
     return paths
 
 
-def approve_all_pending_lessons(*, max_n: int = 10) -> List[str]:
+def approve_all_pending_lessons(*, max_n: int = 40) -> List[str]:
     """Bulk-activate pending global lessons (Soft path)."""
+    return lessons.auto_approve_pending(max_n=max_n)
+
+
+def run_soft_autopilot(*, ask_deepseek: bool = True) -> dict:
+    """
+    Full Soft loop used by the poller:
+      promote misplaced fan lessons → board → ingest Soft lesson proposals
+      → auto-approve all global pending → journal → maybe daily digest
+    Hard proposals are written as briefs but NEVER auto-merged.
+    """
+    from core import daily_digest
+
+    auto_on = os.getenv("AUTO_APPROVE_SOFT_LESSONS", "1") == "1"
+    moved, kept = lessons.promote_misplaced_fan_lessons()
+    if moved:
+        daily_digest.log_event(
+            "soft_promote",
+            f"Moved {moved} behavioral fan-lessons → global (kept {kept} personal)",
+            moved=moved,
+            kept=kept,
+        )
+
+    board = build_board(ask_deepseek=ask_deepseek)
+    save_board(board)
+
+    # Turn DeepSeek Soft "lesson" proposals into pending globals (then approve)
+    for p in (board.get("proposals") or {}).get("soft") or []:
+        action = (p.get("action") or "lesson").lower()
+        detail = (p.get("detail") or p.get("title") or "").strip()
+        if action in ("lesson", "lorebook") and detail:
+            if lessons.propose_global_lesson(detail, source_fan="improve_board"):
+                daily_digest.log_event(
+                    "soft_proposal",
+                    detail,
+                    title=p.get("title"),
+                    action=action,
+                )
+
+    for p in (board.get("proposals") or {}).get("hard") or []:
+        title = (p.get("title") or p.get("problem") or "").strip()
+        if title:
+            daily_digest.log_event("hard_proposal", title)
+
+    rules = board.get("critic_rules") or {}
+    if rules:
+        daily_digest.log_event(
+            "critic_rules",
+            ", ".join(f"{k}:{v}" for k, v in sorted(rules.items())),
+        )
+
     activated: List[str] = []
-    # Always approve index 0 after each pop
-    for _ in range(max_n):
-        pen = lessons.pending()
-        if not pen:
-            break
-        text = lessons.approve_global(0)
-        if text:
-            activated.append(text)
-        else:
-            break
-    return activated
+    if auto_on:
+        activated = lessons.auto_approve_pending(max_n=40)
+        for t in activated:
+            daily_digest.log_event("soft_approve", t)
+
+    briefs: List[Path] = []
+    if (board.get("proposals") or {}).get("hard"):
+        briefs = write_hard_briefs(board)
+
+    daily_digest.maybe_send_daily_digest(critic_rules=rules)
+
+    return {
+        "moved": moved,
+        "kept": kept,
+        "activated": activated,
+        "soft_n": len((board.get("proposals") or {}).get("soft") or []),
+        "hard_n": len((board.get("proposals") or {}).get("hard") or []),
+        "briefs": [str(p) for p in briefs],
+        "auto_on": auto_on,
+        "critic_rules": rules,
+    }

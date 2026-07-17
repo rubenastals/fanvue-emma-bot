@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(_ROOT, ".env"))
 
-from core import improve_board, lessons
+from core import improve_board
 
 
 def main() -> None:
@@ -49,23 +49,20 @@ def main() -> None:
     apply_soft = args.apply_soft or args.all
     write_briefs = args.write_briefs or args.all
 
-    print("→ Building improve board from live critic/lessons/autofix…")
-    # Behavioral lessons wrongly stuck per-fan → global pending
-    moved, kept = lessons.promote_misplaced_fan_lessons()
-    if moved:
-        print(f"  ↪ promoted {moved} behavioral fan-lesson(s) → global (kept {kept} personal)")
-
-    board = improve_board.build_board(ask_deepseek=not args.no_deepseek)
-    path = improve_board.save_board(board)
-    soft_n = len((board.get("proposals") or {}).get("soft") or [])
-    hard_n = len((board.get("proposals") or {}).get("hard") or [])
+    print("→ Soft autopilot (promote + board + auto-approve globals)…")
+    result = improve_board.run_soft_autopilot(ask_deepseek=not args.no_deepseek)
+    path = improve_board._BOARD_MD  # noqa: SLF001
+    board = improve_board.load_board() or {}
+    soft_n = result.get("soft_n") or 0
+    hard_n = result.get("hard_n") or 0
     print(f"✓ Board saved: {path}")
     print(
-        f"  critic rules: {board.get('critic_rules') or {}} | "
-        f"lessons pending: {len(board.get('pending_lessons') or [])} | "
-        f"autofix pending: {len(board.get('autofix_pending') or [])}"
+        f"  critic rules: {result.get('critic_rules') or {}} | "
+        f"auto_on={result.get('auto_on')} | activated={len(result.get('activated') or [])}"
     )
     print(f"  DeepSeek proposals: Soft={soft_n} Hard={hard_n}")
+    if result.get("activated"):
+        print(f"  ✅ auto-approved {len(result['activated'])} Soft global lesson(s)")
 
     if soft_n:
         print("\nSOFT:")
