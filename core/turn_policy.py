@@ -126,22 +126,13 @@ def _free_tease_ok(
     msgs: int,
     now: datetime,
     force_ask: bool = False,
+    missing_unverified: bool = False,
 ) -> bool:
     """
-    Occasional L0 free hook while warming — never spam, never repeat.
-    Soft lingerie 1→2; paid L1+ comes later via soft_sell.
-    force_ask: fan explicitly asked for free / missing free — ignore cooloffs
-    and allow a catalog L0 even if we already "sent" one that may have failed.
+    Occasional L0 free hook while warming — NEVER spam on every 'gratis' ask.
+    Soft lingerie for heat; paid L1+ after. Max 2 L0/fan, spaced out.
     """
     from core import vault_catalog
-
-    items = vault_catalog.l0_count()
-    if items <= 0:
-        return False
-
-    if force_ask:
-        # Explicit ask / missing free — only if he still has an unused L0
-        return msgs >= 2 and vault_catalog.l0_remaining(mem) > 0
 
     if vault_catalog.l0_remaining(mem) <= 0:
         return False
@@ -150,28 +141,50 @@ def _free_tease_ok(
         return False
 
     last_free = _parse_iso(mem.get("last_free_at"))
-    if last_free and now - last_free < timedelta(minutes=25):
-        return False
 
-    if msgs < 5:
+    # He says free never arrived AND Fanvue history does NOT show it → one recovery
+    if missing_unverified:
+        return msgs >= 2
+
+    # Explicit "foto gratis" is NOT automatic — only the FIRST unused L0 once,
+    # after some rapport, and not right after the last free.
+    if force_ask:
+        if frees >= 1:
+            return False
+        if last_free and now - last_free < timedelta(hours=2):
+            return False
+        return msgs >= 5
+
+    if last_free and now - last_free < timedelta(minutes=45):
         return False
-    # Only cool off free after an actual locked send — not after a text pitch alone
+    if msgs < 6:
+        return False
     last_ppv = _parse_iso(mem.get("last_ppv_at"))
     if last_ppv and now - last_ppv < timedelta(minutes=12):
         return False
-    # First free after some rapport; second only after more heat
+    # First free after rapport; second only later when heat is high
     if frees <= 0:
-        return msgs >= 5
+        return msgs >= 6 and (status_warm(mem) or msgs >= 8)
     if frees == 1:
-        return msgs >= 9
+        return msgs >= 14
     return False
 
 
-def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
+def status_warm(mem: dict) -> bool:
+    return (mem.get("status") or "new") in ("warm", "spender", "whale")
+
+
+def decide_turn(
+    mem: dict,
+    fan_message: str,
+    *,
+    delivery_truth: Optional[dict] = None,
+) -> TurnDecision:
     """
     Pick mode from memory + current message.
 
     Conservative defaults so we don't scare cold/new fans.
+    delivery_truth: optional API checks, e.g. {"free_in_chat": True/False/None}
     """
     text = (fan_message or "").strip()
     low = text.lower()
@@ -179,6 +192,8 @@ def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
     status = mem.get("status") or "new"
     spent = float(mem.get("total_spent") or 0)
     now = _now()
+    truth = delivery_truth or {}
+    free_in_chat = truth.get("free_in_chat")  # True / False / None
 
     chill_until = _parse_iso(mem.get("chill_until"))
     if chill_until and chill_until > now:
@@ -219,27 +234,72 @@ def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
     fan_sent_media = bool(re.search(_FAN_SENT_MEDIA, low))
     ask_free = bool(re.search(_ASK_FREE, low)) and not fan_sent_media
     missing = bool(re.search(_MISSING_DELIVERY, low)) and not fan_sent_media
-    # "no llegó mi foto gratis" = free delivery recovery, not paid PPV
     missing_free = missing and bool(
         re.search(r"\b(gratis|grastis|gratiz|free)\b", low)
     )
-    want_free = ask_free or missing_free
+    frees_done = int(mem.get("free_teases_sent") or 0)
     buying = (
         bool(re.search(_BUYING, low) or re.search(_ACCEPT, low))
         and not fan_sent_media
-        and not want_free
+        and not ask_free
+        and not missing_free
     )
     want_another = bool(re.search(_WANT_ANOTHER, low))
 
-    # Explicit free ask / missing free — ALWAYS try L0 (even during PPV cooloff)
-    if want_free and _free_tease_ok(mem, msgs=msgs, now=now, force_ask=True):
+    # API says free photo IS already in this chat — guide him, don't re-gift
+    if (missing_free or ask_free) and free_in_chat is True:
         return TurnDecision(
             mode=MODE_TEASE,
-            reason="fan asked for free photo — gift L0",
+            reason="API: free already in chat — tell him to scroll up",
+            max_bubbles=2,
+            allow_ppv_talk=True,
+            allow_price=False,
+            allow_free_tease=False,
+        )
+
+    # Missing free + API says NOT in chat → recovery gift (unused L0 only)
+    if missing_free and free_in_chat is False:
+        if _free_tease_ok(mem, msgs=msgs, now=now, missing_unverified=True):
+            return TurnDecision(
+                mode=MODE_TEASE,
+                reason="missing free + API not in chat — recover L0",
+                max_bubbles=2,
+                allow_ppv_talk=False,
+                allow_price=False,
+                allow_free_tease=True,
+            )
+
+    # Asks for free again after already gifted → warm tease + soft paid ladder
+    if ask_free and frees_done >= 1:
+        return TurnDecision(
+            mode=MODE_SOFT_SELL,
+            reason="already gifted free — escalate to paid, don't spam L0",
+            max_bubbles=2,
+            allow_ppv_talk=True,
+            allow_price=True,
+            allow_free_tease=False,
+        )
+
+    # First free ask only — smart warm gift, not on demand forever
+    if ask_free and _free_tease_ok(mem, msgs=msgs, now=now, force_ask=True):
+        return TurnDecision(
+            mode=MODE_TEASE,
+            reason="first free ask — one L0 warm gift",
             max_bubbles=2,
             allow_ppv_talk=False,
             allow_price=False,
             allow_free_tease=True,
+        )
+
+    # Ask free but not eligible (too soon / no rapport) — flirt, don't gift
+    if ask_free:
+        return TurnDecision(
+            mode=MODE_TEASE,
+            reason="free ask but not eligible yet — tease, don't spam gift",
+            max_bubbles=2,
+            allow_ppv_talk=True,
+            allow_price=False,
+            allow_free_tease=False,
         )
 
     # Cooling / confusion — answer plainly before delivery or buy paths mis-fire

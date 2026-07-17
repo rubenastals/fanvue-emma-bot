@@ -129,6 +129,40 @@ class FanvueConnector:
             json=payload,
         )
 
+    def creator_media_in_chat(
+        self,
+        fan_uuid: str,
+        creator_uuid: str,
+        media_uuid: str,
+        *,
+        lookback: int = 40,
+        aliases: Optional[List[str]] = None,
+    ) -> bool:
+        """
+        True if Fanvue chat history shows the creator already sent this media_uuid
+        (or an alias / previous uuid). Used to verify free/PPV delivery.
+        """
+        want = {u for u in ([media_uuid] + list(aliases or [])) if u}
+        if not want:
+            return False
+        try:
+            msgs = self.get_messages(fan_uuid, size=lookback)
+        except Exception:
+            return False
+        for msg in msgs:
+            sender = msg.get("sender")
+            sid = sender.get("uuid") if isinstance(sender, dict) else sender
+            if sid != creator_uuid:
+                continue
+            for uid in msg.get("mediaUuids") or []:
+                if uid in want:
+                    return True
+            # Some payloads nest media
+            for m in msg.get("media") or []:
+                if isinstance(m, dict) and m.get("uuid") in want:
+                    return True
+        return False
+
     @_retry_policy
     def send_ppv_message(
         self,

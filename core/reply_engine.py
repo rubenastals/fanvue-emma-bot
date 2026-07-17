@@ -143,17 +143,19 @@ def generate_emma_reply(
     want_spanish: Optional[bool] = None,
     ppv_status: Optional[dict] = None,
     fan_vision: Optional[dict] = None,
+    delivery_truth: Optional[dict] = None,
 ) -> Tuple[str, TurnDecision]:
     """
     Prompt + memory + lorebook + catalog offer + mode-aware author's note.
 
     Returns (raw_reply, decision). If `offer` is set, Emma must tease that photo only.
     `fan_vision` = Grok description of a photo the fan just sent.
+    `delivery_truth` = Fanvue API checks (e.g. free_in_chat True/False).
     """
     history_turns = history_turns or []
     mem = fan_memory.get(fan_uuid) if fan_uuid else {}
     if decision is None:
-        decision = decide_turn(mem, fan_message)
+        decision = decide_turn(mem, fan_message, delivery_truth=delivery_truth)
 
     # Language: mirror the fan (explicit asks persist a preference).
     # `want_spanish` can be forced by callers (e.g. re-engagement uses the
@@ -196,6 +198,30 @@ def generate_emma_reply(
     # Verified truth about the LAST locked PPV (API-checked this turn)
     if ppv_status:
         messages.append({"role": "system", "content": _ppv_truth_block(ppv_status)})
+
+    # Fanvue API: is the free photo actually in this chat?
+    if delivery_truth and delivery_truth.get("free_in_chat") is True:
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    "DELIVERY TRUTH (Fanvue API): Your FREE tease photo IS already in THIS chat. "
+                    "Tell him to scroll up / look again. Do NOT send another free. "
+                    "Do NOT invent a glitch or say it never left. Be playful but honest."
+                ),
+            }
+        )
+    elif delivery_truth and delivery_truth.get("free_in_chat") is False:
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    "DELIVERY TRUTH (Fanvue API): The free photo is NOT in chat history right now. "
+                    "If the system attaches a new L0 this turn, gift it. "
+                    "If nothing is attached, apologize briefly without inventing tech excuses."
+                ),
+            }
+        )
 
     # Grok Vision: what HE just sent (or fall back to last remembered photo)
     vision_desc = None

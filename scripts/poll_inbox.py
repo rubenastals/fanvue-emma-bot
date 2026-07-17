@@ -242,7 +242,41 @@ def _handle_fan_chat_body(
         if synced:
             print(f"   sent-sync: +{synced} media uuid(s) from chat history")
             mem = fan_memory.get(fan_uuid) or mem
-        decision = decide_turn(mem, text)
+
+        # API delivery truth for last free (and aliases) — stops "I sent it" / re-gift lies
+        delivery_truth: dict = {"free_in_chat": None}
+        last_free_uid = (mem.get("last_free_media_uuid") or "").strip()
+        if last_free_uid or (mem.get("sent_media_uuids") and re.search(
+            r"(?i)\b(gratis|grastis|free|no ha llegado|nothing arrived)\b", text or ""
+        )):
+            check_uid = last_free_uid
+            if not check_uid:
+                # Any L0 uuid already on the card
+                from core import vault_catalog as _vc
+
+                l0 = {i["media_uuid"] for i in _vc.load_items() if int(i.get("level") or -1) == 0}
+                for u in mem.get("sent_media_uuids") or []:
+                    if u in l0:
+                        check_uid = u
+                        break
+            if check_uid:
+                aliases = []
+                for it in vault_catalog.load_items():
+                    if it.get("media_uuid") == check_uid or it.get("media_uuid_previous") == check_uid:
+                        if it.get("media_uuid"):
+                            aliases.append(it["media_uuid"])
+                        if it.get("media_uuid_previous"):
+                            aliases.append(it["media_uuid_previous"])
+                in_chat = fv.creator_media_in_chat(
+                    fan_uuid, creator_uuid, check_uid, aliases=aliases
+                )
+                delivery_truth["free_in_chat"] = in_chat
+                print(
+                    f"   delivery-check free {check_uid[:8]}…: "
+                    f"{'IN CHAT' if in_chat else 'NOT in chat'}"
+                )
+
+        decision = decide_turn(mem, text, delivery_truth=delivery_truth)
 
         preview = text.replace("\n", " | ")[:80]
         print(f"\n📩 @{fan_handle}: {preview}")
@@ -344,6 +378,7 @@ def _handle_fan_chat_body(
             offer=offer,
             ppv_status=ppv_status,
             fan_vision=vision,
+            delivery_truth=delivery_truth,
         )
         bubbles = split_into_messages(reply, max_bubbles=3, vary=True)
         print(f"💬 Emma ({len(bubbles)} msg) [{decision.mode}]: {reply[:120]}")
@@ -385,18 +420,49 @@ def _handle_fan_chat_body(
                     if offer.get("media_uuid_previous")
                     else None,
                 )
-                fan_memory.record_free_tease(
+                # Verify Fanvue actually shows this media in chat before marking sent
+                time.sleep(0.8)
+                aliases = [
+                    u
+                    for u in (
+                        offer.get("media_uuid"),
+                        offer.get("media_uuid_previous"),
+                    )
+                    if u
+                ]
+                verified = fv.creator_media_in_chat(
                     fan_uuid,
+                    creator_uuid,
                     offer["media_uuid"],
-                    fan_handle=fan_handle,
-                    label=offer.get("label") or "",
-                    level=int(offer.get("level") or 0),
+                    aliases=aliases,
                 )
-                free_sent = True
+                if verified:
+                    fan_memory.record_free_tease(
+                        fan_uuid,
+                        offer["media_uuid"],
+                        fan_handle=fan_handle,
+                        label=offer.get("label") or "",
+                        level=int(offer.get("level") or 0),
+                    )
+                    free_sent = True
+                    print(
+                        f"   🎁 FREE L0 verified in chat — {offer['label']}"
+                    )
+                else:
+                    # Still record so we don't spam the same UUID, but log the miss
+                    fan_memory.record_free_tease(
+                        fan_uuid,
+                        offer["media_uuid"],
+                        fan_handle=fan_handle,
+                        label=offer.get("label") or "",
+                        level=int(offer.get("level") or 0),
+                    )
+                    free_sent = True
+                    print(
+                        f"   ⚠ FREE L0 API send OK but NOT yet visible in chat history — "
+                        f"{offer['label']} (marked sent to avoid spam)"
+                    )
                 bubbles_sent += 1
-                print(
-                    f"   🎁 FREE L0 attached with bubble — {offer['label']}"
-                )
                 print(f"   ✅ [1/{len(bubbles)}] (+{delay:.1f}s) {media_text[:60]}")
             except Exception as e:
                 print(f"   ❌ FREE send failed: {type(e).__name__}: {e}")
