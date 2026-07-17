@@ -411,10 +411,12 @@ def _handle_fan_chat_body(
                     )
                     try:
                         if is_free:
+                            # Attach image on its own bubble with a tiny vibe text —
+                            # media-only payloads have rendered as empty placeholders.
                             fv.send_media_message(
                                 fan_uuid,
                                 media_uuids=[offer["media_uuid"]],
-                                text=None,
+                                text="😏",
                             )
                             fan_memory.record_free_tease(
                                 fan_uuid,
@@ -424,7 +426,7 @@ def _handle_fan_chat_body(
                                 level=int(offer.get("level") or 0),
                             )
                             print(
-                                f"   🎁 FREE L0 sent — {offer['label']}"
+                                f"   🎁 FREE L0 media attached — {offer['label']}"
                             )
                         else:
                             price = max(3.0, float(offer["price"]))
@@ -448,6 +450,18 @@ def _handle_fan_chat_body(
                     except Exception as e:
                         kind = "FREE" if is_free else "PPV"
                         print(f"   ❌ {kind} send failed: {type(e).__name__}: {e}")
+                        if is_free:
+                            # Don't leave him with a promise and no image
+                            try:
+                                want_es = bool(mem.get("prefer_spanish"))
+                                apology = (
+                                    "Uy… se me trabó el chat un segundo. Dame un momento y te la dejo bien 🥺"
+                                    if want_es
+                                    else "Ugh… chat glitched for a sec. Give me a moment and I'll drop it properly 🥺"
+                                )
+                                fv.send_message(fan_uuid, apology)
+                            except Exception:
+                                pass
                     try:
                         fv.send_typing_indicator(fan_uuid, False)
                     except Exception:

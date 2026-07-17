@@ -86,10 +86,25 @@ class FanvueConnector:
         media_uuids: list,
         text: str = None,
     ) -> dict:
-        """Send unlocked (free) vault media — omit price so Fanvue does not lock it."""
-        payload: dict = {"mediaUuids": list(media_uuids)}
-        if text:
-            payload["text"] = text
+        """
+        Send unlocked (free) vault media — omit price so Fanvue does not lock it.
+        Always include a tiny text so Fanvue renders a real media bubble (media-only
+        payloads have shown up as empty "[sent a free photo]" placeholders).
+        """
+        uuids = [u for u in (media_uuids or []) if u]
+        if not uuids:
+            raise ValueError("send_media_message requires at least one media_uuid")
+        # Preflight: media must exist in vault
+        try:
+            meta = self.get_media(uuids[0], variants="thumbnail")
+            if not meta:
+                raise ValueError(f"media {uuids[0][:8]}… not found in vault")
+        except Exception as e:
+            raise ValueError(f"free media preflight failed for {uuids[0][:8]}…: {e}") from e
+        payload: dict = {
+            "mediaUuids": uuids,
+            "text": ((text or "").strip() or "😏")[:500],
+        }
         return self._request(
             "POST",
             f"/chats/{fan_uuid}/message",

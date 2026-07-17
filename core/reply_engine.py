@@ -255,13 +255,16 @@ def generate_emma_reply(
         is_free = float(offer.get("price") or 0) <= 0 or int(offer.get("level") or 0) == 0
         if is_free:
             note += (
-                f" You are GIFTING one FREE soft tease photo now ({offer.get('label')}). "
-                "It arrives unlocked — do not ask him to unlock or pay for THIS one."
+                f" You are GIFTING one FREE soft tease photo now (internal vibe: {offer.get('label')}). "
+                "Write ONE short flirty line only — NEVER paste a photo caption or describe the shot "
+                "in detail. Do NOT write '[envió una foto]' or 'te envío una foto gratis'. "
+                "The system attaches the real image after your text."
             )
         else:
             note += (
-                f" You are locking ONE real photo now ({offer.get('label')}, "
-                f"${offer.get('price'):.0f}). Tease it — do not say it was already sent."
+                f" You are locking ONE real photo now (internal vibe: {offer.get('label')}, "
+                f"${offer.get('price'):.0f}). Short tease only — no caption dump. "
+                "Do not say it was already sent."
             )
     turns_out = [dict(t) for t in turns]
     for i in range(len(turns_out) - 1, -1, -1):
@@ -442,6 +445,48 @@ def _thin_name_in_reply(text: str, name: str) -> str:
     return cleaned
 
 
+def _strip_photo_script_dump(text: str) -> str:
+    """
+    Remove caption-like dumps and meta 'I sent a free photo' lines the model
+    sometimes pastes instead of letting Fanvue attach the real image.
+    """
+    if not text:
+        return text
+    # Meta / placeholder lines
+    text = re.sub(
+        r"(?im)^\s*\[?\s*(?:envi[oó]|envió|sent|sending)\s+(?:una\s+)?foto(?:\s+gratis)?\s*\]?\s*$",
+        "",
+        text,
+    )
+    text = re.sub(
+        r"(?i)\b(?:te env[ií]o(?:\s+una)?\s+foto(?:\s+gratis)?|"
+        r"aqu[ií] (?:va|tiene)s? (?:una )?foto(?:\s+gratis)?|"
+        r"mira la foto[:\s]*|"
+        r"\[envi[oó] una foto(?:\s+gratis)?\])\b[^.!?\n]*[.!?]?",
+        "",
+        text,
+    )
+    # Long shot-script paragraphs (lingerie / pose / camera direction dumps)
+    captionish = re.compile(
+        r"(?i)("
+        r"mirando a c[aá]mara|looking at (?:the )?camera|recostad[ao]|"
+        r"lencer[ií]a|sujetador|tirante|encaje blanco|piernas medio|"
+        r"sonrisa traviesa|ojos bien clavados|a punto de baj"
+        r")"
+    )
+    kept: List[str] = []
+    for block in re.split(r"\n+", text):
+        b = block.strip()
+        if not b:
+            continue
+        if len(b) >= 90 and captionish.search(b):
+            continue
+        if len(b) >= 160 and captionish.search(b):
+            continue
+        kept.append(b)
+    return "\n".join(kept).strip()
+
+
 def _sanitize_reply(
     text: str,
     *,
@@ -459,6 +504,7 @@ def _sanitize_reply(
     cleaned = _FAKE_SENT_PAST.sub("", cleaned)
     if not media_attached:
         cleaned = _FAKE_SENT_NO_MEDIA.sub("", cleaned)
+    cleaned = _strip_photo_script_dump(cleaned)
     cleaned = _thin_name_in_reply(cleaned, fan_name)
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
     cleaned = re.sub(r" +([,.!?…])", r"\1", cleaned)
@@ -573,6 +619,7 @@ def _enforce_delivery_truth(
     cleaned = _FAKE_SENT_PAST.sub("", before)
     if not media_attached:
         cleaned = _FAKE_SENT_NO_MEDIA.sub("", cleaned)
+    cleaned = _strip_photo_script_dump(cleaned)
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
     # Drop empty / tiny leftover after stripping lies

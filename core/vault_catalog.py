@@ -170,15 +170,17 @@ def select_offer(
 def free_tease_prompt_block(offer: Dict[str, Any]) -> str:
     return (
         "FREE TEASE PHOTO THIS TURN (unlocked gift — NOT pay-to-view):\n"
-        f"- Label: {offer['label']}\n"
-        f"- Level: L0 warm-up tease\n"
-        "- The system will attach this photo UNLOCKED after your text.\n"
+        f"- Shot vibe (INTERNAL ONLY — never paste this as chat text): {offer['label']}\n"
+        "- Level: L0 warm-up tease\n"
+        "- The SYSTEM will attach the real IMAGE file after your text. You do not send pixels.\n"
         "RULES:\n"
-        "- Tease THIS soft lingerie shot only — a free taste to heat him up.\n"
-        "- Do NOT invent videos or other shots. Do NOT say it is locked / needs unlock.\n"
-        "- Do NOT say you already sent it before the system attaches it.\n"
-        "- After he reacts, you can escalate toward a locked premium photo later — not this turn.\n"
-        "- Never re-send the same free tease in this chat (system tracks it)."
+        "- Write 1 short flirty line only (optional second tiny line). Warm tease — not a caption.\n"
+        "- FORBIDDEN: narrating the photo shot-by-shot, pose/lingerie paragraphs, camera directions,\n"
+          "  or pasting anything like a photo script/caption into the chat.\n"
+        "- FORBIDDEN: writing '[envió una foto]', 'te envío una foto gratis', 'mira la foto:',\n"
+          "  or describing what the image shows in detail. The app will SHOW the image itself.\n"
+        "- Do NOT say it is locked / needs unlock. Do NOT claim it already arrived before attach.\n"
+        "- Never invent videos or other shots."
     )
 
 
@@ -189,12 +191,13 @@ def offer_prompt_block(offer: Dict[str, Any]) -> str:
     return (
         "REAL CATALOG OFFER THIS TURN (you MUST sell ONLY this — nothing invented):\n"
         f"- Type: PHOTO (not a video)\n"
-        f"- Label: {offer['label']}\n"
+        f"- Shot vibe (INTERNAL ONLY — never paste as chat text): {offer['label']}\n"
         f"- Explicitness level: L{offer['level']} / score {offer['score']}/10\n"
         f"- Price: ${price:.0f}\n"
-        f"- Fanvue will lock this photo in chat AFTER your text (the system sends it).\n"
+        f"- Fanvue will lock the real IMAGE after your text (the system sends it).\n"
         "RULES:\n"
-        "- Tease THIS photo only. Do NOT invent videos, customs, or other shots.\n"
+        "- Tease briefly. Do NOT invent videos, customs, or other shots.\n"
+        "- FORBIDDEN: dumping a pose/lingerie caption paragraph into chat.\n"
         "- Do NOT say you already sent it / check your inbox / I left it for you.\n"
         "- Say you're locking it / about to lock it for him now.\n"
         "- Price-anchor: own the price confidently — this is premium, not a clearance sale.\n"
