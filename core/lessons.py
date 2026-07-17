@@ -218,6 +218,16 @@ def remove_active(index: int) -> Optional[str]:
         return lesson["text"]
 
 
+def clear_all_active() -> int:
+    """Wipe all active global lessons (emergency quality reset)."""
+    with _LOCK:
+        data = _load()
+        n = len(data.get("global_active") or [])
+        data["global_active"] = []
+        _save(data)
+        return n
+
+
 def pending() -> List[dict]:
     return _load()["global_pending"]
 

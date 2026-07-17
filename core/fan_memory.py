@@ -55,7 +55,28 @@ def _put(fan_uuid: str, mem: dict) -> None:
 
 def get(fan_uuid: str) -> dict:
     with _LOCK:
-        return fan_memory_store.get_fan(fan_uuid)
+        mem = fan_memory_store.get_fan(fan_uuid)
+        if mem:
+            _ensure_card_fields(mem)
+            before = (mem.get("name") or "").strip()
+            _scrub_corrupt_name(mem)
+            # Persist scrub so "Un" never comes back as confirmed name
+            if before and not (mem.get("name") or "").strip():
+                fan_memory_store.set_fan(fan_uuid, mem)
+        return mem
+
+
+def _scrub_corrupt_name(mem: dict) -> None:
+    """Drop garbage names like 'Un' / 'De' that poison prompts and Spanish text."""
+    raw = (mem.get("name") or "").strip()
+    if not raw:
+        return
+    if _normalize_name(raw):
+        return
+    mem["name"] = ""
+    mem["name_confirmed"] = False
+    if isinstance(mem.get("profile"), dict):
+        mem["profile"].pop("name", None)
 
 
 def _guess_name_from_handle(handle: str) -> str:

@@ -497,10 +497,34 @@ def decide_turn(
     )
 
 
-def author_note_for(decision: TurnDecision, *, want_spanish: bool = False) -> str:
+def author_note_for(
+    decision: TurnDecision,
+    *,
+    want_spanish: bool = False,
+    lean: bool = True,
+) -> str:
     """
-    Soft author's note. Keeps the good base; only changes sell pressure.
+    Soft author's note. Lean mode keeps DeepSeek creative (short steer only).
     """
+    if lean:
+        lang = (
+            "Full correct Spanish only."
+            if want_spanish
+            else "Full correct English only. Zero Spanish."
+        )
+        mode_hint = {
+            MODE_CHILL: "Warm, human, no sell.",
+            MODE_RAPPORT: "Light flirt, no PPV price.",
+            MODE_TEASE: "Build heat. Only gift free if system attaches L0.",
+            MODE_SOFT_SELL: "Chemistry then lock ONE real photo — one clear close.",
+            MODE_HARD_SELL: "Confident close on ONE real photo. No stacking.",
+        }.get(decision.mode, "Stay in character.")
+        return (
+            f"[Emma texting. {lang} Natural clear grammar — no word-salad, no glued words. "
+            f"1–3 short lines. Pet name or none; never invent a first name (no Simón/Carlos). "
+            f"{mode_hint}]"
+        )
+
     if want_spanish:
         lang = (
             "LANGUAGE: He wrote in Spanish → reply in FULL correct Spanish this turn. "
@@ -529,7 +553,7 @@ def author_note_for(decision: TurnDecision, *, want_spanish: bool = False) -> st
         f"{lang} "
         "ADDRESSING: usually a light pet name (babe/baby/handsome/trouble) or none. "
         "His real name at most once every few turns — never every message. "
-        "Never invent a first name (no Jamie/Carlos/Alex). "
+        "Never invent a first name (no Jamie/Carlos/Alex/Simón). "
         "Spanish pet names only in full-Spanish replies.]"
     )
 

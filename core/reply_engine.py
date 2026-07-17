@@ -182,18 +182,22 @@ def generate_emma_reply(
         {"role": "system", "content": persona_time.time_system_block()},
     ]
 
+    lean = bool(getattr(config, "LEAN_CREATIVE", True))
+
     if fan_uuid:
         mem_block = fan_memory.render_block(fan_uuid)
         if mem_block:
             messages.append({"role": "system", "content": mem_block})
 
-    # Learned lessons (global approved + this fan's)
-    lessons_block = lessons.render_block(fan_uuid)
-    if lessons_block:
-        messages.append({"role": "system", "content": lessons_block})
+    # Soft lessons OFF by default — they flooded the prompt and contradicted the card
+    if getattr(config, "INJECT_LESSONS", False):
+        lessons_block = lessons.render_block(fan_uuid)
+        if lessons_block:
+            messages.append({"role": "system", "content": lessons_block})
 
-    # Always remind what we actually own (stops inventing videos)
-    messages.append({"role": "system", "content": vault_catalog.catalog_summary_block()})
+    # Catalog only when selling / attaching — not every chill turn
+    if offer or (decision and decision.allow_price):
+        messages.append({"role": "system", "content": vault_catalog.catalog_summary_block()})
 
     # Verified truth about the LAST locked PPV (API-checked this turn)
     if ppv_status:
@@ -205,20 +209,17 @@ def generate_emma_reply(
             {
                 "role": "system",
                 "content": (
-                    "DELIVERY TRUTH (Fanvue API): Your FREE tease photo IS already in THIS chat. "
-                    "Tell him to scroll up / look again. Do NOT send another free. "
-                    "Do NOT invent a glitch or say it never left. Be playful but honest."
+                    "DELIVERY TRUTH: your FREE photo IS already in this chat. "
+                    "Tell him to scroll up. Do not re-gift. Do not invent a glitch."
                 ),
             }
         )
-    elif delivery_truth and delivery_truth.get("free_in_chat") is False:
+    elif delivery_truth and delivery_truth.get("free_in_chat") is False and offer:
         messages.append(
             {
                 "role": "system",
                 "content": (
-                    "DELIVERY TRUTH (Fanvue API): The free photo is NOT in chat history right now. "
-                    "If the system attaches a new L0 this turn, gift it. "
-                    "If nothing is attached, apologize briefly without inventing tech excuses."
+                    "DELIVERY TRUTH: free photo is NOT in chat — gift the attached L0 if any."
                 ),
             }
         )
@@ -244,27 +245,25 @@ def generate_emma_reply(
             {
                 "role": "system",
                 "content": (
-                    "No photo is being sent this turn. Flirt only. "
-                    "FORBIDDEN: claiming you sent/left/locked a photo, "
-                    "'check your inbox/DMs', 'revisa tu bandeja', "
-                    "'ya lo dejé', 'recarga el chat', or inventing a technical glitch. "
-                    "FORBIDDEN: writing bracket stage directions like "
-                    "'[You can send him the free tease…]' or '[Transmite Mira Mis Piernas…]' — "
-                    "that does NOT send anything. "
-                    "If he asks where a free photo is, apologize briefly and tease — "
-                    "do not pretend it already arrived and do not invent media titles."
+                    "No photo attached this turn. Flirt only. "
+                    "Never claim you sent/locked a photo. Never invent media titles in brackets."
                 ),
             }
         )
 
-    recent_text = " ".join(
-        t["content"] for t in turns[-4:] if t["role"] == "user"
-    )
-    lore_block = lorebook.render_block(recent_text)
-    if lore_block:
-        messages.append({"role": "system", "content": lore_block})
+    if not lean:
+        recent_text = " ".join(
+            t["content"] for t in turns[-4:] if t["role"] == "user"
+        )
+        lore_block = lorebook.render_block(recent_text)
+        if lore_block:
+            messages.append({"role": "system", "content": lore_block})
 
-    name_note = _name_budget_note(mem.get("name") or "", turns)
+    name_note = _name_budget_note(
+        mem.get("name") or "",
+        turns,
+        name_confirmed=bool(mem.get("name_confirmed")),
+    )
     if name_note:
         messages.append({"role": "system", "content": name_note})
 
@@ -272,28 +271,23 @@ def generate_emma_reply(
         {
             "role": "system",
             "content": (
-                "GROUNDING: Recent chat history + CLIENT CARD are the ONLY sources of truth "
-                "about him. Do not invent quotes, gifts, jobs, plans, names, divorces, hobbies, "
-                "or details missing from both. If unclear, ask a short question — never assume."
+                "PRIORITY: CLIENT CARD + recent chat history are the only truth about him. "
+                "Write like a real girl texting — clear Spanish/English, natural, creative. "
+                "Never invent his first name. Never dump word-salad or glued words."
             ),
         }
     )
 
-    note = author_note_for(decision, want_spanish=want_spanish)
+    note = author_note_for(decision, want_spanish=want_spanish, lean=lean)
     if offer:
         is_free = float(offer.get("price") or 0) <= 0 or int(offer.get("level") or 0) == 0
         if is_free:
             note += (
-                f" You are GIFTING one FREE soft tease photo now (internal vibe: {offer.get('label')}). "
-                "Write ONE short flirty line only — NEVER paste a photo caption or describe the shot "
-                "in detail. Do NOT write '[envió una foto]' or 'te envío una foto gratis'. "
-                "The system attaches the real image after your text."
+                " FREE photo attached this turn — one short flirty line, no caption dump."
             )
         else:
             note += (
-                f" You are locking ONE real photo now (internal vibe: {offer.get('label')}, "
-                f"${offer.get('price'):.0f}). Short tease only — no caption dump. "
-                "Do not say it was already sent."
+                f" Locking one real photo (${offer.get('price'):.0f}) — short tease, no fake 'already sent'."
             )
     turns_out = [dict(t) for t in turns]
     for i in range(len(turns_out) - 1, -1, -1):
@@ -301,6 +295,9 @@ def generate_emma_reply(
             turns_out[i]["content"] = f"{turns_out[i]['content']}\n\n{note}"
             break
     messages.extend(turns_out)
+
+    confirmed = bool(mem.get("name_confirmed"))
+    usable_name = _usable_fan_name(mem.get("name") or "", confirmed=confirmed)
 
     def _call(msgs: List[Dict[str, str]]) -> str:
         kwargs = dict(
@@ -318,7 +315,8 @@ def generate_emma_reply(
         return _sanitize_reply(
             (resp.choices[0].message.content or "").strip(),
             want_spanish=want_spanish,
-            fan_name=(mem.get("name") or ""),
+            fan_name=usable_name,
+            name_confirmed=confirmed,
             media_attached=bool(offer),
         )
 
@@ -426,14 +424,31 @@ _BANNED_SPANISH_IN_ENGLISH = re.compile(
 )
 
 
-def _name_budget_note(name: str, turns: List[Dict[str, str]]) -> str:
+def _usable_fan_name(name: str, *, confirmed: bool = False) -> str:
+    """Real first names only — never articles like Un/De that destroy Spanish."""
+    from core.fan_memory import _normalize_name
+
+    n = _normalize_name(name or "")
+    if not n or len(n) < 3:
+        return ""
+    if not confirmed:
+        return ""
+    return n
+
+
+def _name_budget_note(
+    name: str,
+    turns: List[Dict[str, str]],
+    *,
+    name_confirmed: bool = False,
+) -> str:
     """Tell the model whether his real name is allowed this turn."""
-    name = (name or "").strip()
-    if len(name) < 2:
+    name = _usable_fan_name(name, confirmed=name_confirmed)
+    if not name:
         return (
             "ADDRESSING: use a light pet name (babe/baby/handsome/trouble) or none. "
-            "HARD BAN: do NOT invent a first name (no Carlos, Jamie, Alex, etc.). "
-            "If you don't know his name from CLIENT CARD, ask once or use a pet name."
+            "HARD BAN: do NOT invent a first name (no Simón, Carlos, Jamie, Alex…). "
+            "If CLIENT CARD has no confirmed name, never guess one."
         )
     recent_emma = [
         t.get("content") or ""
@@ -443,23 +458,19 @@ def _name_budget_note(name: str, turns: List[Dict[str, str]]) -> str:
     used_recently = any(name.lower() in (c or "").lower() for c in recent_emma[-2:])
     if used_recently:
         return (
-            f"NAME BUDGET: You already used \"{name}\" in a recent reply. "
-            f"This turn do NOT say his name. Use a light pet name "
-            f"(babe/baby/handsome/love/trouble) or no address at all. "
-            f"Never swap in a different first name."
+            f"NAME BUDGET: You already used \"{name}\" recently. "
+            f"This turn do NOT say his name — pet name or none. Never invent another name."
         )
     return (
-        f"NAME BUDGET: His name is {name} (confirmed). Prefer a pet name or none this turn. "
-        f"You may say \"{name}\" at most once, and only if it feels natural "
-        f"(greeting / apology / big moment) — not every message. "
-        f"Never call him any other first name."
+        f"NAME BUDGET: Confirmed name is {name}. Prefer a pet name. "
+        f"Say \"{name}\" at most once this turn if natural. Never call him any other first name."
     )
 
 
-def _thin_name_in_reply(text: str, name: str) -> str:
-    """Keep at most one use of his real name across the whole reply."""
-    name = (name or "").strip()
-    if len(name) < 2 or not text:
+def _thin_name_in_reply(text: str, name: str, *, name_confirmed: bool = False) -> str:
+    """Keep at most one use of his real name — NEVER run on garbage names like Un."""
+    name = _usable_fan_name(name, confirmed=name_confirmed)
+    if not name or not text:
         return text
     pattern = re.compile(rf"\b{re.escape(name)}\b", re.IGNORECASE)
     seen = False
@@ -552,6 +563,7 @@ def _sanitize_reply(
     *,
     want_spanish: bool = False,
     fan_name: str = "",
+    name_confirmed: bool = False,
     media_attached: bool = False,
 ) -> str:
     """Strip banned pet names + thin name spam + false delivery claims."""
@@ -565,7 +577,9 @@ def _sanitize_reply(
     if not media_attached:
         cleaned = _FAKE_SENT_NO_MEDIA.sub("", cleaned)
     cleaned = _strip_photo_script_dump(cleaned)
-    cleaned = _thin_name_in_reply(cleaned, fan_name)
+    cleaned = _thin_name_in_reply(
+        cleaned, fan_name, name_confirmed=name_confirmed
+    )
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
     cleaned = re.sub(r" +([,.!?…])", r"\1", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)

@@ -49,7 +49,7 @@ class Config:
     # AI Params (DeepSeek roleplay best-practice: tune temperature, leave top_p=1,
     # penalties have no effect on DeepSeek so keep them at 0).
     DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro")
-    TEMPERATURE = float(os.getenv("DEEPSEEK_TEMPERATURE", "1.3"))
+    TEMPERATURE = float(os.getenv("DEEPSEEK_TEMPERATURE", "0.9"))
     TOP_P = float(os.getenv("DEEPSEEK_TOP_P", "1.0"))
     FREQUENCY_PENALTY = 0.0
     PRESENCE_PENALTY = 0.0
@@ -58,6 +58,10 @@ class Config:
     # v4 models "think" and can burn the whole token budget → empty reply.
     # Disable thinking for fast, natural roleplay (recommended for NSFW chat).
     DEEPSEEK_DISABLE_THINKING = os.getenv("DEEPSEEK_DISABLE_THINKING", "1") == "1"
+
+    # Lean creative: CLIENT CARD + history first. Soft lessons/catalog spam OFF by default.
+    LEAN_CREATIVE = os.getenv("LEAN_CREATIVE", "1") == "1"
+    INJECT_LESSONS = os.getenv("INJECT_LESSONS", "0") == "1"
 
     # xAI Grok Vision — vault photo captioning (same key as emma_chatter)
     XAI_API_KEY = os.getenv("XAI_API_KEY", "")
@@ -72,8 +76,8 @@ class Config:
         "fancyfeast/llama-joycaption-beta-one-hf-llava",
     )
 
-    # Soft autopilot + daily digest
-    AUTO_APPROVE_SOFT_LESSONS = os.getenv("AUTO_APPROVE_SOFT_LESSONS", "1") == "1"
+    # Soft autopilot OFF by default — Soft lesson flood broke chat quality
+    AUTO_APPROVE_SOFT_LESSONS = os.getenv("AUTO_APPROVE_SOFT_LESSONS", "0") == "1"
     DIGEST_WEBHOOK_URL = os.getenv("DIGEST_WEBHOOK_URL", "")  # Discord/Slack incoming webhook
     DIGEST_EMAIL = os.getenv("DIGEST_EMAIL", "")
     SMTP_HOST = os.getenv("SMTP_HOST", "")

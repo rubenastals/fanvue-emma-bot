@@ -699,6 +699,28 @@ def main():
                 print(f"   vault synced: {n} items from {Path(map_path).name}")
         except Exception as e:
             print(f"   ⚠️ vault sync skipped: {e}")
+
+        # Lean creative: wipe Soft lesson flood + repair known corrupt names once at boot
+        try:
+            from config import config as _cfg
+
+            if getattr(_cfg, "LEAN_CREATIVE", True):
+                from core import lessons as _lessons
+                from db import fan_memory_store as _fms
+
+                cleared = _lessons.clear_all_active()
+                if cleared:
+                    print(f"   lean: cleared {cleared} Soft global lessons")
+                # Ruben card was poisoned as name "Un" — restore confirmed name
+                rid = "abe29501-7bef-4486-831d-a6ed0a3a56a8"
+                mem = fan_memory.get(rid) or {}
+                if (mem.get("name") or "").lower() != "ruben" or not mem.get("name_confirmed"):
+                    fan_memory._set_confirmed_name(mem, "Ruben")  # noqa: SLF001
+                    mem["handle"] = mem.get("handle") or "patient-guineafowl-495"
+                    _fms.set_fan(rid, mem)
+                    print("   lean: client card → Ruben (confirmed)")
+        except Exception as e:
+            print(f"   ⚠️ lean reset skipped: {e}")
     else:
         print(f"   storage: local JSON files (account={aid})")
 
