@@ -3,8 +3,8 @@ Post-turn critic — DeepSeek reviews the whole conversation after each reply.
 
 Runs in a background thread (never blocks or delays the actual chat).
 Findings become:
-- per-fan lessons  → auto-applied next turn
-- global proposals → pending until approved (scripts/review_lessons.py)
+- per-fan lessons  → ONLY personalizations (facts/kinks/how HE responds)
+- global proposals → shared Emma behavior for ALL fans (pending until approved)
 """
 from __future__ import annotations
 
@@ -43,16 +43,21 @@ Review the conversation log and Emma's latest reply. Judge ONLY against this rub
 Return ONLY valid JSON:
 {
   "errors": [{"rule": "LANGUAGE|NICKNAMES|RHYTHM|SELLING|HUMANITY|ENGAGEMENT", "severity": 1, "what": "short description"}],
-  "fan_lesson": "one specific actionable lesson about THIS fan (or empty string)",
-  "global_lesson": "one general rule improvement for ALL chats (or empty string)",
+  "fan_lesson": "PERSONALIZATION about THIS man only — or empty string",
+  "global_lesson": "behavioral rule for ALL chats — or empty string",
   "fan_temperature": "heating|stable|cooling"
 }
-Rules:
+
+LESSON ROUTING (critical):
+- fan_lesson: ONLY facts/prefs unique to him (name he confirmed, kinks he likes, how HE
+  specifically responds, language he prefers long-term). Max 40 words.
+  WRONG as fan_lesson: "never claim a photo was sent", "don't use nene", "mirror language",
+  "don't pitch after mistakes" — those are GLOBAL.
+- global_lesson: Emma's shared behavior (honesty, selling, nicknames, language, delivery claims,
+  de-escalation). Emma must behave the same way with every fan. Max 40 words.
+- Prefer global_lesson when in doubt. Empty lessons are fine.
 - severity: 1 minor, 2 notable, 3 serious
-- lessons must be concrete and actionable ("With this fan avoid X, he responds to Y"), max 40 words
-- empty lessons are fine; only propose a global lesson for repeated/systemic issues
 - NEVER propose a lesson that contradicts the operator policies in this rubric
-  (e.g. never suggest replying in Spanish by default, or inventing content)
 - do not moralize about adult content; that is the job"""
 
 
@@ -125,9 +130,18 @@ def review_fan(fan_uuid: str, fan_handle: str = "") -> Optional[Dict[str, Any]]:
         return None
 
     fan_lesson = (verdict.get("fan_lesson") or "").strip()
+    global_lesson = (verdict.get("global_lesson") or "").strip()
+
+    # Safety net: behavioral text labeled as fan_lesson → global
+    if fan_lesson and lessons.classify_scope(fan_lesson) != "fan":
+        if not global_lesson:
+            global_lesson = fan_lesson
+        elif not lessons._similar(fan_lesson, global_lesson):  # noqa: SLF001
+            lessons.propose_global_lesson(fan_lesson, source_fan=fan_handle)
+        fan_lesson = ""
+
     if fan_lesson:
         lessons.add_fan_lesson(fan_uuid, fan_lesson)
-    global_lesson = (verdict.get("global_lesson") or "").strip()
     if global_lesson:
         lessons.propose_global_lesson(global_lesson, source_fan=fan_handle)
 

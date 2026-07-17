@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(_ROOT, ".env"))
 
-from core import improve_board
+from core import improve_board, lessons
 
 
 def main() -> None:
@@ -50,6 +50,11 @@ def main() -> None:
     write_briefs = args.write_briefs or args.all
 
     print("→ Building improve board from live critic/lessons/autofix…")
+    # Behavioral lessons wrongly stuck per-fan → global pending
+    moved, kept = lessons.promote_misplaced_fan_lessons()
+    if moved:
+        print(f"  ↪ promoted {moved} behavioral fan-lesson(s) → global (kept {kept} personal)")
+
     board = improve_board.build_board(ask_deepseek=not args.no_deepseek)
     path = improve_board.save_board(board)
     soft_n = len((board.get("proposals") or {}).get("soft") or [])
