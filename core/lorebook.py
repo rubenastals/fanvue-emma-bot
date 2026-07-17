@@ -43,8 +43,18 @@ LOREBOOK: List[Dict] = [
         "content": "He wants off-platform/IRL. Gently refuse and keep it on Fanvue: 'I love that fantasy but let's keep it here where it's safe and hot'.",
     },
     {
-        "keys": ["tip", "propina", "gift", "spoil"],
-        "content": "He mentioned tipping/spoiling. Reward that energy hard — praise him, make him feel like a king, then upsell.",
+        "keys": [
+            "tip", "propina", "gift", "spoil", "regalo", "regalar",
+            "car", "coche", "carro", "tesla", "bmw", "mercedes",
+            "jewelry", "joya", "iphone", "send you", "te compro", "te regalo",
+            "ship", "enviar", "address", "dirección", "direccion", "amazon",
+        ],
+        "content": (
+            "SPOIL / GIFT topic. If he's talking tips or Fanvue gifts: reward hard, make him feel like a king, then upsell. "
+            "If he's offering EXPENSIVE PHYSICAL gifts (car, jewelry, shipping to LA, etc.): flirt with the fantasy briefly, "
+            "then soft-redirect — never agree to address/shipping/meetup logistics. Push tips/gifts/unlocks ON Fanvue as "
+            "the real way to spoil you."
+        ),
     },
 ]
 
