@@ -126,6 +126,7 @@ def _send_generated(
             fan_uuid=fan_uuid,
             decision=decision,
             want_spanish=want_spanish,
+            pack_id="phase_reengage",
         )
     except Exception as e:
         print(f"   ⚠️ {kind} generation failed for @{fan_handle}: {e}")

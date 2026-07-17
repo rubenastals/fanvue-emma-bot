@@ -89,7 +89,10 @@ _MISSING_DELIVERY = (
     r"(no me (ha |hayan )?llegado|no (me )?lleg[oó]|no (me )?aparece|"
     r"no (hay|tengo) nada|nothing (arrived|came|showed)|didn'?t (get|receive|see)|"
     r"where(?:'?s| is) (it|the|my)|d[oó]nde (est[aá]|qued[oó]|la)|"
-    r"la misma de antes|no (me )?ha llegado)"
+    r"la misma de antes|no (me )?ha llegado|"
+    r"no me has (mandado|enviado|pasado)|no me (mandaste|enviaste|pasaste)|"
+    r"no (me )?has (mandado|enviado)|ninguna foto|no (me )?mandaste|"
+    r"you (didn'?t|never) send|haven'?t (sent|gotten)|no photo)"
 )
 _CHILL_ASK = (
     r"\b(how (are|r) you|how'?s your day|what (are|r) you (up to|doing)|"
@@ -245,6 +248,18 @@ def decide_turn(
         and not missing_free
     )
     want_another = bool(re.search(_WANT_ANOTHER, low))
+    pending_unpaid = bool(truth.get("ppv_unpaid"))
+
+    # One unpaid lock at a time (early gate — before free-escalation soft sells)
+    if pending_unpaid and not want_another and not buying:
+        return TurnDecision(
+            mode=MODE_TEASE,
+            reason="unpaid PPV still open — push unlock, don't stack another",
+            max_bubbles=2,
+            allow_ppv_talk=True,
+            allow_price=False,
+            allow_free_tease=False,
+        )
 
     # API says free photo IS already in this chat — guide him, don't re-gift
     if (missing_free or ask_free) and free_in_chat is True:
@@ -417,8 +432,8 @@ def decide_turn(
     horny = bool(re.search(_HORNY, low))
     heated = status in ("warm", "spender", "whale") or msgs >= 6
 
-    # Cap soft pitches per day
-    if offers_today >= 3 and not buying:
+    # Cap soft pitches per day — but after a free gift / heat, keep locking PPV
+    if offers_today >= 5 and not buying and not (frees_done >= 1 and heated):
         return TurnDecision(
             mode=MODE_TEASE,
             reason="daily offer cap — keep heat without pitching",
@@ -427,6 +442,19 @@ def decide_turn(
             allow_price=False,
             allow_free_tease=_free_tease_ok(mem, msgs=msgs, now=now),
         )
+
+    # After free warm-up: escalate to paid lock without waiting for him to beg
+    if frees_done >= 1 and heated and msgs >= 6:
+        last_ppv = _parse_iso(mem.get("last_ppv_at")) or _parse_iso(mem.get("last_offer_at"))
+        if not (last_ppv and now - last_ppv < timedelta(minutes=12)):
+            return TurnDecision(
+                mode=MODE_SOFT_SELL,
+                reason="post-free heat — lock PPV without asking",
+                max_bubbles=2,
+                allow_ppv_talk=True,
+                allow_price=True,
+                allow_free_tease=False,
+            )
 
     if buying and (status in ("spender", "whale") or spent > 0):
         return TurnDecision(
@@ -515,13 +543,18 @@ def author_note_for(
         mode_hint = {
             MODE_CHILL: "Warm, human, no sell.",
             MODE_RAPPORT: "Light flirt, no PPV price.",
-            MODE_TEASE: "Build heat. Only gift free if system attaches L0.",
-            MODE_SOFT_SELL: "Chemistry then lock ONE real photo — one clear close.",
-            MODE_HARD_SELL: "Confident close on ONE real photo. No stacking.",
+            MODE_TEASE: "Build heat. Only gift free if system attaches L0. Do not stamp his real name.",
+            MODE_SOFT_SELL: (
+                "LOCK one paid photo NOW — system attaches it after your text. "
+                "Do NOT ask permission / 'quieres?' / offer gratis. Short tease then lock."
+            ),
+            MODE_HARD_SELL: (
+                "LOCK one paid photo NOW with confidence. No asking. No free. One clear close."
+            ),
         }.get(decision.mode, "Stay in character.")
         return (
-            f"[Emma texting. {lang} Natural clear grammar — no word-salad, no glued words. "
-            f"1–3 short lines. Pet name or none; never invent a first name (no Simón/Carlos). "
+            f"[Emma texting. {lang} Natural clear grammar — no word-salad. "
+            f"1–3 short lines. Almost NEVER his real name (no 'Ay Ruben' stamp) — pet name or none. "
             f"{mode_hint}]"
         )
 
@@ -552,7 +585,7 @@ def author_note_for(
         "Only gift a free photo when the system attaches a real L0 tease this turn. "
         f"{lang} "
         "ADDRESSING: usually a light pet name (babe/baby/handsome/trouble) or none. "
-        "His real name at most once every few turns — never every message. "
+        "Almost NEVER his real name — never 'Ay Ruben' every bubble. "
         "Never invent a first name (no Jamie/Carlos/Alex/Simón). "
         "Spanish pet names only in full-Spanish replies.]"
     )
@@ -577,13 +610,13 @@ def author_note_for(
             "or claim you already sent / left anything in his inbox."
         ),
         MODE_SOFT_SELL: (
-            "MODE=soft_sell: Keep the chemistry — then naturally lock ONE real photo. "
-            "Don't sound like a store. Tease the shot, own the premium price, one clear close. "
-            "Never stack two locks. Never beg. If he hesitates, flirt — don't dump a cheaper second photo."
+            "MODE=soft_sell: LOCK one paid photo NOW — system attaches after your text. "
+            "Do NOT ask 'quieres?' / permission. Do NOT offer gratis/free. "
+            "Short tease, then lock with confidence. Never stack two locks."
         ),
         MODE_HARD_SELL: (
-            "MODE=hard_sell: He's ready — push ONE clear locked offer with confidence. "
-            "Still sound like Emma, not a store clerk. Anchor the value; one offer, not a lecture."
+            "MODE=hard_sell: LOCK one paid photo NOW with confidence. No asking. No free. "
+            "Still sound like Emma. One clear close, not a lecture."
         ),
     }
     return f"{base} {mode_lines.get(decision.mode, mode_lines[MODE_RAPPORT])}"

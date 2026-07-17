@@ -20,7 +20,20 @@ from openai import OpenAI
 
 from config import config
 from core.prompt_core import EMMA_CORE_PROMPT  # noqa: F401 — kept for tests/legacy
-from core import fan_memory, language, lessons, lorebook, persona_time, prompt_audit, prompt_layers, vault_catalog
+from core import (
+    fan_memory,
+    language,
+    lessons,
+    lorebook,
+    manipulation,
+    packs,
+    persona_time,
+    phase_analyst,
+    prompt_audit,
+    prompt_layers,
+    vault_catalog,
+)
+from core.intent_router import RouteResult, decision_for_pack, route as route_intent
 from core.turn_policy import TurnDecision, author_note_for, decide_turn
 from core.system_prompt import EMMA_SYSTEM_PROMPT  # legacy fat prompt (non-lean only)
 
@@ -121,9 +134,21 @@ def fanvue_messages_to_turns(
             if role == "user":
                 text = "[fan sent a video]" if "video" in mtype else "[fan sent a photo]"
             elif priced:
-                text = "[you locked a paid photo]"
+                unlocked = bool(msg.get("purchasedAt"))
+                price = None
+                usd = (msg.get("pricing") or {}).get("USD") or {}
+                if usd.get("price") is not None:
+                    try:
+                        price = float(usd["price"]) / 100.0
+                    except (TypeError, ValueError):
+                        price = None
+                price_bit = f" ${price:.0f}" if price is not None else ""
+                if unlocked:
+                    text = f"[you locked a paid photo{price_bit} — HE UNLOCKED IT]"
+                else:
+                    text = f"[you locked a paid photo{price_bit} — still locked / unpaid]"
             else:
-                text = "[you sent media]"
+                text = "[you sent a FREE photo — unlocked gift]"
         if not text:
             continue
         if turns and turns[-1]["role"] == role:
@@ -145,9 +170,11 @@ def generate_emma_reply(
     ppv_status: Optional[dict] = None,
     fan_vision: Optional[dict] = None,
     delivery_truth: Optional[dict] = None,
+    pack_id: Optional[str] = None,
+    route_result: Optional[RouteResult] = None,
 ) -> Tuple[str, TurnDecision]:
     """
-    Prompt + memory + lorebook + catalog offer + mode-aware author's note.
+    Prompt + memory + ONE situation pack + mode-aware author's note.
 
     Returns (raw_reply, decision). If `offer` is set, Emma must tease that photo only.
     `fan_vision` = Grok description of a photo the fan just sent.
@@ -155,8 +182,31 @@ def generate_emma_reply(
     """
     history_turns = history_turns or []
     mem = fan_memory.get(fan_uuid) if fan_uuid else {}
+
+    # Router: hard gates + soft intents → one pack (unless caller pre-routed)
+    if route_result is None and (decision is None or not pack_id):
+        snippets = [
+            t.get("content") or ""
+            for t in (history_turns or [])[-6:]
+        ]
+        route_result = route_intent(
+            mem,
+            fan_message,
+            delivery_truth=delivery_truth,
+            history_snippets=snippets,
+        )
+    if route_result is not None:
+        decision = route_result.decision
+        pack_id = pack_id or route_result.pack_id
+        print(
+            f"   pack: {pack_id} | mode={decision.mode} | "
+            f"price={decision.allow_price} | via={route_result.facts.soft_source}"
+            f"{' | hard=' + route_result.facts.hard_pack if route_result.facts.hard_pack else ''}"
+        )
     if decision is None:
         decision = decide_turn(mem, fan_message, delivery_truth=delivery_truth)
+    if not pack_id:
+        pack_id = packs.fallback_pack()
 
     # Language: mirror the fan (explicit asks persist a preference).
     # `want_spanish` can be forced by callers (e.g. re-engagement uses the
@@ -179,6 +229,48 @@ def generate_emma_reply(
 
     lean = bool(getattr(config, "LEAN_CREATIVE", True))
 
+    # --- PHASE ANALYST: read full chat + client card BEFORE creative ---
+    card_block = ""
+    if fan_uuid:
+        card_block = fan_memory.render_block(fan_uuid) or ""
+    hard_pack = None
+    if route_result and route_result.facts.hard_pack:
+        hard_pack = route_result.facts.hard_pack
+    analysis = None
+    force_tech = None
+    try:
+        analysis = phase_analyst.analyze(
+            fan_message=fan_message,
+            history_turns=turns,
+            card_text=card_block,
+            hard_pack=hard_pack,
+            code_pack=pack_id,
+        )
+    except Exception as e:
+        print(f"   phase-analyst error: {type(e).__name__}: {e}")
+
+    if analysis:
+        print(
+            f"   analyst: phase={analysis.phase} pack={analysis.pack_id} "
+            f"name={analysis.name_to_use or '-'} "
+            f"likes={','.join(analysis.likes[:3]) or '-'}"
+        )
+        # Soft packs: analyst can refine phase from full conversation
+        if not hard_pack and analysis.pack_id and analysis.pack_id != pack_id:
+            pack_id = analysis.pack_id
+            if route_result is not None:
+                decision = decision_for_pack(
+                    pack_id,
+                    route_result.facts,
+                    mem,
+                    f"analyst:{analysis.phase}",
+                )
+            print(f"   pack←analyst: {pack_id}")
+        if analysis.technique_hint:
+            force_tech = phase_analyst.apply_technique_hint(
+                pack_id, analysis.technique_hint
+            )
+
     turn_blocks: List[str] = []
 
     # Soft lessons NEVER in live path unless operator forces INJECT_LESSONS=1
@@ -193,6 +285,37 @@ def generate_emma_reply(
                 enters_live_prompt=True,
             )
 
+    # CLIENT RECALL from analyst (name / likes / where we are)
+    if analysis:
+        turn_blocks.append(analysis.recall_block())
+
+    # MANIPULATION ENGINE first (loudest), then situation pack
+    facts_line = ""
+    msgs_n = int(mem.get("messages") or 0)
+    objection_step = int(mem.get("price_objection_step") or 0)
+    manip_banner = manipulation.render_banner(
+        pack_id,
+        fan_uuid=fan_uuid or "",
+        msgs=msgs_n,
+        reject_count=objection_step,
+        force_name=force_tech,
+    )
+    tech = manipulation.pick_technique(
+        pack_id,
+        fan_uuid=fan_uuid or "",
+        msgs=msgs_n,
+        reject_count=objection_step,
+        force_name=force_tech,
+    )
+    tech_name = tech[0] if tech else ""
+    if manip_banner:
+        turn_blocks.append(manip_banner)
+        print(f"   manip: {tech_name} (pack={pack_id})")
+
+    if route_result is not None:
+        facts_line = route_result.facts.facts_line()
+    turn_blocks.append(packs.render(pack_id, facts_line=facts_line))
+
     if offer or (decision and decision.allow_price):
         turn_blocks.append(vault_catalog.catalog_summary_block())
 
@@ -204,9 +327,18 @@ def generate_emma_reply(
             "DELIVERY TRUTH: your FREE photo IS already in this chat. "
             "Tell him to scroll up. Do not re-gift. Do not invent a glitch."
         )
-    elif delivery_truth and delivery_truth.get("free_in_chat") is False and offer:
+    elif delivery_truth and delivery_truth.get("free_in_chat") is False:
         turn_blocks.append(
-            "DELIVERY TRUTH: free photo is NOT in chat — gift the attached L0 if any."
+            "DELIVERY TRUTH: Fanvue chat does NOT show any free gift from you. "
+            "Do NOT claim you already sent/regalaste a photo. That would be a lie. "
+            "If a photo attaches this turn, gift THAT. Otherwise apologize briefly and flirt."
+        )
+    if delivery_truth and delivery_truth.get("ppv_unpaid"):
+        turn_blocks.append(
+            "DELIVERY TRUTH: there is already an UNPAID locked photo in this chat "
+            "(timed — it will disappear if he doesn't unlock). "
+            "Do NOT send/claim another lock. Point him to unlock the one waiting. "
+            "Do NOT invent older gifts that are not in the recent chat history."
         )
 
     vision_desc = None
@@ -238,15 +370,11 @@ def generate_emma_reply(
         if lore_block:
             turn_blocks.append(lore_block)
 
-    name_note = _name_budget_note(
+    name_note, name_max_uses = _name_budget_note(
         mem.get("name") or "",
         turns,
         name_confirmed=bool(mem.get("name_confirmed")),
     )
-
-    card_block = ""
-    if fan_uuid:
-        card_block = fan_memory.render_block(fan_uuid) or ""
 
     if lean:
         messages, sizes = prompt_layers.build_system_layers(
@@ -258,7 +386,7 @@ def generate_emma_reply(
         )
         print(
             f"   prompt: CORE={sizes['core']} CARD={sizes['card']} "
-            f"TURN={sizes['turn']} total_sys={sizes['system_total']}"
+            f"TURN={sizes['turn']} total_sys={sizes['system_total']} pack={pack_id}"
         )
     else:
         # Legacy fat path (discouraged)
@@ -282,13 +410,29 @@ def generate_emma_reply(
             }
         )
 
-    note = author_note_for(decision, want_spanish=want_spanish, lean=lean)
+    # Lean author: pack + MANDATORY technique nudge
+    if lean:
+        lang = "Spanish only." if want_spanish else "English only."
+        note = (
+            f"[Emma texting. {lang} Pack={pack_id}. "
+            f"1–3 short lines. Pet name or none — almost never his real name.]"
+        )
+        if tech_name:
+            note += manipulation.author_nudge(pack_id, tech_name)
+    else:
+        note = author_note_for(decision, want_spanish=want_spanish, lean=lean)
+        if tech_name:
+            note += manipulation.author_nudge(pack_id, tech_name)
     if offer:
         is_free = float(offer.get("price") or 0) <= 0 or int(offer.get("level") or 0) == 0
         if is_free:
             note += " FREE photo attached — one short flirty line."
         else:
-            note += f" Locking one photo (${offer.get('price'):.0f}) — short tease."
+            note += (
+                f" PAID lock ${offer.get('price'):.0f} attaches WITH your first bubble. "
+                "Do NOT ask if he wants it. Do NOT offer free/gratis. Do NOT claim older gifts. "
+                "Tease once then lock."
+            )
     note = prompt_layers.clip_author(note)
 
     turns_out = [dict(t) for t in turns]
@@ -300,6 +444,9 @@ def generate_emma_reply(
 
     confirmed = bool(mem.get("name_confirmed"))
     usable_name = _usable_fan_name(mem.get("name") or "", confirmed=confirmed)
+    ghost_free_ban = bool(
+        delivery_truth and delivery_truth.get("free_in_chat") is False
+    )
 
     def _call(msgs: List[Dict[str, str]]) -> str:
         kwargs = dict(
@@ -319,7 +466,14 @@ def generate_emma_reply(
             want_spanish=want_spanish,
             fan_name=usable_name,
             name_confirmed=confirmed,
+            name_max_uses=name_max_uses,
             media_attached=bool(offer),
+            paid_lock=bool(
+                offer
+                and float(offer.get("price") or 0) > 0
+                and int(offer.get("level") or 0) > 0
+            ),
+            ghost_free_ban=ghost_free_ban,
         )
 
     reply = _call(messages)
@@ -406,11 +560,11 @@ def _ppv_truth_block(status: dict) -> str:
     return (
         "PPV TRUTH — VERIFIED VIA FANVUE API THIS TURN:\n"
         f"- The locked photo you sent {ago} — \"{label}\"{price_txt} — HE HAS **NOT** PURCHASED IT.\n"
-        "- If he claims he paid it, saw it, or loved it: that is FALSE. He is bluffing.\n"
-        "- Call it out playfully and confidently (\"nice try baby... I can see you never unlocked it\"),\n"
-        "  turn it into a tease to actually unlock it. Never play along with the lie.\n"
-        "- Never describe the photo's content as if he had seen it.\n"
-        "- This applies ONLY to that exact photo — do not bring up older content."
+        "- It IS in this chat as a timed lock waiting for him. Point him to unlock THAT one.\n"
+        "- Light urgency OK (won't sit forever) — never beg, never invent countdowns.\n"
+        "- Do NOT claim other gifts/photos arrived unless recent chat history shows them.\n"
+        "- Do NOT stack a second lock. Do NOT invent that he already saw it.\n"
+        "- Never describe the photo's content as if he had seen it."
     )
 
 
@@ -443,45 +597,75 @@ def _name_budget_note(
     turns: List[Dict[str, str]],
     *,
     name_confirmed: bool = False,
-) -> str:
-    """Tell the model whether his real name is allowed this turn."""
+) -> Tuple[str, int]:
+    """
+    Returns (note, max_name_uses_this_turn).
+    Default max_uses=0 — stop 'Ay Ruben' every bubble.
+    """
     name = _usable_fan_name(name, confirmed=name_confirmed)
     if not name:
         return (
-            "ADDRESSING: use a light pet name (babe/baby/handsome/trouble) or none. "
-            "HARD BAN: do NOT invent a first name (no Simón, Carlos, Jamie, Alex…). "
-            "If CLIENT CARD has no confirmed name, never guess one."
+            "ADDRESSING: pet name or none. HARD BAN: never invent a first name.",
+            0,
         )
     recent_emma = [
         t.get("content") or ""
-        for t in turns[-8:]
+        for t in turns[-10:]
         if t.get("role") == "assistant"
     ]
-    used_recently = any(name.lower() in (c or "").lower() for c in recent_emma[-2:])
-    if used_recently:
+    used_count = sum(1 for c in recent_emma if name.lower() in (c or "").lower())
+    # Used in any of last 3 Emma turns → zero this turn
+    if used_count >= 1 or any(name.lower() in (c or "").lower() for c in recent_emma[-3:]):
         return (
-            f"NAME BUDGET: You already used \"{name}\" recently. "
-            f"This turn do NOT say his name — pet name or none. Never invent another name."
+            f"NAME BAN THIS TURN: Do NOT write \"{name}\" or \"Ay {name}\" at all. "
+            f"Pet name (bebe/cielo/guapo) or no address. Name spam kills the vibe.",
+            0,
         )
+    # Rare allowance — still prefer none
     return (
-        f"NAME BUDGET: Confirmed name is {name}. Prefer a pet name. "
-        f"Say \"{name}\" at most once this turn if natural. Never call him any other first name."
+        f"ADDRESSING: Prefer pet name or none. You may say \"{name}\" at most ONCE "
+        f"only if it is a rare apology/greeting beat — never \"Ay {name}\" as a stamp.",
+        1,
     )
 
 
-def _thin_name_in_reply(text: str, name: str, *, name_confirmed: bool = False) -> str:
-    """Keep at most one use of his real name — NEVER run on garbage names like Un."""
+def _thin_name_in_reply(
+    text: str,
+    name: str,
+    *,
+    name_confirmed: bool = False,
+    max_uses: int = 1,
+) -> str:
+    """Keep at most max_uses of his real name. max_uses=0 strips all."""
     name = _usable_fan_name(name, confirmed=name_confirmed)
     if not name or not text:
         return text
     pattern = re.compile(rf"\b{re.escape(name)}\b", re.IGNORECASE)
-    seen = False
+    # Also kill "Ay Ruben" / "Ay, Ruben" openings
+    text = re.sub(
+        rf"(?i)^\s*ay\s*,?\s*{re.escape(name)}\s*[,.…]*\s*",
+        "",
+        text,
+    )
+    text = re.sub(
+        rf"(?i)(^|\n)\s*ay\s*,?\s*{re.escape(name)}\s*[,.…]*\s*",
+        r"\1",
+        text,
+    )
+    if max_uses <= 0:
+        cleaned = pattern.sub("", text)
+        cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+        cleaned = re.sub(r" +([,.!?…])", r"\1", cleaned)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+        return cleaned.strip()
+
+    seen = 0
 
     def _repl(m: re.Match) -> str:
         nonlocal seen
-        if seen:
+        seen += 1
+        if seen > max_uses:
             return ""
-        seen = True
         return m.group(0)
 
     cleaned = pattern.sub(_repl, text)
@@ -566,7 +750,10 @@ def _sanitize_reply(
     want_spanish: bool = False,
     fan_name: str = "",
     name_confirmed: bool = False,
+    name_max_uses: int = 0,
     media_attached: bool = False,
+    paid_lock: bool = False,
+    ghost_free_ban: bool = False,
 ) -> str:
     """Strip banned pet names + thin name spam + false delivery claims."""
     if not text:
@@ -578,9 +765,17 @@ def _sanitize_reply(
     cleaned = _FAKE_SENT_PAST.sub("", cleaned)
     if not media_attached:
         cleaned = _FAKE_SENT_NO_MEDIA.sub("", cleaned)
+    if paid_lock:
+        # Paid lock this turn — never ask permission or pivot to free
+        cleaned = _ASK_PERMISSION_OR_FREE.sub("", cleaned)
+    if ghost_free_ban:
+        cleaned = _FALSE_GIFT_CLAIM.sub("", cleaned)
     cleaned = _strip_photo_script_dump(cleaned)
     cleaned = _thin_name_in_reply(
-        cleaned, fan_name, name_confirmed=name_confirmed
+        cleaned,
+        fan_name,
+        name_confirmed=name_confirmed,
+        max_uses=name_max_uses,
     )
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
     cleaned = re.sub(r" +([,.!?…])", r"\1", cleaned)
@@ -628,6 +823,25 @@ _TRAILING_EMOJI = re.compile(
     r"\U0000200D"
     r"])+$",
     flags=re.UNICODE,
+)
+
+# When locking paid PPV: strip permission-asks and free pivots
+_ASK_PERMISSION_OR_FREE = re.compile(
+    r"(?i)(?:"
+    r"[^.!?\n]*\b(?:quieres|want)\b.{0,40}\b(?:gratis|grastis|free|otra)\b[^.!?\n]*[.!?…]?|"
+    r"[^.!?\n]*\b(?:otra\s+)?(?:foto\s+)?gratis\b[^.!?\n]*[.!?…]?|"
+    r"[^.!?\n]*\b(?:te\s+la\s+mando|should\s+i\s+send|do\s+you\s+want\s+(?:it|this|one))\s*\??[^.!?\n]*[.!?…]?"
+    r")",
+)
+
+# When API says free was never in chat — strip "I already gifted you" lies
+_FALSE_GIFT_CLAIM = re.compile(
+    r"(?i)(?:"
+    r"[^.!?\n]*\b(?:te\s+regal[eé]|te\s+regal[eé]|ya\s+te\s+(?:mand[eé]|envi[eé]|regal[eé])|"
+    r"te\s+(?:mand[eé]|envi[eé])\s+(?:una\s+)?(?:foto\s+)?gratis|"
+    r"i\s+(?:already\s+)?(?:sent|gifted)\s+(?:you\s+)?(?:a\s+)?(?:free\s+)?(?:photo|pic)|"
+    r"si\s+te\s+regal)\b[^.!?\n]*[.!?…]?"
+    r")",
 )
 
 # Always strip: claims the photo ALREADY arrived / is waiting (media is attached after text).

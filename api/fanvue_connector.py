@@ -96,28 +96,10 @@ class FanvueConnector:
         uuids = [u for u in (media_uuids or []) if u]
         if not uuids:
             raise ValueError("send_media_message requires at least one media_uuid")
-        candidates = list(uuids)
-        for u in fallback_uuids or []:
-            if u and u not in candidates:
-                candidates.append(u)
-
-        last_err: Optional[Exception] = None
-        chosen = candidates[0]
-        for uid in candidates:
-            try:
-                meta = self.get_media(uid, variants="thumbnail")
-                if meta:
-                    chosen = uid
-                    last_err = None
-                    break
-                last_err = ValueError(f"media {uid[:8]}… not found in vault")
-            except Exception as e:
-                last_err = e
-                continue
-        else:
-            raise ValueError(
-                f"free media preflight failed for {uuids[0][:8]}…: {last_err}"
-            ) from last_err
+        try:
+            chosen = self._preflight_vault_uuid(uuids, fallback_uuids=fallback_uuids)
+        except ValueError as e:
+            raise ValueError(f"free media preflight failed: {e}") from e
 
         payload: dict = {
             "mediaUuids": [chosen],
@@ -163,6 +145,33 @@ class FanvueConnector:
                     return True
         return False
 
+    def _preflight_vault_uuid(
+        self,
+        media_uuids: list,
+        *,
+        fallback_uuids: list = None,
+    ) -> str:
+        """Pick first vault UUID that resolves via GET /media — avoid empty bubbles."""
+        candidates: List[str] = []
+        for u in list(media_uuids or []) + list(fallback_uuids or []):
+            if u and u not in candidates:
+                candidates.append(u)
+        if not candidates:
+            raise ValueError("media preflight requires at least one media_uuid")
+        last_err: Optional[Exception] = None
+        for uid in candidates:
+            try:
+                meta = self.get_media(uid, variants="thumbnail")
+                if meta:
+                    return uid
+                last_err = ValueError(f"media {uid[:8]}… not found in vault")
+            except Exception as e:
+                last_err = e
+                continue
+        raise ValueError(
+            f"media preflight failed for {candidates[0][:8]}…: {last_err}"
+        ) from last_err
+
     @_retry_policy
     def send_ppv_message(
         self,
@@ -171,20 +180,25 @@ class FanvueConnector:
         price_dollars: float,
         text: str = None,
         media_preview_uuid: str = None,
+        *,
+        fallback_uuids: list = None,
     ) -> dict:
         """
         Send pay-to-view content in chat.
 
         `price` is sent in USD cents (minimum 300 = $3.00).
         Media must already exist in the creator vault (`media_uuids`).
+        Always include a tiny text — media-only payloads have rendered empty.
         """
+        chosen = self._preflight_vault_uuid(
+            media_uuids, fallback_uuids=fallback_uuids
+        )
         price_cents = max(300, int(round(float(price_dollars) * 100)))
         payload = {
-            "mediaUuids": media_uuids,
+            "mediaUuids": [chosen],
             "price": price_cents,
+            "text": ((text or "").strip() or "🔒")[:500],
         }
-        if text:
-            payload["text"] = text
         if media_preview_uuid:
             payload["mediaPreviewUuid"] = media_preview_uuid
         return self._request(
@@ -192,6 +206,62 @@ class FanvueConnector:
             f"/chats/{fan_uuid}/message",
             json=payload,
         )
+
+    @_retry_policy
+    def delete_message(self, fan_uuid: str, message_uuid: str) -> None:
+        """
+        Unsend a chat message. Purchased PPV cannot be deleted (API returns 400).
+        """
+        if not fan_uuid or not message_uuid:
+            raise ValueError("delete_message requires fan_uuid and message_uuid")
+        url = f"{self.base_url}/chats/{fan_uuid}/messages/{message_uuid}"
+        timeout = self.timeout
+        response = requests.request(
+            "DELETE", url, headers=self._headers(), timeout=timeout
+        )
+        if response.status_code == 401:
+            refresh_if_expired_or_forced(force=True)
+            response = requests.request(
+                "DELETE", url, headers=self._headers(), timeout=timeout
+            )
+        if response.status_code == 204:
+            return
+        if not response.ok:
+            detail = (response.text or "")[:500]
+            raise requests.HTTPError(
+                f"{response.status_code} DELETE /chats/.../messages/...: {detail}",
+                response=response,
+            )
+
+    def find_message_uuid_for_media(
+        self,
+        fan_uuid: str,
+        media_uuid: str,
+        *,
+        creator_uuid: str,
+        lookback: int = 30,
+        aliases: Optional[List[str]] = None,
+    ) -> Optional[str]:
+        """Newest creator message that carries this media uuid (or alias)."""
+        want = {u for u in ([media_uuid] + list(aliases or [])) if u}
+        if not want:
+            return None
+        try:
+            msgs = self.get_messages(fan_uuid, size=lookback)
+        except Exception:
+            return None
+        for msg in msgs:
+            sender = msg.get("sender")
+            sid = sender.get("uuid") if isinstance(sender, dict) else sender
+            if sid != creator_uuid:
+                continue
+            muids = set(msg.get("mediaUuids") or [])
+            for m in msg.get("media") or []:
+                if isinstance(m, dict) and m.get("uuid"):
+                    muids.add(m["uuid"])
+            if muids & want:
+                return msg.get("uuid")
+        return None
 
     # Backwards-compatible alias used by tasks.py
     def send_locked_content(

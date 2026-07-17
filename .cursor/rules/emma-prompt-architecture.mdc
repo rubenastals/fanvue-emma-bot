@@ -13,8 +13,11 @@ Live chat quality collapses when Soft lessons / critic norms / sales essays are 
 1. **CORE** (`core/prompt_core.py`) — short immutable persona + hard bans. Do not grow forever; replace a rule to add one.
 2. **CLIENT CARD** — durable facts about this fan.
 3. **HISTORY** — up to ~100 recent messages.
-4. **TURN** — language, offer/vision/delivery only when needed (budget-capped).
-5. **AUTHOR** — one short mode line.
+4. **ONE PACK** (`packs/*.md` via `intent_router`) — situation MUST/SHOULD/NEVER only.
+5. **TURN** — offer/vision/delivery facts when needed (budget-capped).
+6. **AUTHOR** — one short line (`Pack=…`).
+
+See `docs/ROUTER.md` to add casuistries. Never inject more than one situational pack.
 
 ## Forbidden in live prompt
 
@@ -22,19 +25,21 @@ Live chat quality collapses when Soft lessons / critic norms / sales essays are 
 - Fat `EMMA_SYSTEM_PROMPT` essays when `LEAN_CREATIVE=1`
 - Always-on vault catalog spam on chill turns
 - Auto-approve Soft into behavior that affects chat
+- Stacking multiple situation packs / Soft norms
 
 ## When DeepSeek / improve / autofix runs
 
 - Log every proposal in `docs/PROMPT_AUDIT.md` / `.prompt_audit.jsonl` via `core/prompt_audit.py`
 - Soft stays **pending for human review** — never silent live injection
 - Autofix must list files touched; operator reviews `git diff` before deploy
-- Prefer code fixes (policy, verify delivery, name scrub) over new prompt rules
+- Prefer code fixes (router gates, verify delivery, name scrub) or a new `packs/*.md` over growing CORE
 
 ## Operator defaults
 
 ```
 LEAN_CREATIVE=1
 INJECT_LESSONS=0
+SOFT_CLASSIFY=0
 AUTO_APPROVE_SOFT_LESSONS=0
 DEEPSEEK_TEMPERATURE=0.9
 ```

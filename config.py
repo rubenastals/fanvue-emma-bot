@@ -62,6 +62,11 @@ class Config:
     # Lean creative: CLIENT CARD + history first. Soft lessons/catalog spam OFF by default.
     LEAN_CREATIVE = os.getenv("LEAN_CREATIVE", "1") == "1"
     INJECT_LESSONS = os.getenv("INJECT_LESSONS", "0") == "1"
+    PHASE_ANALYST = os.getenv("PHASE_ANALYST", "1") == "1"
+    PHASE_ANALYST_MODEL = os.getenv("PHASE_ANALYST_MODEL", "") or None
+    # Ambiguous-turn JSON intent classifier (extra DeepSeek call)
+    SOFT_CLASSIFY = os.getenv("SOFT_CLASSIFY", "0") == "1"
+    SOFT_CLASSIFY_MODEL = os.getenv("SOFT_CLASSIFY_MODEL", "") or None
 
     # xAI Grok Vision — vault photo captioning (same key as emma_chatter)
     XAI_API_KEY = os.getenv("XAI_API_KEY", "")
@@ -78,6 +83,9 @@ class Config:
 
     # Soft autopilot OFF by default — Soft lesson flood broke chat quality
     AUTO_APPROVE_SOFT_LESSONS = os.getenv("AUTO_APPROVE_SOFT_LESSONS", "0") == "1"
+    # Unpaid PPV auto-unsend (creates scarcity; keeps chat + bot state clean)
+    PPV_EXPIRE_ENABLED = os.getenv("PPV_EXPIRE_ENABLED", "1") == "1"
+    PPV_EXPIRE_MINUTES = int(os.getenv("PPV_EXPIRE_MINUTES", "30"))
     DIGEST_WEBHOOK_URL = os.getenv("DIGEST_WEBHOOK_URL", "")  # Discord/Slack incoming webhook
     DIGEST_EMAIL = os.getenv("DIGEST_EMAIL", "")
     SMTP_HOST = os.getenv("SMTP_HOST", "")

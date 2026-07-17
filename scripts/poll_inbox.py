@@ -15,6 +15,7 @@ import signal
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -26,14 +27,26 @@ sys.path.insert(0, _ROOT)
 
 from api.fanvue_connector import FanvueConnector
 from api.fanvue_oauth import load_tokens
-from core import convo_log, critic, fan_memory, fan_vision, lorebook, memory_extractor, reengagement, vault_catalog
+from config import config
+from core import (
+    convo_log,
+    critic,
+    fan_memory,
+    fan_vision,
+    lorebook,
+    memory_extractor,
+    ppv_expiry,
+    reengagement,
+    vault_catalog,
+)
 from core.reply_engine import (
     fanvue_messages_to_turns,
     filter_messages_for_context,
     generate_emma_reply,
     split_into_messages,
 )
-from core.turn_policy import decide_turn
+from core.intent_router import route as route_intent
+from core.turn_policy import decide_turn  # noqa: F401 — kept for scripts/tests
 from db import account_id, processed_store, use_postgres, use_redis
 from db import redis_client as redis_store
 
@@ -78,6 +91,42 @@ def _sender_uuid(msg: dict):
 
 # Only fact-check the most recent PPV, and only while it's still "current".
 PPV_CHECK_WINDOW_HOURS = int(os.getenv("PPV_CHECK_WINDOW_HOURS", "48"))
+
+
+def _record_verified_ppv(
+    fv: FanvueConnector,
+    *,
+    fan_uuid: str,
+    fan_handle: str,
+    creator_uuid: str,
+    offer: dict,
+    price: float,
+    send_resp: Optional[dict] = None,
+) -> Optional[str]:
+    """Persist unpaid lock + message uuid for timed unsend. Returns message_uuid."""
+    aliases = [
+        u
+        for u in (offer.get("media_uuid"), offer.get("media_uuid_previous"))
+        if u
+    ]
+    msg_uuid = ppv_expiry.resolve_ppv_message_uuid(
+        fv,
+        fan_uuid,
+        creator_uuid=creator_uuid,
+        media_uuid=offer["media_uuid"],
+        send_resp=send_resp,
+        aliases=aliases,
+    )
+    fan_memory.set_last_offer(
+        fan_uuid,
+        price,
+        fan_handle=fan_handle,
+        level=int(offer["level"]),
+        media_uuid=offer["media_uuid"],
+        label=offer.get("label") or "",
+        message_uuid=msg_uuid,
+    )
+    return msg_uuid
 
 
 def _check_last_ppv(messages: list, creator_uuid: str, mem: dict):
@@ -244,10 +293,12 @@ def _handle_fan_chat_body(
             mem = fan_memory.get(fan_uuid) or mem
 
         # API delivery truth for last free (and aliases) — stops "I sent it" / re-gift lies
-        delivery_truth: dict = {"free_in_chat": None}
+        delivery_truth: dict = {"free_in_chat": None, "ppv_unpaid": False}
         last_free_uid = (mem.get("last_free_media_uuid") or "").strip()
         if last_free_uid or (mem.get("sent_media_uuids") and re.search(
-            r"(?i)\b(gratis|grastis|free|no ha llegado|nothing arrived)\b", text or ""
+            r"(?i)\b(gratis|grastis|free|no ha llegado|nothing arrived|ninguna foto|"
+            r"no me has|no me mand)\b",
+            text or "",
         )):
             check_uid = last_free_uid
             if not check_uid:
@@ -275,8 +326,48 @@ def _handle_fan_chat_body(
                     f"   delivery-check free {check_uid[:8]}…: "
                     f"{'IN CHAT' if in_chat else 'NOT in chat'}"
                 )
+                if not in_chat:
+                    cleared = fan_memory.clear_ghost_free(
+                        fan_uuid, check_uid, fan_handle=fan_handle
+                    )
+                    if cleared:
+                        print(
+                            f"   ghost-free cleared {check_uid[:8]}… "
+                            "(memory claimed gift Fanvue never showed)"
+                        )
+                        mem = fan_memory.get(fan_uuid) or mem
 
-        decision = decide_turn(mem, text, delivery_truth=delivery_truth)
+        # PPV unpaid gate BEFORE route — stop mass stacking
+        ppv_status = _check_last_ppv(messages, creator_uuid, mem)
+        if ppv_status is not None:
+            state = "PURCHASED" if ppv_status["purchased"] else "NOT purchased"
+            print(
+                f"   ppv-check: {state} — "
+                f"{(ppv_status.get('label') or '')[:40]} ({ppv_status.get('ago')})"
+            )
+            if not ppv_status.get("purchased"):
+                delivery_truth["ppv_unpaid"] = True
+            else:
+                # Bought — stop expiry tracking
+                try:
+                    fan_memory.clear_pending_ppv(
+                        fan_uuid, fan_handle=fan_handle, reason="purchased"
+                    )
+                except Exception:
+                    pass
+
+        snippets = [
+            (m.get("text") or "")[:120]
+            for m in list(reversed(messages[:12]))
+            if (m.get("text") or "").strip()
+        ]
+        route_result = route_intent(
+            mem,
+            text,
+            delivery_truth=delivery_truth,
+            history_snippets=snippets,
+        )
+        decision = route_result.decision
 
         preview = text.replace("\n", " | ")[:80]
         print(f"\n📩 @{fan_handle}: {preview}")
@@ -286,7 +377,18 @@ def _handle_fan_chat_body(
             f"   memory: status={mem.get('status')} spent=${mem.get('total_spent')} "
             f"likes={','.join(mem.get('interests', [])) or '-'}"
         )
-        print(f"   mode: {decision.mode} ({decision.reason})")
+        print(
+            f"   mode: {decision.mode} ({decision.reason}) | pack={route_result.pack_id}"
+        )
+        if route_result.pack_id in ("reward_purchase",) or (
+            ppv_status and ppv_status.get("purchased")
+        ):
+            try:
+                fan_memory.reset_price_objection_step(
+                    fan_uuid, fan_handle=fan_handle
+                )
+            except Exception:
+                pass
 
         # Grok Vision: resolve Fanvue mediaUuids → describe what HE sent
         vision = None
@@ -331,35 +433,34 @@ def _handle_fan_chat_body(
                         f"[attached photo — you see: {vision['description']}]"
                     )
 
-        ppv_status = _check_last_ppv(messages, creator_uuid, mem)
-        if ppv_status is not None:
-            state = "PURCHASED" if ppv_status["purchased"] else "NOT purchased"
-            print(f"   ppv-check: {state} — {ppv_status['label'][:40]} ({ppv_status['ago']})")
-
         offer = None
         if decision.mode in ("soft_sell", "hard_sell") and decision.allow_price:
-            # Belt-and-suspenders: never lock twice inside cooloff even if mode slipped
-            last_ppv = mem.get("last_ppv_at") or mem.get("last_offer_at")
-            too_soon = False
-            if last_ppv:
-                try:
-                    ago = datetime.now(timezone.utc) - datetime.fromisoformat(
-                        str(last_ppv).replace("Z", "+00:00")
-                    )
-                    too_soon = ago < timedelta(minutes=12)
-                except (ValueError, TypeError):
-                    pass
-            if too_soon:
-                print("   ppv: skipped (cooloff — avoid double lock)")
+            # Never stack while an unpaid lock is already in this chat
+            if delivery_truth.get("ppv_unpaid"):
+                print("   ppv: skipped (unpaid lock already in chat)")
             else:
-                offer = vault_catalog.select_offer(mem, text)
-                if offer:
-                    print(
-                        f"   ppv: L{offer['level']} ${offer['price']:.0f} "
-                        f"{offer['label'][:50]} ({offer['media_uuid'][:8]}…)"
-                    )
+                # Belt-and-suspenders: never lock twice inside cooloff even if mode slipped
+                last_ppv = mem.get("last_ppv_at") or mem.get("last_offer_at")
+                too_soon = False
+                if last_ppv:
+                    try:
+                        ago = datetime.now(timezone.utc) - datetime.fromisoformat(
+                            str(last_ppv).replace("Z", "+00:00")
+                        )
+                        too_soon = ago < timedelta(minutes=12)
+                    except (ValueError, TypeError):
+                        pass
+                if too_soon:
+                    print("   ppv: skipped (cooloff — avoid double lock)")
                 else:
-                    print("   ppv: no catalog item available")
+                    offer = vault_catalog.select_offer(mem, text)
+                    if offer:
+                        print(
+                            f"   ppv: L{offer['level']} ${offer['price']:.0f} "
+                            f"{offer['label'][:50]} ({offer['media_uuid'][:8]}…)"
+                        )
+                    else:
+                        print("   ppv: no catalog item available")
         elif getattr(decision, "allow_free_tease", False):
             offer = vault_catalog.select_free_tease(mem)
             if offer:
@@ -379,6 +480,8 @@ def _handle_fan_chat_body(
             ppv_status=ppv_status,
             fan_vision=vision,
             delivery_truth=delivery_truth,
+            pack_id=route_result.pack_id,
+            route_result=route_result,
         )
         bubbles = split_into_messages(reply, max_bubbles=3, vary=True)
         print(f"💬 Emma ({len(bubbles)} msg) [{decision.mode}]: {reply[:120]}")
@@ -390,6 +493,7 @@ def _handle_fan_chat_body(
         barged = False
         bubbles_sent = 0
         free_sent = False
+        ppv_sent = False
         is_free_offer = bool(
             offer
             and (
@@ -397,6 +501,7 @@ def _handle_fan_chat_body(
                 or int(offer.get("level") or 0) == 0
             )
         )
+        is_paid_offer = bool(offer and not is_free_offer)
 
         # FREE L0: attach image WITH the first bubble so barge-in can't skip the gift
         # after Emma already teased it in text.
@@ -421,7 +526,7 @@ def _handle_fan_chat_body(
                     else None,
                 )
                 # Verify Fanvue actually shows this media in chat before marking sent
-                time.sleep(0.8)
+                time.sleep(1.0)
                 aliases = [
                     u
                     for u in (
@@ -449,23 +554,39 @@ def _handle_fan_chat_body(
                         f"   🎁 FREE L0 verified in chat — {offer['label']}"
                     )
                 else:
-                    # Still record so we don't spam the same UUID, but log the miss
-                    fan_memory.record_free_tease(
+                    # Do NOT claim delivery in memory — that creates ghost gifts
+                    fan_memory.mark_media_attempt(
                         fan_uuid,
                         offer["media_uuid"],
                         fan_handle=fan_handle,
-                        label=offer.get("label") or "",
-                        level=int(offer.get("level") or 0),
                     )
-                    free_sent = True
+                    free_sent = False
                     print(
-                        f"   ⚠ FREE L0 API send OK but NOT yet visible in chat history — "
-                        f"{offer['label']} (marked sent to avoid spam)"
+                        f"   ❌ FREE L0 API returned OK but media NOT in chat — "
+                        f"{offer['label']} (not marked sent)"
                     )
+                    try:
+                        want_es = bool(mem.get("prefer_spanish"))
+                        apology = (
+                            "Uy… se me trabó al mandarla. Un segundo que lo arreglo 🥺"
+                            if want_es
+                            else "Ugh… glitched while sending. One sec, I'll drop it properly 🥺"
+                        )
+                        fv.send_message(fan_uuid, apology)
+                    except Exception:
+                        pass
                 bubbles_sent += 1
                 print(f"   ✅ [1/{len(bubbles)}] (+{delay:.1f}s) {media_text[:60]}")
             except Exception as e:
                 print(f"   ❌ FREE send failed: {type(e).__name__}: {e}")
+                try:
+                    fan_memory.mark_media_attempt(
+                        fan_uuid,
+                        offer["media_uuid"],
+                        fan_handle=fan_handle,
+                    )
+                except Exception:
+                    pass
                 try:
                     want_es = bool(mem.get("prefer_spanish"))
                     apology = (
@@ -487,10 +608,125 @@ def _handle_fan_chat_body(
                 barged = True
                 rest_bubbles = []
             bubbles = rest_bubbles
-            offer = None  # already handled (or failed) — skip paid/free path below
+            offer = None  # free path handled (success or fail)
+
+        # PAID PPV: lock WITH first bubble — text-then-lock was skipped by barge-in
+        # and media-only locks sometimes rendered empty.
+        if is_paid_offer and bubbles and not barged and offer:
+            media_text = (bubbles[0] or "").strip() or "🔒"
+            rest_bubbles = bubbles[1:]
+            delay = random.uniform(4.0, 8.0)
+            try:
+                fv.send_typing_indicator(fan_uuid, True)
+            except Exception:
+                pass
+            interrupted = _sleep_interruptible(
+                fv, fan_uuid, processed, delay, known_ids=pending_ids
+            )
+            price = max(3.0, float(offer["price"]))
+            try:
+                send_resp = fv.send_ppv_message(
+                    fan_uuid,
+                    media_uuids=[offer["media_uuid"]],
+                    price_dollars=price,
+                    text=media_text[:500],
+                    fallback_uuids=[offer.get("media_uuid_previous")]
+                    if offer.get("media_uuid_previous")
+                    else None,
+                )
+                time.sleep(1.2)
+                aliases = [
+                    u
+                    for u in (
+                        offer.get("media_uuid"),
+                        offer.get("media_uuid_previous"),
+                    )
+                    if u
+                ]
+                verified = fv.creator_media_in_chat(
+                    fan_uuid,
+                    creator_uuid,
+                    offer["media_uuid"],
+                    aliases=aliases,
+                )
+                if verified:
+                    msg_uuid = _record_verified_ppv(
+                        fv,
+                        fan_uuid=fan_uuid,
+                        fan_handle=fan_handle,
+                        creator_uuid=creator_uuid,
+                        offer=offer,
+                        price=price,
+                        send_resp=send_resp if isinstance(send_resp, dict) else None,
+                    )
+                    ppv_sent = True
+                    mins = int(getattr(config, "PPV_EXPIRE_MINUTES", 30))
+                    print(
+                        f"   🔒 PPV verified in chat L{offer['level']} "
+                        f"${price:.0f} — {offer['label']}"
+                        + (
+                            f" (expires {mins}m, msg {msg_uuid[:8]}…)"
+                            if msg_uuid
+                            else f" (expires {mins}m)"
+                        )
+                    )
+                else:
+                    fan_memory.mark_media_attempt(
+                        fan_uuid,
+                        offer["media_uuid"],
+                        fan_handle=fan_handle,
+                    )
+                    print(
+                        f"   ❌ PPV API OK but lock NOT in chat — "
+                        f"{offer['label']} (not marked sent)"
+                    )
+                    try:
+                        want_es = bool(mem.get("prefer_spanish"))
+                        apology = (
+                            "Uy… se me trabó el candado. Dame un segundo y te lo dejo bien 🥺"
+                            if want_es
+                            else "Ugh… lock glitched. One sec and I'll drop it properly 🥺"
+                        )
+                        fv.send_message(fan_uuid, apology)
+                    except Exception:
+                        pass
+                    rest_bubbles = []
+                bubbles_sent += 1
+                print(f"   ✅ [1/{len(bubbles)}] (+{delay:.1f}s) {media_text[:60]}")
+            except Exception as e:
+                print(f"   ❌ PPV send failed: {type(e).__name__}: {e}")
+                try:
+                    fan_memory.mark_media_attempt(
+                        fan_uuid,
+                        offer["media_uuid"],
+                        fan_handle=fan_handle,
+                    )
+                except Exception:
+                    pass
+                try:
+                    want_es = bool(mem.get("prefer_spanish"))
+                    apology = (
+                        "Uy… se me trabó al bloquearla. Un momento y te la dejo 🥺"
+                        if want_es
+                        else "Ugh… failed locking that one. Give me a moment 🥺"
+                    )
+                    fv.send_message(fan_uuid, apology)
+                except Exception:
+                    pass
+                rest_bubbles = []
+            try:
+                fv.send_typing_indicator(fan_uuid, False)
+            except Exception:
+                pass
+            if interrupted:
+                print("   ⏭ barge-in after PPV — stopping remaining bubbles")
+                barged = True
+                rest_bubbles = []
+            bubbles = rest_bubbles
+            offer = None  # paid path handled
 
         for i, bubble in enumerate(bubbles):
-            if i == 0 and not free_sent:
+            if i == 0 and not free_sent and not ppv_sent:
                 delay = random.uniform(5.0, 11.0)
                 if random.random() < 0.25:
                     delay += random.uniform(2.0, 5.0)
@@ -517,97 +753,76 @@ def _handle_fan_chat_body(
                 barged = True
                 break
 
-        # Skip PPV if he interrupted — next turn will re-decide with his new text
-        if offer and not barged:
-            if _sleep_interruptible(
-                fv,
-                fan_uuid,
-                processed,
-                random.uniform(2.0, 4.5),
-                known_ids=pending_ids,
-            ):
-                print("   ⏭ barge-in before PPV — skipping lock this turn")
-                barged = True
-            else:
+        # Legacy fallback: paid offer still pending (e.g. no bubbles) — verify before memory
+        if offer and not barged and not ppv_sent and not is_free_offer:
+            try:
+                fv.send_typing_indicator(fan_uuid, True)
+            except Exception:
+                pass
+            price = max(3.0, float(offer["price"]))
+            try:
+                send_resp = fv.send_ppv_message(
+                    fan_uuid,
+                    media_uuids=[offer["media_uuid"]],
+                    price_dollars=price,
+                    text="🔒",
+                    fallback_uuids=[offer.get("media_uuid_previous")]
+                    if offer.get("media_uuid_previous")
+                    else None,
+                )
+                time.sleep(1.2)
+                verified = fv.creator_media_in_chat(
+                    fan_uuid,
+                    creator_uuid,
+                    offer["media_uuid"],
+                    aliases=[
+                        u
+                        for u in (
+                            offer.get("media_uuid"),
+                            offer.get("media_uuid_previous"),
+                        )
+                        if u
+                    ],
+                )
+                if verified:
+                    msg_uuid = _record_verified_ppv(
+                        fv,
+                        fan_uuid=fan_uuid,
+                        fan_handle=fan_handle,
+                        creator_uuid=creator_uuid,
+                        offer=offer,
+                        price=price,
+                        send_resp=send_resp if isinstance(send_resp, dict) else None,
+                    )
+                    mins = int(getattr(config, "PPV_EXPIRE_MINUTES", 30))
+                    print(
+                        f"   🔒 PPV verified (fallback) L{offer['level']} "
+                        f"${price:.0f} — {offer['label']}"
+                        + (
+                            f" (expires {mins}m, msg {msg_uuid[:8]}…)"
+                            if msg_uuid
+                            else f" (expires {mins}m)"
+                        )
+                    )
+                else:
+                    fan_memory.mark_media_attempt(
+                        fan_uuid, offer["media_uuid"], fan_handle=fan_handle
+                    )
+                    print(
+                        f"   ❌ PPV fallback API OK but NOT in chat — {offer['label']}"
+                    )
+            except Exception as e:
+                print(f"   ❌ PPV fallback failed: {type(e).__name__}: {e}")
                 try:
-                    fv.send_typing_indicator(fan_uuid, True)
+                    fan_memory.mark_media_attempt(
+                        fan_uuid, offer["media_uuid"], fan_handle=fan_handle
+                    )
                 except Exception:
                     pass
-                if _sleep_interruptible(
-                    fv,
-                    fan_uuid,
-                    processed,
-                    random.uniform(1.5, 3.0),
-                    known_ids=pending_ids,
-                ):
-                    print("   ⏭ barge-in before PPV — skipping lock this turn")
-                    barged = True
-                    try:
-                        fv.send_typing_indicator(fan_uuid, False)
-                    except Exception:
-                        pass
-                else:
-                    is_free = (
-                        float(offer.get("price") or 0) <= 0
-                        or int(offer.get("level") or 0) == 0
-                    )
-                    try:
-                        if is_free:
-                            # Attach image on its own bubble with a tiny vibe text —
-                            # media-only payloads have rendered as empty placeholders.
-                            fv.send_media_message(
-                                fan_uuid,
-                                media_uuids=[offer["media_uuid"]],
-                                text="😏",
-                            )
-                            fan_memory.record_free_tease(
-                                fan_uuid,
-                                offer["media_uuid"],
-                                fan_handle=fan_handle,
-                                label=offer.get("label") or "",
-                                level=int(offer.get("level") or 0),
-                            )
-                            print(
-                                f"   🎁 FREE L0 media attached — {offer['label']}"
-                            )
-                        else:
-                            price = max(3.0, float(offer["price"]))
-                            fv.send_ppv_message(
-                                fan_uuid,
-                                media_uuids=[offer["media_uuid"]],
-                                price_dollars=price,
-                                text=None,
-                            )
-                            fan_memory.set_last_offer(
-                                fan_uuid,
-                                price,
-                                fan_handle=fan_handle,
-                                level=int(offer["level"]),
-                                media_uuid=offer["media_uuid"],
-                                label=offer.get("label") or "",
-                            )
-                            print(
-                                f"   🔒 PPV sent L{offer['level']} ${price:.0f} — {offer['label']}"
-                            )
-                    except Exception as e:
-                        kind = "FREE" if is_free else "PPV"
-                        print(f"   ❌ {kind} send failed: {type(e).__name__}: {e}")
-                        if is_free:
-                            # Don't leave him with a promise and no image
-                            try:
-                                want_es = bool(mem.get("prefer_spanish"))
-                                apology = (
-                                    "Uy… se me trabó el chat un segundo. Dame un momento y te la dejo bien 🥺"
-                                    if want_es
-                                    else "Ugh… chat glitched for a sec. Give me a moment and I'll drop it properly 🥺"
-                                )
-                                fv.send_message(fan_uuid, apology)
-                            except Exception:
-                                pass
-                    try:
-                        fv.send_typing_indicator(fan_uuid, False)
-                    except Exception:
-                        pass
+            try:
+                fv.send_typing_indicator(fan_uuid, False)
+            except Exception:
+                pass
 
         try:
             convo_log.log_turn(
@@ -624,6 +839,15 @@ def _handle_fan_chat_body(
             memory_extractor.update_fan_card_async(fan_uuid, fan_handle)
         except Exception as e:
             print(f"   ⚠️ learning-loop log failed: {e}")
+
+        if route_result.pack_id == "price_objection" and not barged:
+            try:
+                step = fan_memory.bump_price_objection_step(
+                    fan_uuid, fan_handle=fan_handle
+                )
+                print(f"   objection-step → {step}")
+            except Exception:
+                pass
 
         handled += 1
         if not barged:
@@ -742,6 +966,11 @@ def main():
     n_cat = len(vault_catalog.load_items())
     print(f"🔥 Emma polling @{me.get('handle')} every {args.interval}s")
     print(f"   Vault catalog: {n_cat} photos ready for real PPV")
+    if getattr(config, "PPV_EXPIRE_ENABLED", True):
+        print(
+            f"   PPV scarcity: unpaid locks unsend after "
+            f"{getattr(config, 'PPV_EXPIRE_MINUTES', 30)} min"
+        )
     print("   Ctrl+C to stop\n")
 
     processed = _load_processed()
@@ -793,6 +1022,12 @@ def main():
                 # Re-engagement pass every 60s (5-min nudges + morning openers)
                 if not shutting_down() and time.time() - last_reengage >= 60:
                     last_reengage = time.time()
+                    try:
+                        n_exp = ppv_expiry.run_pass(fv, creator_uuid)
+                        if n_exp:
+                            print(f"\n--- expired {n_exp} unpaid PPV(s) ---\n")
+                    except Exception as e:
+                        print(f"\n⚠️ PPV expiry error: {e}")
                     try:
                         chats = fv.list_chats(size=20)
                         n = reengagement.run_pass(fv, chats, creator_uuid)

@@ -1,0 +1,69 @@
+{
+  "priority": [
+    "delivery_scroll",
+    "delivery_missing",
+    "ppv_unpaid",
+    "react_fan_media",
+    "billing_clarify",
+    "price_objection",
+    "reward_purchase",
+    "ask_free_first",
+    "escalate_paid",
+    "phase_close",
+    "lock_now",
+    "phase_pull",
+    "phase_spiral",
+    "phase_hook",
+    "tease_heat",
+    "post_sale_withdrawal",
+    "phase_reengage",
+    "rapport",
+    "chill"
+  ],
+  "fallback": "phase_spiral",
+  "budget_chars": 1400,
+  "technique_map": {
+    "love_bombing": [
+      "phase_hook",
+      "phase_pull",
+      "reward_purchase",
+      "phase_reengage"
+    ],
+    "withdrawal": [
+      "phase_pull",
+      "post_sale_withdrawal",
+      "price_objection"
+    ],
+    "intermittent_reinforcement": [
+      "phase_pull",
+      "post_sale_withdrawal"
+    ],
+    "guilt_trip": [
+      "phase_pull",
+      "price_objection",
+      "phase_reengage"
+    ],
+    "scarcity_fomo": [
+      "phase_pull",
+      "phase_close",
+      "price_objection"
+    ],
+    "ego_challenge": [
+      "phase_pull",
+      "price_objection"
+    ],
+    "gaslighting": [
+      "phase_pull"
+    ],
+    "future_faking": [
+      "phase_spiral",
+      "phase_pull"
+    ],
+    "price_objection_script": [
+      "price_objection"
+    ],
+    "reengagement": [
+      "phase_reengage"
+    ]
+  }
+}

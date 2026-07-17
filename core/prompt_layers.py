@@ -19,7 +19,7 @@ from core.prompt_core import EMMA_CORE_PROMPT
 # Hard ceilings (chars). If exceeded, truncate with a marker — never silently grow.
 BUDGET_CORE = 2800
 BUDGET_CARD = 2500
-BUDGET_TURN_SYSTEM = 3500  # all ephemeral system blocks combined
+BUDGET_TURN_SYSTEM = 4200  # pack + manipulation banner need room
 BUDGET_AUTHOR = 400
 
 

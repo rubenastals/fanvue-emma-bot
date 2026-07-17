@@ -146,6 +146,8 @@ def _ensure_card_fields(mem: dict) -> None:
         mem["sent_media_uuids"] = []
     if not isinstance(mem.get("sent_content"), list):
         mem["sent_content"] = []
+    if not isinstance(mem.get("failed_media_uuids"), list):
+        mem["failed_media_uuids"] = []
 
 
 _MAX_SENT_UUIDS = 200
@@ -498,6 +500,8 @@ def set_last_offer(
     level: Optional[int] = None,
     media_uuid: Optional[str] = None,
     label: Optional[str] = None,
+    message_uuid: Optional[str] = None,
+    expire_minutes: Optional[int] = None,
 ) -> None:
     """Record that Emma pitched (optionally with a price / media)."""
     with _LOCK:
@@ -523,9 +527,85 @@ def set_last_offer(
             mem["last_ppv_at"] = _now()
             mem["last_ppv_price"] = float(price) if price is not None else None
             mem["last_ppv_label"] = label or ""
+        if message_uuid:
+            mem["last_ppv_message_uuid"] = message_uuid
+        # Timed scarcity: unpaid lock expires unless purchased
+        try:
+            from config import config as _cfg
+
+            mins = expire_minutes
+            if mins is None:
+                mins = int(getattr(_cfg, "PPV_EXPIRE_MINUTES", 30) or 30)
+            if mins > 0 and media_uuid:
+                mem["last_ppv_expires_at"] = (
+                    datetime.now(timezone.utc).replace(microsecond=0)
+                    + timedelta(minutes=int(mins))
+                ).isoformat()
+        except Exception:
+            pass
         mem["last_offer_at"] = _now()
         mem["offers_today"] = int(mem.get("offers_today", 0)) + 1
         _put(fan_uuid, mem)
+
+
+def clear_pending_ppv(
+    fan_uuid: str,
+    *,
+    fan_handle: str = "",
+    reason: str = "expired",
+) -> None:
+    """Clear unpaid-lock tracking after unsend or purchase. Keeps sent_media history."""
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        mem["last_ppv_message_uuid"] = None
+        mem["last_ppv_expires_at"] = None
+        mem["last_ppv_expired_at"] = _now()
+        mem["last_ppv_expire_reason"] = reason
+        # Allow a fresh lock after expiry (cooloff uses last_ppv_at — keep it)
+        _put(fan_uuid, mem)
+
+
+def bump_price_objection_step(fan_uuid: str, *, fan_handle: str = "") -> int:
+    """Advance objection script step 0→1→2→3 across turns. Returns new step."""
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        step = int(mem.get("price_objection_step") or 0)
+        step = min(3, step + 1)
+        mem["price_objection_step"] = step
+        _put(fan_uuid, mem)
+        return step
+
+
+def reset_price_objection_step(fan_uuid: str, *, fan_handle: str = "") -> None:
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        mem["price_objection_step"] = 0
+        _put(fan_uuid, mem)
+
+
+def pending_ppv_candidates() -> List[tuple]:
+    """
+    Fans with a timed unpaid lock still tracked.
+    Returns list of (fan_uuid, mem).
+    """
+    out: List[tuple] = []
+    try:
+        all_mem = fan_memory_store.load_all()
+    except Exception:
+        return out
+    for fid, mem in (all_mem or {}).items():
+        if not isinstance(mem, dict):
+            continue
+        if mem.get("last_ppv_media_uuid") and (
+            mem.get("last_ppv_message_uuid")
+            or mem.get("last_ppv_expires_at")
+            or mem.get("last_ppv_at")
+        ):
+            out.append((fid, mem))
+    return out
 
 
 def record_free_tease(
@@ -556,6 +636,81 @@ def record_free_tease(
             if int(mem.get("last_offer_level") or 0) <= 0:
                 mem["last_offer_level"] = int(level)
         _put(fan_uuid, mem)
+
+
+def mark_media_attempt(
+    fan_uuid: str,
+    media_uuid: str,
+    *,
+    fan_handle: str = "",
+) -> None:
+    """UUID tried but not verified in chat — block repeats without claiming delivery."""
+    if not media_uuid:
+        return
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        failed = list(mem.get("failed_media_uuids") or [])
+        if media_uuid not in failed:
+            failed.append(media_uuid)
+        mem["failed_media_uuids"] = failed[-40:]
+        _put(fan_uuid, mem)
+
+
+def clear_ghost_free(
+    fan_uuid: str,
+    media_uuid: str,
+    *,
+    fan_handle: str = "",
+) -> bool:
+    """
+    Memory said a free was sent but Fanvue chat does not have that media.
+    Strip the ghost so Emma stops claiming a gift that never arrived.
+    """
+    if not media_uuid:
+        return False
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        changed = False
+        sent = list(mem.get("sent_media_uuids") or [])
+        if media_uuid in sent:
+            sent = [u for u in sent if u != media_uuid]
+            mem["sent_media_uuids"] = sent
+            changed = True
+        content = [
+            c
+            for c in (mem.get("sent_content") or [])
+            if not (
+                isinstance(c, dict)
+                and c.get("uuid") == media_uuid
+                and (c.get("kind") == "free" or int(c.get("level") or -1) == 0)
+            )
+        ]
+        if len(content) != len(mem.get("sent_content") or []):
+            mem["sent_content"] = content
+            changed = True
+        if mem.get("last_free_media_uuid") == media_uuid:
+            mem["last_free_media_uuid"] = None
+            mem["last_free_label"] = None
+            mem["last_free_at"] = None
+            changed = True
+        l0 = sum(
+            1
+            for c in (mem.get("sent_content") or [])
+            if isinstance(c, dict) and int(c.get("level") or -1) == 0
+        )
+        if int(mem.get("free_teases_sent") or 0) != l0:
+            mem["free_teases_sent"] = l0
+            changed = True
+        failed = list(mem.get("failed_media_uuids") or [])
+        if media_uuid not in failed:
+            failed.append(media_uuid)
+            mem["failed_media_uuids"] = failed[-40:]
+            changed = True
+        if changed:
+            _put(fan_uuid, mem)
+        return changed
 
 
 def record_reject(fan_uuid: str, fan_handle: str = "", minutes: int = 120) -> dict:
@@ -650,8 +805,8 @@ def render_block(fan_uuid: str) -> str:
             else "guessed from handle — verify before relying"
         )
         lines.append(
-            f"- Name: {name} ({conf}). Use sparingly, not every message; "
-            f"prefer pet names (babe/baby/handsome) or none."
+            f"- Name: {name} ({conf}). ALMOST NEVER say it — pet names or none. "
+            f"Never stamp \"Ay {name}\" every message."
         )
 
     profile = mem.get("profile") or {}
@@ -699,7 +854,7 @@ def render_block(fan_uuid: str) -> str:
         lines.append(
             "- ALREADY SENT to him (NEVER re-send the same photo / same media):"
         )
-        for c in sent_content[-12:]:
+        for c in sent_content[-4:]:
             kind = "FREE" if (c.get("kind") == "free" or int(c.get("level") or -1) == 0) else "PPV"
             lines.append(
                 f"  • {kind} L{c.get('level', '?')}: {c.get('label') or c.get('uuid', '')[:8]}"
@@ -712,7 +867,7 @@ def render_block(fan_uuid: str) -> str:
         lines.append(f"- Operator note: {mem['note']}")
     if mem.get("last_fan_image_desc"):
         lines.append(
-            f"- Last photo HE sent (vision): {mem['last_fan_image_desc'][:280]}"
+            f"- Last photo HE sent (vision): {mem['last_fan_image_desc'][:180]}"
         )
 
     return "\n".join(lines)

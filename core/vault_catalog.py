@@ -25,8 +25,9 @@ def load_items() -> List[Dict[str, Any]]:
 
 
 def _already_sent(mem: dict) -> set:
-    sent = mem.get("sent_media_uuids") or []
-    return set(sent)
+    sent = set(mem.get("sent_media_uuids") or [])
+    failed = set(mem.get("failed_media_uuids") or [])
+    return sent | failed
 
 
 def _paid_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -223,11 +224,14 @@ def offer_prompt_block(offer: Dict[str, Any]) -> str:
         f"- Price: ${price:.0f}\n"
         f"- Fanvue will lock the real IMAGE after your text (the system sends it).\n"
         "RULES:\n"
-        "- Tease briefly. Do NOT invent videos, customs, or other shots.\n"
+        "- Tease briefly then LOCK. Do NOT invent videos, customs, or other shots.\n"
+        "- FORBIDDEN: asking permission ('quieres?', 'te la mando?', 'otra gratis?').\n"
+        "- FORBIDDEN: offering free/gratis this turn — this is a PAID lock.\n"
         "- FORBIDDEN: dumping a pose/lingerie caption paragraph into chat.\n"
         "- Do NOT say you already sent it / check your inbox / I left it for you.\n"
-        "- Say you're locking it / about to lock it for him now.\n"
-        "- Price-anchor: own the price confidently — this is premium, not a clearance sale.\n"
+        "- Say you're locking it now / about to lock it — then the system does.\n"
+        "- Own the price confidently — premium, not a clearance sale.\n"
+        "- Light scarcity OK: this lock won't sit forever (timed) — don't beg, don't countdown spam.\n"
         "- No fake 4K moaning videos we don't have."
     )
 
