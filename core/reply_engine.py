@@ -287,6 +287,7 @@ def generate_emma_reply(
             (resp.choices[0].message.content or "").strip(),
             want_spanish=want_spanish,
             fan_name=(mem.get("name") or ""),
+            media_attached=bool(offer),
         )
 
     reply = _call(messages)
@@ -306,6 +307,37 @@ def generate_emma_reply(
             reply, want_spanish=False
         ):
             reply = _force_english_cleanup(reply)
+
+    # Delivery gate: never claim a photo was sent unless this turn attaches one
+    reply = _enforce_delivery_truth(
+        reply,
+        media_attached=bool(offer),
+        want_spanish=want_spanish,
+    )
+    if (not offer) and _claims_unconfirmed_delivery(reply):
+        # One rewrite pass against false "I sent it" claims
+        fix_msgs = messages + [
+            {"role": "assistant", "content": reply},
+            {
+                "role": "user",
+                "content": (
+                    "REWRITE: You claimed a photo was sent/locked/in his inbox but NOTHING "
+                    "is being attached this turn. Remove every delivery claim. Apologize briefly "
+                    "if you implied it arrived, then flirt — do not invent a glitch or ask him to refresh."
+                    if not want_spanish
+                    else (
+                        "REESCRIBE: Afirmaste que enviaste/bloqueaste una foto o que está en su bandeja, "
+                        "pero este turno NO se adjunta nada. Quita cualquier claim de entrega. "
+                        "Disculpa breve si lo diste por enviado, luego flirtea — sin inventar fallos técnicos."
+                    )
+                ),
+            },
+        ]
+        reply = _enforce_delivery_truth(
+            _call(fix_msgs),
+            media_attached=False,
+            want_spanish=want_spanish,
+        )
 
     if fan_uuid:
         fan_memory.set_last_mode(fan_uuid, decision.mode, fan_handle=fan_handle)
@@ -415,14 +447,18 @@ def _sanitize_reply(
     *,
     want_spanish: bool = False,
     fan_name: str = "",
+    media_attached: bool = False,
 ) -> str:
-    """Strip banned pet names + thin name spam + trailing emoji stamps."""
+    """Strip banned pet names + thin name spam + false delivery claims."""
     if not text:
         return text
     cleaned = _BANNED_ALWAYS.sub("", text)
     if not want_spanish:
         cleaned = _BANNED_SPANISH_IN_ENGLISH.sub("", cleaned)
-    cleaned = _FAKE_SENT.sub("", cleaned)
+    # Past-tense "already sent" is always fake at generation time (media goes AFTER text).
+    cleaned = _FAKE_SENT_PAST.sub("", cleaned)
+    if not media_attached:
+        cleaned = _FAKE_SENT_NO_MEDIA.sub("", cleaned)
     cleaned = _thin_name_in_reply(cleaned, fan_name)
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
     cleaned = re.sub(r" +([,.!?…])", r"\1", cleaned)
@@ -443,7 +479,6 @@ def _sanitize_reply(
 
 # legacy alias (tests may import)
 _BANNED_ADDRESS = _BANNED_ALWAYS
-
 
 
 def _force_english_cleanup(text: str) -> str:
@@ -473,20 +508,88 @@ _TRAILING_EMOJI = re.compile(
     flags=re.UNICODE,
 )
 
-
-_FAKE_SENT = re.compile(
+# Always strip: claims the photo ALREADY arrived / is waiting (media is attached after text).
+_FAKE_SENT_PAST = re.compile(
     r"(?i)(?:"
     r"\b(?:check your (?:dms|inbox|messages)|go check your (?:dms|inbox)|"
-    r"i (?:just )?sent|i left (?:it|this) in your inbox|"
-    r"already (?:in|sent to) your inbox|tap (?:what|the) (?:i )?(?:left|sent))\b[^.!?\n]*[.!?]?"
+    r"i (?:just |already )?(?:sent|left|dropped|posted|locked) (?:it|this|one|a photo|the photo)|"
+    r"i left (?:it|this) (?:in|for) your (?:inbox|dms)|"
+    r"already (?:in|sent to|waiting in) your (?:inbox|dms)|"
+    r"it(?:'?s| is) (?:already )?(?:in|waiting in) your (?:inbox|dms)|"
+    r"tap (?:what|the) (?:i )?(?:left|sent)|"
+    r"where you know|where you already know)\b[^.!?\n]*[.!?]?"
     r"|"
     r"(?:revisa(?:lo)?(?:\s+tu)?\s*(?:bandeja|inbox|chat|dms)?|"
     r"tu bandeja(?:\s+te)?(?:\s+est[aá])?(?:\s+esperando)?|"
-    r"ya lo dej[eé]|te (?:estoy )?dejando(?:\s+algo)?|"
-    r"lo (?:acabo de |he )?bloque[eé]|recarga(?:\s+tu)?\s*(?:bandeja|chat|app)|"
-    r"la foto se bloque[oó]|est[aá] en tu (?:bandeja|inbox))\b[^.!?\n]*[.!?]?"
+    r"ya lo (?:dej[eé]|envi[eé]|mand[eé]|bloque[eé])|"
+    r"te lo (?:acabo de |he )?(?:enviado|mandado|dejado)|"
+    r"te la (?:acabo de |he )?(?:enviado|mandado|dejado)|"
+    r"lo (?:acabo de |he )?(?:bloqueado|enviado|mandado)|"
+    r"ya (?:est[aá]|lleg[oó]) (?:en|a) tu (?:bandeja|inbox|chat)|"
+    r"est[aá] (?:ya )?en tu (?:bandeja|inbox)|"
+    r"donde t[uú] sabes|donde tu sabes|"
+    r"recarga(?:\s+tu)?\s*(?:bandeja|chat|app)|"
+    r"la foto se bloque[oó]|est[aá] esper[aá]ndote en (?:tu )?(?:bandeja|inbox))\b[^.!?\n]*[.!?]?"
     r")"
 )
+
+# When NO media is attached this turn, also strip "I'm locking/sending now" sales lies.
+_FAKE_SENT_NO_MEDIA = re.compile(
+    r"(?i)(?:"
+    r"\b(?:i(?:'?m| am) (?:locking|sending|dropping|leaving) (?:it|this|one|a photo)|"
+    r"locking (?:it|this|one) (?:for you )?now|"
+    r"just (?:locked|sent) (?:it|this)|"
+    r"unlock (?:it|this) (?:now|baby|babe))\b[^.!?\n]*[.!?]?"
+    r"|"
+    r"(?:te (?:estoy )?(?:bloqueando|enviando|mandando)(?:\s+(?:una|la) foto)?|"
+    r"lo (?:estoy )?bloqueando(?:\s+ahora)?|"
+    r"desbloqu[eé]alo(?:\s+ya)?|"
+    r"[aá]brelo(?:\s+ya)?)\b[^.!?\n]*[.!?]?"
+    r")"
+)
+
+# Back-compat name used by older tests / imports
+_FAKE_SENT = _FAKE_SENT_PAST
+
+
+def _claims_unconfirmed_delivery(text: str) -> bool:
+    t = text or ""
+    return bool(_FAKE_SENT_PAST.search(t) or _FAKE_SENT_NO_MEDIA.search(t))
+
+
+def _enforce_delivery_truth(
+    text: str,
+    *,
+    media_attached: bool,
+    want_spanish: bool,
+) -> str:
+    """
+    Hard gate: strip false delivery claims; if the reply collapses, inject a
+    short apology/flirt so we never double-down on a fake send.
+    """
+    if not text:
+        return text
+    before = text.strip()
+    cleaned = _FAKE_SENT_PAST.sub("", before)
+    if not media_attached:
+        cleaned = _FAKE_SENT_NO_MEDIA.sub("", cleaned)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    # Drop empty / tiny leftover after stripping lies
+    if len(cleaned) >= 12 and not _claims_unconfirmed_delivery(cleaned):
+        return cleaned
+    if media_attached:
+        # With a real attach, prefer keeping non-claim lines
+        return cleaned if len(cleaned) >= 8 else before
+    if want_spanish:
+        return (
+            "Perdona bebé… me adelanté. Aún no te he dejado nada en el chat. "
+            "Quédate aquí un segundo y te caliento bien antes de bloquearte algo de verdad."
+        )
+    return (
+        "Sorry baby… I got ahead of myself. Nothing's in your chat yet. "
+        "Stay right here and I'll actually lock you something when you're ready."
+    )
 
 
 def split_into_messages(
