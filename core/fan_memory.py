@@ -93,6 +93,8 @@ def _blank(fan_handle: str) -> dict:
         "last_mode": None,
         "last_offer_level": 0,
         "sent_media_uuids": [],
+        "free_teases_sent": 0,
+        "last_free_at": None,
         "prefer_spanish": False,
         "nudge_sent_episode": False,
         "last_nudge_at": None,
@@ -286,6 +288,33 @@ def set_last_offer(
             mem["last_ppv_label"] = label or ""
         mem["last_offer_at"] = _now()
         mem["offers_today"] = int(mem.get("offers_today", 0)) + 1
+        _put(fan_uuid, mem)
+
+
+def record_free_tease(
+    fan_uuid: str,
+    media_uuid: str,
+    *,
+    fan_handle: str = "",
+    label: str = "",
+    level: int = 0,
+) -> None:
+    """Record an unlocked L0 tease — tracks UUID so it never repeats in this chat."""
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        sent = list(mem.get("sent_media_uuids") or [])
+        if media_uuid not in sent:
+            sent.append(media_uuid)
+        mem["sent_media_uuids"] = sent[-80:]
+        mem["last_free_at"] = _now()
+        mem["last_free_media_uuid"] = media_uuid
+        mem["last_free_label"] = label or ""
+        mem["free_teases_sent"] = int(mem.get("free_teases_sent") or 0) + 1
+        if level is not None:
+            # Don't overwrite a higher paid last_offer_level with 0
+            if int(mem.get("last_offer_level") or 0) <= 0:
+                mem["last_offer_level"] = int(level)
         _put(fan_uuid, mem)
 
 

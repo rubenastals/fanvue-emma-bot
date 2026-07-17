@@ -85,6 +85,7 @@ class TurnDecision:
     max_bubbles: int
     allow_ppv_talk: bool
     allow_price: bool
+    allow_free_tease: bool = False
 
 
 def _parse_iso(s: Optional[str]) -> Optional[datetime]:
@@ -98,6 +99,32 @@ def _parse_iso(s: Optional[str]) -> Optional[datetime]:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _free_tease_ok(mem: dict, *, msgs: int, now: datetime) -> bool:
+    """
+    Occasional L0 free hook while warming — never spam, never repeat.
+    Soft lingerie 1→2; paid L1+ comes later via soft_sell.
+    """
+    from core import vault_catalog
+
+    if msgs < 5:
+        return False
+    if vault_catalog.l0_remaining(mem) <= 0:
+        return False
+    last_free = _parse_iso(mem.get("last_free_at"))
+    if last_free and now - last_free < timedelta(minutes=25):
+        return False
+    last_ppv = _parse_iso(mem.get("last_ppv_at")) or _parse_iso(mem.get("last_offer_at"))
+    if last_ppv and now - last_ppv < timedelta(minutes=12):
+        return False
+    frees = int(mem.get("free_teases_sent") or 0)
+    # First free after some rapport; second only after more heat
+    if frees <= 0:
+        return msgs >= 5
+    if frees == 1:
+        return msgs >= 9
+    return False
 
 
 def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
@@ -162,6 +189,7 @@ def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
             max_bubbles=2,
             allow_ppv_talk=False,
             allow_price=False,
+            allow_free_tease=False,
         )
 
     # Hard stop: never stack two locked PPVs within 12 min unless he asks for another
@@ -173,6 +201,7 @@ def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
             max_bubbles=2,
             allow_ppv_talk=True,
             allow_price=False,
+            allow_free_tease=False,
         )
 
     # He says nothing arrived / asks where it is → send a REAL locked photo now
@@ -205,6 +234,7 @@ def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
             max_bubbles=2,
             allow_ppv_talk=True,
             allow_price=False,
+            allow_free_tease=False,
         )
 
     if re.search(_REJECT, low):
@@ -234,6 +264,7 @@ def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
                 max_bubbles=2,
                 allow_ppv_talk=True,
                 allow_price=False,
+                allow_free_tease=False,
             )
         return TurnDecision(
             mode=MODE_RAPPORT,
@@ -263,6 +294,7 @@ def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
             max_bubbles=2,
             allow_ppv_talk=True,
             allow_price=False,
+            allow_free_tease=_free_tease_ok(mem, msgs=msgs, now=now),
         )
 
     if buying and (status in ("spender", "whale") or spent > 0):
@@ -281,6 +313,18 @@ def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
             max_bubbles=2,
             allow_ppv_talk=True,
             allow_price=True,
+        )
+
+    # Free L0 hooks BEFORE soft-close — warm with lingerie 1→2, then sell L1+
+    free_ok = _free_tease_ok(mem, msgs=msgs, now=now)
+    if free_ok and (horny or heated or msgs >= 5):
+        return TurnDecision(
+            mode=MODE_TEASE,
+            reason="warming — free L0 tease before paid ladder",
+            max_bubbles=2,
+            allow_ppv_talk=True,
+            allow_price=False,
+            allow_free_tease=True,
         )
 
     # Soft close after heat — don't stall in endless flirt
@@ -310,6 +354,7 @@ def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
             max_bubbles=2,
             allow_ppv_talk=True,
             allow_price=False,
+            allow_free_tease=False,
         )
 
     return TurnDecision(
@@ -341,7 +386,8 @@ def author_note_for(decision: TurnDecision, *, want_spanish: bool = False) -> st
         "Do NOT always send two similar-length lines. "
         "EMOJIS: 0–1 usually; skip ending emojis often; never stamp 2–3 at the end of every line. "
         "Don't repeat your previous openings. React to his LAST message. "
-        "Never promise vague bonus perks (extra attention, protection, free content). "
+        "Never promise vague bonus perks (extra attention, protection). "
+        "Only gift a free photo when the system attaches a real L0 tease this turn. "
         f"{lang} "
         "ADDRESSING: usually a light pet name (babe/baby/handsome/trouble) or none. "
         "His real name at most once every few turns — never every message. "
@@ -360,9 +406,10 @@ def author_note_for(decision: TurnDecision, *, want_spanish: bool = False) -> st
         ),
         MODE_TEASE: (
             "MODE=tease: Build heat and curiosity. Stay in his fantasy. "
-            "Hint you have something naughty for him, but do NOT drop a price or lock yet. "
-            "CRITICAL: do NOT say you already sent / left / locked anything in his inbox — "
-            "no real photo is attached this turn. No 'revisa tu bandeja / check your DMs'."
+            "If a FREE L0 tease is attached this turn, gift that soft lingerie taste — "
+            "do NOT say it is locked or ask him to unlock. "
+            "If NO media is attached: hint you have something naughty, but do NOT drop a price "
+            "or claim you already sent / left anything in his inbox."
         ),
         MODE_SOFT_SELL: (
             "MODE=soft_sell: Keep the chemistry — then naturally lock ONE real photo. "

@@ -218,7 +218,7 @@ def generate_emma_reply(
             {
                 "role": "system",
                 "content": (
-                    "No locked photo is being sent this turn. Flirt only. "
+                    "No photo is being sent this turn. Flirt only. "
                     "FORBIDDEN: claiming you sent/left/locked a photo, "
                     "'check your inbox/DMs', 'revisa tu bandeja', "
                     "'ya lo dejé', 'recarga el chat', or inventing a technical glitch. "
@@ -252,10 +252,17 @@ def generate_emma_reply(
 
     note = author_note_for(decision, want_spanish=want_spanish)
     if offer:
-        note += (
-            f" You are locking ONE real photo now ({offer.get('label')}, "
-            f"${offer.get('price'):.0f}). Tease it — do not say it was already sent."
-        )
+        is_free = float(offer.get("price") or 0) <= 0 or int(offer.get("level") or 0) == 0
+        if is_free:
+            note += (
+                f" You are GIFTING one FREE soft tease photo now ({offer.get('label')}). "
+                "It arrives unlocked — do not ask him to unlock or pay for THIS one."
+            )
+        else:
+            note += (
+                f" You are locking ONE real photo now ({offer.get('label')}, "
+                f"${offer.get('price'):.0f}). Tease it — do not say it was already sent."
+            )
     turns_out = [dict(t) for t in turns]
     for i in range(len(turns_out) - 1, -1, -1):
         if turns_out[i]["role"] == "user":

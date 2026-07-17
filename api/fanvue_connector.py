@@ -80,6 +80,23 @@ class FanvueConnector:
         )
 
     @_retry_policy
+    def send_media_message(
+        self,
+        fan_uuid: str,
+        media_uuids: list,
+        text: str = None,
+    ) -> dict:
+        """Send unlocked (free) vault media — omit price so Fanvue does not lock it."""
+        payload: dict = {"mediaUuids": list(media_uuids)}
+        if text:
+            payload["text"] = text
+        return self._request(
+            "POST",
+            f"/chats/{fan_uuid}/message",
+            json=payload,
+        )
+
+    @_retry_policy
     def send_ppv_message(
         self,
         fan_uuid: str,

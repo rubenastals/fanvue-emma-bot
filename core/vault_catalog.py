@@ -4,24 +4,17 @@ Vault sell catalog — only real Fanvue media from our uploaded map.
 Default source: exports/vault_rank_*/fanvue_media_map.json
 Override with FANVUE_MEDIA_MAP=/path/to/fanvue_media_map.json
 
-Pricing ladder (anchor high):
-  First pitch → mid/high explicitness + higher price (not lingerie bait).
-  After reject → step down one rung.
-  After buy → climb.
+Ladder:
+  L0 = free tease hooks (soft lingerie warm-up) — never paid, never repeat in-chat.
+  L1+ = locked PPV. First paid pitch still anchors mid/high (not L0/L1 bait).
 """
 from __future__ import annotations
 
-import json
-import os
 import random
 import re
-from glob import glob
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from db import vault_store
-
-_ROOT = Path(__file__).resolve().parent.parent
 
 # First locked offer of a session aims here (then negotiate)
 _ANCHOR_LEVELS = (4, 5, 3, 6)  # prefer open-nude / fingers, then soft nude, then hardcore
@@ -36,6 +29,15 @@ def _already_sent(mem: dict) -> set:
     return set(sent)
 
 
+def _paid_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """L1+ only — L0 is free-hook inventory, never locked."""
+    return [i for i in items if int(i.get("level") or 0) >= 1]
+
+
+def _l0_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [i for i in items if int(i.get("level") or 0) == 0]
+
+
 def _pick_highest_price(pool: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Among pool, prefer higher price, then higher score (anchor high)."""
     if not pool:
@@ -45,9 +47,38 @@ def _pick_highest_price(pool: List[Dict[str, Any]]) -> Dict[str, Any]:
         key=lambda i: (float(i["price"]), int(i["score"]), int(i["level"])),
         reverse=True,
     )
-    # small randomness among top 3 so it isn't identical every time
     top = ranked[: min(3, len(ranked))]
     return random.choice(top)
+
+
+def _pick_softest_l0(pool: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """L0 ladder: less explicit first (lower score, then filename)."""
+    ranked = sorted(
+        pool,
+        key=lambda i: (int(i.get("score") or 0), str(i.get("file") or "")),
+    )
+    return ranked[0]
+
+
+def select_free_tease(mem: dict) -> Optional[Dict[str, Any]]:
+    """
+    Next unused L0 photo for this conversation (soft → hotter within L0).
+    Never repeats a media_uuid already in sent_media_uuids.
+    """
+    items = _l0_items(load_items())
+    if not items:
+        return None
+    sent = _already_sent(mem)
+    available = [i for i in items if i["media_uuid"] not in sent]
+    if not available:
+        return None
+    return _pick_softest_l0(available)
+
+
+def l0_remaining(mem: dict) -> int:
+    items = _l0_items(load_items())
+    sent = _already_sent(mem)
+    return sum(1 for i in items if i["media_uuid"] not in sent)
 
 
 def select_offer(
@@ -57,24 +88,24 @@ def select_offer(
     max_level: Optional[int] = None,
 ) -> Optional[Dict[str, Any]]:
     """
-    Pick next photo from OUR catalog only.
-
-    Ladder: ANCHOR HIGH on the first pitch (L3–L5 / pricey), then climb after
-    purchases or step down after rejects. Never repeat the same media_uuid.
+    Pick next PAID photo (L1+). Never picks L0. Never repeats media_uuid.
     """
-    items = load_items()
+    items = _paid_items(load_items())
     if not items:
         return None
 
     sent = _already_sent(mem)
     available = [i for i in items if i["media_uuid"] not in sent]
     if not available:
-        # catalog exhausted — reuse highest-priced unsent-by-level first
-        available = sorted(items, key=lambda i: i["price"], reverse=True)
+        # Exhausted paid catalog — do NOT silently re-send; caller skips.
+        return None
 
     purchases = int(mem.get("purchases") or 0)
     spent = float(mem.get("total_spent") or 0)
     last_level = int(mem.get("last_offer_level") or 0)
+    # Ignore L0 when reading last_level for paid ladder
+    if last_level <= 0:
+        last_level = 0
     offers_today = int(mem.get("offers_today") or 0)
     rejected_recently = bool(mem.get("last_reject_at"))
 
@@ -87,18 +118,14 @@ def select_offer(
         )
     )
 
-    # Target level band
     if max_level is None:
         if purchases == 0 and spent <= 0 and offers_today == 0 and last_level == 0:
-            # FIRST pitch ever: aim mid-high (not L1 lingerie bait)
             max_level = 5
             min_level = 3
         elif rejected_recently and purchases == 0:
-            # He pushed back — step down one rung from last, floor L2
-            min_level = 2
-            max_level = max(2, last_level - 1) if last_level else 3
+            min_level = 1
+            max_level = max(1, last_level - 1) if last_level else 2
         elif purchases == 0 and spent <= 0:
-            # Still free — stay mid, can climb one if he asks dirtier
             min_level = 3 if wants_more_explicit else 2
             max_level = 5 if wants_more_explicit else 4
             if last_level:
@@ -122,29 +149,42 @@ def select_offer(
         if min_level <= i["level"] <= max_level
     ]
     if not pool:
-        # widen: anything at or above min_level
         pool = [i for i in available if i["level"] >= min_level]
     if not pool:
         pool = list(available)
 
-    # First pitch: prefer anchor levels in order
     if purchases == 0 and offers_today == 0 and last_level == 0:
         for lvl in _ANCHOR_LEVELS:
             band = [i for i in pool if i["level"] == lvl]
             if band:
                 return _pick_highest_price(band)
 
-    # Prefer climbing above last offer when he is engaged
     if last_level and purchases > 0:
         climb = [i for i in pool if i["level"] >= last_level]
         if climb:
             return _pick_highest_price(climb)
 
-    # Default: highest price in the allowed band (never bias to cheapest)
     return _pick_highest_price(pool)
 
 
+def free_tease_prompt_block(offer: Dict[str, Any]) -> str:
+    return (
+        "FREE TEASE PHOTO THIS TURN (unlocked gift — NOT pay-to-view):\n"
+        f"- Label: {offer['label']}\n"
+        f"- Level: L0 warm-up tease\n"
+        "- The system will attach this photo UNLOCKED after your text.\n"
+        "RULES:\n"
+        "- Tease THIS soft lingerie shot only — a free taste to heat him up.\n"
+        "- Do NOT invent videos or other shots. Do NOT say it is locked / needs unlock.\n"
+        "- Do NOT say you already sent it before the system attaches it.\n"
+        "- After he reacts, you can escalate toward a locked premium photo later — not this turn.\n"
+        "- Never re-send the same free tease in this chat (system tracks it)."
+    )
+
+
 def offer_prompt_block(offer: Dict[str, Any]) -> str:
+    if float(offer.get("price") or 0) <= 0 or int(offer.get("level") or 0) == 0:
+        return free_tease_prompt_block(offer)
     price = offer["price"]
     return (
         "REAL CATALOG OFFER THIS TURN (you MUST sell ONLY this — nothing invented):\n"
@@ -171,15 +211,19 @@ def catalog_summary_block(max_items: int = 12) -> str:
         by_lvl[i["level"]] = by_lvl.get(i["level"], 0) + 1
     lines = [
         "YOUR REAL VAULT (photos only — sell ONLY from this):",
+        "L0 = soft free teases (rare warm-up hooks). L1+ = locked PPV.",
         "SALES LADDER: first locked pitch = mid/high (L3–L5, pricey). "
-        "Do NOT open with the cheapest lingerie. Anchor high, then negotiate down if he resists.",
+        "Do NOT open paid pitches with the cheapest lingerie. Anchor high, then negotiate down if he resists.",
     ]
     for lvl in sorted(by_lvl):
-        lines.append(f"- L{lvl}: {by_lvl[lvl]} photos")
-    samples = sorted(items, key=lambda i: i["price"], reverse=True)[:max_items]
-    lines.append(
-        "Pricier examples: "
-        + "; ".join(f"L{i['level']} ${i['price']:.0f} {i['label']}" for i in samples[:8])
-    )
-    lines.append("Never invent videos or content not in this vault.")
+        tag = " (FREE tease)" if lvl == 0 else ""
+        lines.append(f"- L{lvl}{tag}: {by_lvl[lvl]} photos")
+    paid = _paid_items(items)
+    samples = sorted(paid, key=lambda i: i["price"], reverse=True)[:max_items]
+    if samples:
+        lines.append(
+            "Pricier examples: "
+            + "; ".join(f"L{i['level']} ${i['price']:.0f} {i['label']}" for i in samples[:8])
+        )
+    lines.append("Never invent videos or content not in this vault. Never re-send the same media_uuid in one chat.")
     return "\n".join(lines)

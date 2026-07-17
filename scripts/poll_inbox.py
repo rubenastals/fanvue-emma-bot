@@ -319,6 +319,14 @@ def _handle_fan_chat_body(
                     )
                 else:
                     print("   ppv: no catalog item available")
+        elif getattr(decision, "allow_free_tease", False):
+            offer = vault_catalog.select_free_tease(mem)
+            if offer:
+                print(
+                    f"   free L0: {offer['label'][:50]} ({offer['media_uuid'][:8]}…)"
+                )
+            else:
+                print("   free L0: none left for this chat")
 
         reply, decision = generate_emma_reply(
             text,
@@ -397,27 +405,49 @@ def _handle_fan_chat_body(
                     except Exception:
                         pass
                 else:
-                    price = max(3.0, float(offer["price"]))
+                    is_free = (
+                        float(offer.get("price") or 0) <= 0
+                        or int(offer.get("level") or 0) == 0
+                    )
                     try:
-                        fv.send_ppv_message(
-                            fan_uuid,
-                            media_uuids=[offer["media_uuid"]],
-                            price_dollars=price,
-                            text=None,
-                        )
-                        fan_memory.set_last_offer(
-                            fan_uuid,
-                            price,
-                            fan_handle=fan_handle,
-                            level=int(offer["level"]),
-                            media_uuid=offer["media_uuid"],
-                            label=offer.get("label") or "",
-                        )
-                        print(
-                            f"   🔒 PPV sent L{offer['level']} ${price:.0f} — {offer['label']}"
-                        )
+                        if is_free:
+                            fv.send_media_message(
+                                fan_uuid,
+                                media_uuids=[offer["media_uuid"]],
+                                text=None,
+                            )
+                            fan_memory.record_free_tease(
+                                fan_uuid,
+                                offer["media_uuid"],
+                                fan_handle=fan_handle,
+                                label=offer.get("label") or "",
+                                level=int(offer.get("level") or 0),
+                            )
+                            print(
+                                f"   🎁 FREE L0 sent — {offer['label']}"
+                            )
+                        else:
+                            price = max(3.0, float(offer["price"]))
+                            fv.send_ppv_message(
+                                fan_uuid,
+                                media_uuids=[offer["media_uuid"]],
+                                price_dollars=price,
+                                text=None,
+                            )
+                            fan_memory.set_last_offer(
+                                fan_uuid,
+                                price,
+                                fan_handle=fan_handle,
+                                level=int(offer["level"]),
+                                media_uuid=offer["media_uuid"],
+                                label=offer.get("label") or "",
+                            )
+                            print(
+                                f"   🔒 PPV sent L{offer['level']} ${price:.0f} — {offer['label']}"
+                            )
                     except Exception as e:
-                        print(f"   ❌ PPV send failed: {type(e).__name__}: {e}")
+                        kind = "FREE" if is_free else "PPV"
+                        print(f"   ❌ {kind} send failed: {type(e).__name__}: {e}")
                     try:
                         fv.send_typing_indicator(fan_uuid, False)
                     except Exception:

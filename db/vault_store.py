@@ -40,13 +40,18 @@ def _items_from_file() -> List[Dict[str, Any]]:
         uid = it.get("fanvue_media_uuid")
         if not uid:
             continue
+        level_raw = it.get("level")
+        score_raw = it.get("score")
+        price_raw = it.get("price_eur_suggested")
+        if price_raw is None:
+            price_raw = it.get("price")
         items.append(
             {
                 "file": it.get("file"),
                 "media_uuid": uid,
-                "level": int(it.get("level") or 1),
-                "score": int(it.get("score") or 1),
-                "price": float(it.get("price_eur_suggested") or 4),
+                "level": int(level_raw) if level_raw is not None else 1,
+                "score": int(score_raw) if score_raw is not None else 1,
+                "price": float(price_raw) if price_raw is not None else 4.0,
                 "folder": it.get("fanvue_folder"),
                 "label": it.get("vault_label") or it.get("file") or "photo",
             }
@@ -75,9 +80,9 @@ def load_items(aid: Optional[str] = None) -> List[Dict[str, Any]]:
                 {
                     "file": r["file_name"],
                     "media_uuid": r["media_uuid"],
-                    "level": int(r["level"] or 1),
-                    "score": int(r["score"] or 1),
-                    "price": float(r["price"] or 4),
+                    "level": int(r["level"]) if r["level"] is not None else 1,
+                    "score": int(r["score"]) if r["score"] is not None else 1,
+                    "price": float(r["price"]) if r["price"] is not None else 4.0,
                     "folder": r["folder"],
                     "label": r["label"] or r["file_name"] or "photo",
                 }
@@ -122,9 +127,17 @@ def replace_items(
                     "aid": aid,
                     "uid": uid,
                     "file": it.get("file") or it.get("file_name"),
-                    "level": int(it.get("level") or 1),
-                    "score": int(it.get("score") or 1),
-                    "price": float(it.get("price") or it.get("price_eur_suggested") or 4),
+                    "level": int(it["level"]) if it.get("level") is not None else 1,
+                    "score": int(it["score"]) if it.get("score") is not None else 1,
+                    "price": float(
+                        it["price"]
+                        if it.get("price") is not None
+                        else (
+                            it["price_eur_suggested"]
+                            if it.get("price_eur_suggested") is not None
+                            else 4
+                        )
+                    ),
                     "folder": it.get("folder") or it.get("fanvue_folder"),
                     "label": it.get("label") or it.get("vault_label") or "photo",
                     "ver": catalog_version,
