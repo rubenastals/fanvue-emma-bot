@@ -403,7 +403,8 @@ def _name_budget_note(name: str, turns: List[Dict[str, str]]) -> str:
     if len(name) < 2:
         return (
             "ADDRESSING: use a light pet name (babe/baby/handsome/trouble) or none. "
-            "Do not invent a first name."
+            "HARD BAN: do NOT invent a first name (no Carlos, Jamie, Alex, etc.). "
+            "If you don't know his name from CLIENT CARD, ask once or use a pet name."
         )
     recent_emma = [
         t.get("content") or ""
@@ -415,12 +416,14 @@ def _name_budget_note(name: str, turns: List[Dict[str, str]]) -> str:
         return (
             f"NAME BUDGET: You already used \"{name}\" in a recent reply. "
             f"This turn do NOT say his name. Use a light pet name "
-            f"(babe/baby/handsome/love/trouble) or no address at all."
+            f"(babe/baby/handsome/love/trouble) or no address at all. "
+            f"Never swap in a different first name."
         )
     return (
-        f"NAME BUDGET: His name is {name}. Prefer a pet name or none this turn. "
+        f"NAME BUDGET: His name is {name} (confirmed). Prefer a pet name or none this turn. "
         f"You may say \"{name}\" at most once, and only if it feels natural "
-        f"(greeting / apology / big moment) — not every message."
+        f"(greeting / apology / big moment) — not every message. "
+        f"Never call him any other first name."
     )
 
 

@@ -34,6 +34,8 @@ Return ONLY valid JSON:
 
 Rules:
 - Empty string / empty list when unknown.
+- profile.name: ONLY from fan saying "me llamo X" / "my name is X" / "call me X".
+  NEVER from Emma guessing. If fan says "no soy X" / "me llamaste X", put X in avoid and clear name.
 - profile fields: only if fan stated them.
 - facts: lasting personal details (divorce, plays football, lives in X, bought Y for her, etc.).
 - avoid: corrections like "his name is not Jamie", "he did not send a car gift".

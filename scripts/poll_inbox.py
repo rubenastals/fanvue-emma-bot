@@ -347,8 +347,77 @@ def _handle_fan_chat_body(
 
         barged = False
         bubbles_sent = 0
+        free_sent = False
+        is_free_offer = bool(
+            offer
+            and (
+                float(offer.get("price") or 0) <= 0
+                or int(offer.get("level") or 0) == 0
+            )
+        )
+
+        # FREE L0: attach image WITH the first bubble so barge-in can't skip the gift
+        # after Emma already teased it in text.
+        if is_free_offer and bubbles and not barged:
+            media_text = (bubbles[0] or "").strip() or "😏"
+            rest_bubbles = bubbles[1:]
+            delay = random.uniform(4.0, 8.0)
+            try:
+                fv.send_typing_indicator(fan_uuid, True)
+            except Exception:
+                pass
+            interrupted = _sleep_interruptible(
+                fv, fan_uuid, processed, delay, known_ids=pending_ids
+            )
+            try:
+                fv.send_media_message(
+                    fan_uuid,
+                    media_uuids=[offer["media_uuid"]],
+                    text=media_text[:500],
+                    fallback_uuids=[offer.get("media_uuid_previous")]
+                    if offer.get("media_uuid_previous")
+                    else None,
+                )
+                fan_memory.record_free_tease(
+                    fan_uuid,
+                    offer["media_uuid"],
+                    fan_handle=fan_handle,
+                    label=offer.get("label") or "",
+                    level=int(offer.get("level") or 0),
+                )
+                free_sent = True
+                bubbles_sent += 1
+                print(
+                    f"   🎁 FREE L0 attached with bubble — {offer['label']}"
+                )
+                print(f"   ✅ [1/{len(bubbles)}] (+{delay:.1f}s) {media_text[:60]}")
+            except Exception as e:
+                print(f"   ❌ FREE send failed: {type(e).__name__}: {e}")
+                try:
+                    want_es = bool(mem.get("prefer_spanish"))
+                    apology = (
+                        "Uy… se me trabó el chat un segundo. Dame un momento y te la dejo bien 🥺"
+                        if want_es
+                        else "Ugh… chat glitched for a sec. Give me a moment and I'll drop it properly 🥺"
+                    )
+                    fv.send_message(fan_uuid, apology)
+                except Exception:
+                    pass
+                # Don't send tease bubbles that promised a photo that never attached
+                rest_bubbles = []
+            try:
+                fv.send_typing_indicator(fan_uuid, False)
+            except Exception:
+                pass
+            if interrupted:
+                print("   ⏭ barge-in after free gift — stopping remaining bubbles")
+                barged = True
+                rest_bubbles = []
+            bubbles = rest_bubbles
+            offer = None  # already handled (or failed) — skip paid/free path below
+
         for i, bubble in enumerate(bubbles):
-            if i == 0:
+            if i == 0 and not free_sent:
                 delay = random.uniform(5.0, 11.0)
                 if random.random() < 0.25:
                     delay += random.uniform(2.0, 5.0)
@@ -369,7 +438,7 @@ def _handle_fan_chat_body(
                 fv.send_typing_indicator(fan_uuid, False)
             except Exception:
                 pass
-            print(f"   ✅ [{i+1}/{len(bubbles)}] (+{delay:.1f}s) {bubble[:60]}")
+            print(f"   ✅ [{bubbles_sent}] (+{delay:.1f}s) {bubble[:60]}")
             if interrupted:
                 print("   ⏭ barge-in: fan wrote mid-reply — stopping remaining bubbles")
                 barged = True

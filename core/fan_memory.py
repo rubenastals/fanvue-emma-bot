@@ -155,6 +155,20 @@ def apply_card_update(
         if fan_handle:
             mem["handle"] = fan_handle
 
+        # Apply avoid / wrong-name clears BEFORE writing a new name
+        avoid = list(mem.get("avoid") or [])
+        for a in update.get("avoid") or []:
+            if isinstance(a, str):
+                avoid.append(a)
+                m = re.search(
+                    r"(?i)(?:name is not|not named|no (?:se )?llama|no es)\s+"
+                    r"([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]{2,16})",
+                    a,
+                )
+                if m:
+                    _clear_wrong_name(mem, m.group(1))
+        mem["avoid"] = _dedupe_keep_order(avoid, limit=_MAX_AVOID)
+
         profile = update.get("profile") if isinstance(update.get("profile"), dict) else {}
         for k, v in profile.items():
             if v is None:
@@ -165,24 +179,16 @@ def apply_card_update(
             key = re.sub(r"[^a-z0-9_]", "", str(k).lower())[:32]
             if not key:
                 continue
+            if key == "name":
+                _set_confirmed_name(mem, s)
+                continue
             mem["profile"][key] = s[:80]
-            if key == "name" and len(s) >= 2:
-                mem["name"] = s.strip()[:16]
-                if mem["name"]:
-                    mem["name"] = mem["name"][:1].upper() + mem["name"][1:]
-                mem["name_confirmed"] = True
 
         facts = list(mem.get("facts") or [])
         for f in update.get("facts") or []:
             if isinstance(f, str):
                 facts.append(f)
         mem["facts"] = _dedupe_keep_order(facts, limit=_MAX_FACTS)
-
-        avoid = list(mem.get("avoid") or [])
-        for a in update.get("avoid") or []:
-            if isinstance(a, str):
-                avoid.append(a)
-        mem["avoid"] = _dedupe_keep_order(avoid, limit=_MAX_AVOID)
 
         summary = (update.get("summary") or "").strip()
         if summary:
@@ -192,15 +198,65 @@ def apply_card_update(
         return mem
 
 
-_NAME_PATTERNS = (
-    r"\b(?:my name is|i'?m|i am|me llamo|soy)\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]{2,16})\b",
-    r"\bcall me\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]{2,16})\b",
+# Positive name statements only — NEVER bare "soy/i'm" (catches "soy un…", "no soy X").
+_NAME_POSITIVE = re.compile(
+    r"(?i)\b(?:"
+    r"me\s+llamo|mi\s+nombre\s+es|my\s+name\s+is|call\s+me|"
+    r"ll[aá]mame|puedes\s+llamarme|ll[aá]mamelo"
+    r")\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]{2,16})\b"
 )
+# Negations / corrections — clear wrong name, never store it as his.
+_NAME_NEGATE = re.compile(
+    r"(?i)\b(?:"
+    r"no\s+soy|no\s+me\s+llamo|no\s+es\s+mi\s+nombre|"
+    r"my\s+name\s+is\s+not|i'?m\s+not(?:\s+called)?|"
+    r"me\s+llamaste|me\s+dijiste|no\s+me\s+digas"
+    r")\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]{2,16})\b"
+)
+_NAME_BLOCKLIST = frozenset(
+    {
+        "here", "just", "the", "not", "horny", "hard", "ready", "back",
+        "good", "fine", "okay", "free", "down", "un", "una", "unos", "unas",
+        "de", "del", "el", "la", "lo", "los", "las", "muy", "tan", "muy",
+        "from", "your", "really", "still", "also", "only", "with",
+    }
+)
+
+
+def _normalize_name(raw: str) -> str:
+    s = (raw or "").strip()
+    if len(s) < 2 or len(s) > 16:
+        return ""
+    if s.lower() in _NAME_BLOCKLIST:
+        return ""
+    return s[:1].upper() + s[1:].lower()
+
+
+def _clear_wrong_name(mem: dict, wrong: str) -> None:
+    wrong_n = _normalize_name(wrong)
+    if not wrong_n:
+        return
+    cur = (mem.get("name") or "").strip()
+    if cur.lower() == wrong_n.lower():
+        mem["name"] = ""
+        mem["name_confirmed"] = False
+        if isinstance(mem.get("profile"), dict):
+            mem["profile"].pop("name", None)
+
+
+def _set_confirmed_name(mem: dict, name: str) -> None:
+    name = _normalize_name(name)
+    if not name:
+        return
+    mem["name"] = name
+    mem["name_confirmed"] = True
+    mem["profile"]["name"] = name
 
 
 def observe_message(fan_uuid: str, fan_handle: str, text: str) -> dict:
     """Update memory from an incoming fan message (cheap heuristics)."""
     low = (text or "").lower()
+    raw_text = text or ""
     with _LOCK:
         mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
         _ensure_card_fields(mem)
@@ -212,18 +268,19 @@ def observe_message(fan_uuid: str, fan_handle: str, text: str) -> dict:
         mem["last_seen"] = _now()
         mem["nudge_sent_episode"] = False
 
-        for pat in _NAME_PATTERNS:
-            m = re.search(pat, text or "", flags=re.IGNORECASE)
-            if m:
-                raw = m.group(1).strip()
-                if raw.lower() not in {
-                    "here", "just", "the", "not", "horny", "hard", "ready", "back",
-                    "good", "fine", "okay", "free", "down",
-                }:
-                    mem["name"] = raw[:1].upper() + raw[1:].lower()
-                    mem["name_confirmed"] = True
-                    mem["profile"]["name"] = mem["name"]
-                break
+        # Corrections first — "no soy Carlos" / "me llamaste Carlos" must NEVER save Carlos
+        for m in _NAME_NEGATE.finditer(raw_text):
+            wrong = _normalize_name(m.group(1))
+            if wrong:
+                _clear_wrong_name(mem, wrong)
+                avoid = list(mem.get("avoid") or [])
+                avoid.append(f"his name is not {wrong}")
+                mem["avoid"] = _dedupe_keep_order(avoid, limit=_MAX_AVOID)
+
+        # Positive name wins (last match if several)
+        positives = list(_NAME_POSITIVE.finditer(raw_text))
+        if positives:
+            _set_confirmed_name(mem, positives[-1].group(1))
 
         interests = set(mem.get("interests", []))
         for label, kws in _INTEREST_KEYWORDS.items():

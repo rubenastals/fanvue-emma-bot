@@ -53,6 +53,7 @@ def _items_from_file() -> List[Dict[str, Any]]:
             {
                 "file": it.get("file"),
                 "media_uuid": uid,
+                "media_uuid_previous": it.get("fanvue_media_uuid_previous") or None,
                 "level": int(level_raw) if level_raw is not None else 1,
                 "score": int(score_raw) if score_raw is not None else 1,
                 "price": float(price_raw) if price_raw is not None else 4.0,

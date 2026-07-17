@@ -38,6 +38,15 @@ _FAN_SENT_MEDIA = (
     r"pas(é|e) una foto|envi(é|e) una foto|"
     r"\[fan sent a (photo|image|video)\])"
 )
+# Explicit ask for a FREE photo (typos included) — bypass paid-offer cooloff
+_ASK_FREE = (
+    r"\b("
+    r"gratis|grastis|gratiz|free\s*(?:photo|pic|pics|foto)?|"
+    r"foto\s*(?:gratis|grastis|gratiz)|"
+    r"(?:una\s+)?(?:foto|pic|photo)\s*(?:gratis|grastis|free)|"
+    r"regalo|gift\s*(?:me|a)?\s*(?:photo|pic|foto)?"
+    r")\b"
+)
 # Explicit ask for ANOTHER locked item (overrides PPV cooloff)
 _WANT_ANOTHER = (
     r"\b(otra|another|one more|una m[aá]s|m[aá]s foto|siguiente|"
@@ -101,24 +110,41 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _free_tease_ok(mem: dict, *, msgs: int, now: datetime) -> bool:
+def _free_tease_ok(
+    mem: dict,
+    *,
+    msgs: int,
+    now: datetime,
+    force_ask: bool = False,
+) -> bool:
     """
     Occasional L0 free hook while warming — never spam, never repeat.
     Soft lingerie 1→2; paid L1+ comes later via soft_sell.
+    force_ask: fan explicitly asked for free — ignore paid-offer cooloffs.
     """
     from core import vault_catalog
 
-    if msgs < 5:
-        return False
     if vault_catalog.l0_remaining(mem) <= 0:
         return False
+    frees = int(mem.get("free_teases_sent") or 0)
+    if frees >= 2:
+        return False
+
     last_free = _parse_iso(mem.get("last_free_at"))
     if last_free and now - last_free < timedelta(minutes=25):
         return False
-    last_ppv = _parse_iso(mem.get("last_ppv_at")) or _parse_iso(mem.get("last_offer_at"))
+
+    if force_ask:
+        # Explicit "foto gratis" — still need a little rapport, but don't block
+        # just because we pitched a paid lock recently.
+        return msgs >= 3
+
+    if msgs < 5:
+        return False
+    # Only cool off free after an actual locked send — not after a text pitch alone
+    last_ppv = _parse_iso(mem.get("last_ppv_at"))
     if last_ppv and now - last_ppv < timedelta(minutes=12):
         return False
-    frees = int(mem.get("free_teases_sent") or 0)
     # First free after some rapport; second only after more heat
     if frees <= 0:
         return msgs >= 5
@@ -177,9 +203,25 @@ def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
         offers_today = 0
 
     fan_sent_media = bool(re.search(_FAN_SENT_MEDIA, low))
-    buying = bool(re.search(_BUYING, low) or re.search(_ACCEPT, low)) and not fan_sent_media
+    ask_free = bool(re.search(_ASK_FREE, low)) and not fan_sent_media
+    buying = (
+        bool(re.search(_BUYING, low) or re.search(_ACCEPT, low))
+        and not fan_sent_media
+        and not ask_free
+    )
     missing = bool(re.search(_MISSING_DELIVERY, low)) and not fan_sent_media
     want_another = bool(re.search(_WANT_ANOTHER, low))
+
+    # Explicit free ask — gift L0 even during paid-offer cooloff
+    if ask_free and _free_tease_ok(mem, msgs=msgs, now=now, force_ask=True):
+        return TurnDecision(
+            mode=MODE_TEASE,
+            reason="fan asked for free photo — gift L0",
+            max_bubbles=2,
+            allow_ppv_talk=False,
+            allow_price=False,
+            allow_free_tease=True,
+        )
 
     # He sent US a photo — react like a person, never auto-pitch PPV
     if fan_sent_media and not want_another:
@@ -195,13 +237,14 @@ def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
     # Hard stop: never stack two locked PPVs within 12 min unless he asks for another
     last_ppv_at = _parse_iso(mem.get("last_ppv_at")) or _parse_iso(mem.get("last_offer_at"))
     if last_ppv_at and now - last_ppv_at < timedelta(minutes=12) and not want_another:
+        free_ok = _free_tease_ok(mem, msgs=msgs, now=now)
         return TurnDecision(
             mode=MODE_TEASE,
             reason="PPV cooloff — no second lock yet",
             max_bubbles=2,
             allow_ppv_talk=True,
             allow_price=False,
-            allow_free_tease=False,
+            allow_free_tease=free_ok,
         )
 
     # He says nothing arrived / asks where it is → send a REAL locked photo now
@@ -228,13 +271,15 @@ def decide_turn(mem: dict, fan_message: str) -> TurnDecision:
                 allow_ppv_talk=True,
                 allow_price=True,
             )
+        # Flirt only — but FREE L0 can still land (not a paid re-pitch)
+        free_ok = _free_tease_ok(mem, msgs=msgs, now=now)
         return TurnDecision(
             mode=MODE_TEASE,
             reason="offered recently — flirt, don't re-pitch yet",
             max_bubbles=2,
             allow_ppv_talk=True,
             allow_price=False,
-            allow_free_tease=False,
+            allow_free_tease=free_ok,
         )
 
     if re.search(_REJECT, low):

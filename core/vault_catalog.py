@@ -172,7 +172,7 @@ def free_tease_prompt_block(offer: Dict[str, Any]) -> str:
         "FREE TEASE PHOTO THIS TURN (unlocked gift — NOT pay-to-view):\n"
         f"- Shot vibe (INTERNAL ONLY — never paste this as chat text): {offer['label']}\n"
         "- Level: L0 warm-up tease\n"
-        "- The SYSTEM will attach the real IMAGE file after your text. You do not send pixels.\n"
+        "- The SYSTEM will attach the real IMAGE with your FIRST chat bubble.\n"
         "RULES:\n"
         "- Write 1 short flirty line only (optional second tiny line). Warm tease — not a caption.\n"
         "- FORBIDDEN: narrating the photo shot-by-shot, pose/lingerie paragraphs, camera directions,\n"

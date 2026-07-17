@@ -85,6 +85,8 @@ class FanvueConnector:
         fan_uuid: str,
         media_uuids: list,
         text: str = None,
+        *,
+        fallback_uuids: list = None,
     ) -> dict:
         """
         Send unlocked (free) vault media — omit price so Fanvue does not lock it.
@@ -94,15 +96,31 @@ class FanvueConnector:
         uuids = [u for u in (media_uuids or []) if u]
         if not uuids:
             raise ValueError("send_media_message requires at least one media_uuid")
-        # Preflight: media must exist in vault
-        try:
-            meta = self.get_media(uuids[0], variants="thumbnail")
-            if not meta:
-                raise ValueError(f"media {uuids[0][:8]}… not found in vault")
-        except Exception as e:
-            raise ValueError(f"free media preflight failed for {uuids[0][:8]}…: {e}") from e
+        candidates = list(uuids)
+        for u in fallback_uuids or []:
+            if u and u not in candidates:
+                candidates.append(u)
+
+        last_err: Optional[Exception] = None
+        chosen = candidates[0]
+        for uid in candidates:
+            try:
+                meta = self.get_media(uid, variants="thumbnail")
+                if meta:
+                    chosen = uid
+                    last_err = None
+                    break
+                last_err = ValueError(f"media {uid[:8]}… not found in vault")
+            except Exception as e:
+                last_err = e
+                continue
+        else:
+            raise ValueError(
+                f"free media preflight failed for {uuids[0][:8]}…: {last_err}"
+            ) from last_err
+
         payload: dict = {
-            "mediaUuids": uuids,
+            "mediaUuids": [chosen],
             "text": ((text or "").strip() or "😏")[:500],
         }
         return self._request(
