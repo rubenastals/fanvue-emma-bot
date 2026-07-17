@@ -252,6 +252,20 @@ def lock_status_prompt_block(status: Dict[str, Any]) -> str:
     )
 
 
+def unsend_lock(
+    fv: "FanvueConnector",
+    fan_uuid: str,
+    msg_uuid: str,
+    *,
+    handle: str = "",
+    label: str = "",
+) -> bool:
+    """Public: delete one chat message (unsend unpaid PPV)."""
+    return _delete_one(
+        fv, fan_uuid, msg_uuid, handle=handle, label=label
+    )
+
+
 def _delete_one(
     fv: "FanvueConnector",
     fan_uuid: str,
@@ -341,37 +355,94 @@ def purge_unpaid_in_chat(
     return deleted
 
 
+def _chat_fan(chat: dict) -> tuple:
+    """Fanvue list_chats uses `user` (not `fan`). Returns (uuid, handle)."""
+    user = chat.get("user") or chat.get("fan") or {}
+    fan_uuid = (
+        user.get("uuid")
+        or chat.get("fanUuid")
+        or chat.get("userUuid")
+        or chat.get("uuid")
+    )
+    handle = user.get("handle") or chat.get("handle") or ""
+    return fan_uuid, handle
+
+
 def purge_all_unpaid(
     fv: "FanvueConnector",
     creator_uuid: str,
     *,
-    chat_size: int = 40,
+    chat_size: int = 50,
 ) -> int:
-    """Wipe every unpaid lock across recent chats. Returns delete count."""
+    """Wipe every unpaid lock across recent chats + known memory fans."""
     deleted = 0
+    scanned = 0
+    found = 0
+    seen: set = set()
+
     try:
         chats = fv.list_chats(size=chat_size)
     except Exception as e:
         print(f"   ⚠️ PPV purge list_chats: {e}")
-        return 0
+        chats = []
+
+    targets: list = []
     for chat in chats:
-        fan = chat.get("fan") or {}
-        fan_uuid = fan.get("uuid") or chat.get("fanUuid") or chat.get("uuid")
-        if not fan_uuid:
+        fan_uuid, handle = _chat_fan(chat)
+        if not fan_uuid or fan_uuid in seen:
             continue
-        handle = fan.get("handle") or chat.get("handle") or ""
+        seen.add(fan_uuid)
+        targets.append((fan_uuid, handle))
+
+    # Memory fans (covers chats missing from the recent list page)
+    try:
+        all_mem = fan_memory_store_load()
+    except Exception:
+        all_mem = {}
+    for fan_uuid, mem in (all_mem or {}).items():
+        if not fan_uuid or fan_uuid in seen:
+            continue
+        if not isinstance(mem, dict):
+            continue
+        if mem.get("last_ppv_media_uuid") or mem.get("last_ppv_pending"):
+            seen.add(fan_uuid)
+            targets.append((fan_uuid, mem.get("handle") or ""))
+
+    for fan_uuid, handle in targets:
+        scanned += 1
+        try:
+            msgs = fv.get_messages(fan_uuid, size=40)
+        except Exception as e:
+            print(f"   ⚠️ PPV purge fetch @{handle or fan_uuid[:8]}: {e}")
+            continue
+        unpaid = list_unpaid_locks(msgs, creator_uuid)
+        if unpaid:
+            found += len(unpaid)
+            print(
+                f"   ⏳ PPV purge @{handle or fan_uuid[:8]}: "
+                f"{len(unpaid)} unpaid lock(s)"
+            )
         deleted += purge_unpaid_in_chat(
             fv, fan_uuid, creator_uuid, handle=handle, keep_newest=False
         )
-    # Also clear any memory-only pending leftovers
+
     for fan_uuid, mem in fan_memory.pending_ppv_candidates():
         fan_memory.clear_pending_ppv(
             fan_uuid,
             fan_handle=mem.get("handle") or "",
             reason="purged_all_memory",
         )
-    print(f"   ⏳ PPV purge-all: deleted {deleted} unpaid lock(s)")
+    print(
+        f"   ⏳ PPV purge-all: scanned {scanned} chat(s), "
+        f"found {found} unpaid, deleted {deleted}"
+    )
     return deleted
+
+
+def fan_memory_store_load() -> dict:
+    from db import fan_memory_store
+
+    return fan_memory_store.load_all()
 
 
 def run_pass(fv: "FanvueConnector", creator_uuid: str) -> int:
@@ -465,11 +536,9 @@ def run_pass(fv: "FanvueConnector", creator_uuid: str) -> int:
     except Exception:
         chats = []
     for chat in chats:
-        fan = chat.get("fan") or {}
-        fan_uuid = fan.get("uuid") or chat.get("fanUuid")
+        fan_uuid, handle = _chat_fan(chat)
         if not fan_uuid or fan_uuid in seen:
             continue
-        handle = fan.get("handle") or ""
         try:
             msgs = fv.get_messages(fan_uuid, size=30)
         except Exception:

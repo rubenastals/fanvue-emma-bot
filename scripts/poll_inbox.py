@@ -373,29 +373,63 @@ def _handle_fan_chat_body(
                     pass
             elif ppv_status.get("active"):
                 mins = ppv_status.get("minutes_left")
-                print(
-                    f"   ppv-check: ACTIVE unpaid — "
-                    f"{(ppv_status.get('label') or '')[:40]} "
-                    f"({ppv_status.get('ago')}, ~{mins}m left, "
-                    f"n={ppv_status.get('count', 1)})"
-                )
-                delivery_truth["ppv_unpaid"] = True
-                # Keep memory clock synced to the live candado
-                try:
-                    if ppv_status.get("message_uuid"):
-                        ppv_expiry.sync_pending_from_lock(
+                # Already past clock → unsend now so Emma doesn't nag a dead lock
+                if mins is not None and mins <= 0 and ppv_status.get("message_uuid"):
+                    try:
+                        ok = ppv_expiry.unsend_lock(
+                            fv,
                             fan_uuid,
-                            {
-                                "message_uuid": ppv_status.get("message_uuid"),
-                                "media_uuid": ppv_status.get("media_uuid"),
-                                "price": ppv_status.get("price"),
-                                "sent_at": ppv_status.get("sent_at"),
-                            },
-                            fan_handle=fan_handle,
-                            label=ppv_status.get("label") or "",
+                            ppv_status["message_uuid"],
+                            handle=fan_handle,
+                            label=ppv_status.get("label") or "expired_now",
                         )
-                except Exception:
-                    pass
+                        if ok:
+                            fan_memory.clear_pending_ppv(
+                                fan_uuid,
+                                fan_handle=fan_handle,
+                                reason="expired_inline",
+                            )
+                            print(
+                                f"   ppv-check: EXPIRED+UNSENT — "
+                                f"{(ppv_status.get('label') or '')[:40]}"
+                            )
+                            ppv_status = {
+                                "active": False,
+                                "purchased": False,
+                                "count": 0,
+                            }
+                        else:
+                            print(
+                                f"   ppv-check: ACTIVE unpaid (expire delete failed) — "
+                                f"{(ppv_status.get('label') or '')[:40]}"
+                            )
+                            delivery_truth["ppv_unpaid"] = True
+                    except Exception as e:
+                        print(f"   ⚠️ ppv inline expire: {e}")
+                        delivery_truth["ppv_unpaid"] = True
+                else:
+                    print(
+                        f"   ppv-check: ACTIVE unpaid — "
+                        f"{(ppv_status.get('label') or '')[:40]} "
+                        f"({ppv_status.get('ago')}, ~{mins}m left, "
+                        f"n={ppv_status.get('count', 1)})"
+                    )
+                    delivery_truth["ppv_unpaid"] = True
+                    try:
+                        if ppv_status.get("message_uuid"):
+                            ppv_expiry.sync_pending_from_lock(
+                                fan_uuid,
+                                {
+                                    "message_uuid": ppv_status.get("message_uuid"),
+                                    "media_uuid": ppv_status.get("media_uuid"),
+                                    "price": ppv_status.get("price"),
+                                    "sent_at": ppv_status.get("sent_at"),
+                                },
+                                fan_handle=fan_handle,
+                                label=ppv_status.get("label") or "",
+                            )
+                    except Exception:
+                        pass
             else:
                 print("   ppv-check: NO active unpaid lock")
                 try:
