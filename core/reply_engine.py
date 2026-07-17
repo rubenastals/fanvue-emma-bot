@@ -192,6 +192,10 @@ def generate_emma_reply(
     if lore_block:
         messages.append({"role": "system", "content": lore_block})
 
+    name_note = _name_budget_note(mem.get("name") or "", turns)
+    if name_note:
+        messages.append({"role": "system", "content": name_note})
+
     note = author_note_for(decision, want_spanish=want_spanish)
     if offer:
         note += (
@@ -218,7 +222,11 @@ def generate_emma_reply(
         if getattr(config, "DEEPSEEK_DISABLE_THINKING", False):
             kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
         resp = _client().chat.completions.create(**kwargs)
-        return _sanitize_reply((resp.choices[0].message.content or "").strip())
+        return _sanitize_reply(
+            (resp.choices[0].message.content or "").strip(),
+            want_spanish=want_spanish,
+            fan_name=(mem.get("name") or ""),
+        )
 
     reply = _call(messages)
 
@@ -281,13 +289,100 @@ def _ppv_truth_block(status: dict) -> str:
     )
 
 
-# Hard ban as address words / Spanish leakage in English mode.
-_BANNED_ADDRESS = re.compile(
+# Always banned as address words.
+_BANNED_ALWAYS = re.compile(
+    r"(?i)(?:\s*[,.]?\s*)\b(caro|papi|nena|nene)\b\.?"
+)
+# Spanish nicknames — strip only in English mode (Spanglish leak).
+_BANNED_SPANISH_IN_ENGLISH = re.compile(
     r"(?i)(?:\s*[,.]?\s*)\b("
-    r"caro|papi|nena|cielito|mi cielo|beb[eé]|guapo|guapa|cari[nñ]o|"
-    r"mi rey|bonito|cielo"
+    r"cielito|mi cielo|beb[eé]|guapo|guapa|cari[nñ]o|mi rey|bonito|cielo"
     r")\b\.?"
 )
+
+
+def _name_budget_note(name: str, turns: List[Dict[str, str]]) -> str:
+    """Tell the model whether his real name is allowed this turn."""
+    name = (name or "").strip()
+    if len(name) < 2:
+        return (
+            "ADDRESSING: use a light pet name (babe/baby/handsome/trouble) or none. "
+            "Do not invent a first name."
+        )
+    recent_emma = [
+        t.get("content") or ""
+        for t in turns[-8:]
+        if t.get("role") == "assistant"
+    ]
+    used_recently = any(name.lower() in (c or "").lower() for c in recent_emma[-2:])
+    if used_recently:
+        return (
+            f"NAME BUDGET: You already used \"{name}\" in a recent reply. "
+            f"This turn do NOT say his name. Use a light pet name "
+            f"(babe/baby/handsome/love/trouble) or no address at all."
+        )
+    return (
+        f"NAME BUDGET: His name is {name}. Prefer a pet name or none this turn. "
+        f"You may say \"{name}\" at most once, and only if it feels natural "
+        f"(greeting / apology / big moment) — not every message."
+    )
+
+
+def _thin_name_in_reply(text: str, name: str) -> str:
+    """Keep at most one use of his real name across the whole reply."""
+    name = (name or "").strip()
+    if len(name) < 2 or not text:
+        return text
+    pattern = re.compile(rf"\b{re.escape(name)}\b", re.IGNORECASE)
+    seen = False
+
+    def _repl(m: re.Match) -> str:
+        nonlocal seen
+        if seen:
+            return ""
+        seen = True
+        return m.group(0)
+
+    cleaned = pattern.sub(_repl, text)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r" +([,.!?…])", r"\1", cleaned)
+    return cleaned
+
+
+def _sanitize_reply(
+    text: str,
+    *,
+    want_spanish: bool = False,
+    fan_name: str = "",
+) -> str:
+    """Strip banned pet names + thin name spam + trailing emoji stamps."""
+    if not text:
+        return text
+    cleaned = _BANNED_ALWAYS.sub("", text)
+    if not want_spanish:
+        cleaned = _BANNED_SPANISH_IN_ENGLISH.sub("", cleaned)
+    cleaned = _FAKE_SENT.sub("", cleaned)
+    cleaned = _thin_name_in_reply(cleaned, fan_name)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r" +([,.!?…])", r"\1", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+
+    lines = cleaned.split("\n")
+    new_lines: List[str] = []
+    for ln in lines:
+        s = ln.rstrip()
+        if not s:
+            continue
+        # Often strip trailing emoji stamp; sometimes keep one vibe
+        if _TRAILING_EMOJI.search(s) and random.random() < 0.6:
+            s = _TRAILING_EMOJI.sub("", s).rstrip()
+        new_lines.append(s)
+    return "\n".join(new_lines).strip()
+
+
+# legacy alias (tests may import)
+_BANNED_ADDRESS = _BANNED_ALWAYS
+
 
 
 def _force_english_cleanup(text: str) -> str:
@@ -332,28 +427,6 @@ _FAKE_SENT = re.compile(
     r")"
 )
 
-
-def _sanitize_reply(text: str) -> str:
-    """Strip banned pet names + thin out repetitive trailing emoji stamps."""
-    if not text:
-        return text
-    cleaned = _BANNED_ADDRESS.sub("", text)
-    cleaned = _FAKE_SENT.sub("", cleaned)
-    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
-    cleaned = re.sub(r" +([,.!?…])", r"\1", cleaned)
-    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
-
-    lines = cleaned.split("\n")
-    new_lines: List[str] = []
-    for ln in lines:
-        s = ln.rstrip()
-        if not s:
-            continue
-        # Often strip trailing emoji stamp; sometimes keep one vibe
-        if _TRAILING_EMOJI.search(s) and random.random() < 0.6:
-            s = _TRAILING_EMOJI.sub("", s).rstrip()
-        new_lines.append(s)
-    return "\n".join(new_lines).strip()
 
 def split_into_messages(
     reply: str,

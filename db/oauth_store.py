@@ -50,7 +50,13 @@ def load_tokens(aid: Optional[str] = None) -> Optional[Dict[str, Any]]:
                 save_tokens(file_tok, aid=aid)
                 return file_tok
             return None
-        return dict(row)
+        pg_tok = dict(row)
+        # If local file is fresher (e.g. just re-authed), prefer it and push to PG.
+        file_tok = _file_load()
+        if file_tok and int(file_tok.get("expires_at") or 0) > int(pg_tok.get("expires_at") or 0):
+            save_tokens(file_tok, aid=aid)
+            return file_tok
+        return pg_tok
 
 
 def save_tokens(tokens: Dict[str, Any], aid: Optional[str] = None) -> None:

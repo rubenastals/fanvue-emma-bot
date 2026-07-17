@@ -320,8 +320,9 @@ def author_note_for(decision: TurnDecision, *, want_spanish: bool = False) -> st
         "Don't repeat your previous openings. React to his LAST message. "
         "Never promise vague bonus perks (extra attention, protection, free content). "
         f"{lang} "
-        "Use his name or a subtle English nickname (babe/handsome/trouble) or none "
-        "(Spanish nicknames only in full-Spanish replies).]"
+        "ADDRESSING: usually a light pet name (babe/baby/handsome/trouble) or none. "
+        "His real name at most once every few turns — never every message. "
+        "Spanish pet names only in full-Spanish replies.]"
     )
 
     mode_lines = {

@@ -56,16 +56,27 @@ class Handler(BaseHTTPRequestHandler):
         error = params.get("error", [None])[0]
         desc = params.get("error_description", [None])[0]
 
+        # Cloudflare / browsers often hit the callback path with no query — ignore.
+        if not code and not error and not state:
+            self.send_response(204)
+            self.end_headers()
+            return
+
+        print(f"  [callback] code={'yes' if code else 'no'} state={state!r} expected={_EXPECTED['state']!r}")
+
         if error:
             _RESULT["error"] = f"{error}: {desc or ''}"
             self._html(400, f"OAuth error: {error}")
             return
 
-        if not code or state != _EXPECTED["state"]:
-            self._html(400, "Invalid callback. Close tabs and retry.")
+        if not code or not _EXPECTED["state"] or state != _EXPECTED["state"]:
+            # Do not abort the wait — probes / old tabs can hit this.
+            self._html(400, "Invalid callback (wrong/old tab). Use the newest Authorize window.")
             return
 
         try:
+            # Never let a stale DATABASE_URL overwrite with PG while exchanging.
+            os.environ.pop("DATABASE_URL", None)
             exchange_code_for_tokens(code, _EXPECTED["verifier"])
             clear_pending_oauth()
             _RESULT["ok"] = True
@@ -73,6 +84,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             _RESULT["error"] = str(exc)
             self._html(500, f"Token exchange failed: {exc}")
+            print(f"  [callback] exchange failed: {exc}")
 
     def _html(self, status, msg):
         self.send_response(status)
@@ -92,9 +104,26 @@ def start_server():
     return server
 
 
+def _cloudflared_bin() -> str:
+    candidates = [
+        os.environ.get("CLOUDFLARED_BIN") or "",
+        os.path.join(os.environ.get("TEMP", ""), "cloudflared.exe"),
+        "cloudflared",
+        "cloudflared.exe",
+    ]
+    for c in candidates:
+        if c and (c in ("cloudflared", "cloudflared.exe") or os.path.isfile(c)):
+            return c
+    raise FileNotFoundError(
+        "cloudflared not found. Download cloudflared.exe or set CLOUDFLARED_BIN."
+    )
+
+
 def start_tunnel():
+    bin_path = _cloudflared_bin()
+    print(f"  using: {bin_path}")
     proc = subprocess.Popen(
-        ["cloudflared", "tunnel", "--url", "http://127.0.0.1:8000"],
+        [bin_path, "tunnel", "--url", "http://127.0.0.1:8000"],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -153,7 +182,7 @@ def main():
     # Non-interactive: --yes / FANVUE_OAUTH_AUTO=1 skips the Enter prompt
     # (gives you ~25s to save the Redirect URI in Builder first).
     if "--yes" in sys.argv or os.environ.get("FANVUE_OAUTH_AUTO") == "1":
-        wait_s = int(os.environ.get("FANVUE_OAUTH_WAIT", "25"))
+        wait_s = int(os.environ.get("FANVUE_OAUTH_WAIT", "90"))
         print(f"(auto) waiting {wait_s}s for you to save Redirect URI in Builder...")
         time.sleep(wait_s)
     else:

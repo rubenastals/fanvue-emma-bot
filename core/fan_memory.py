@@ -274,8 +274,9 @@ def render_block(fan_uuid: str) -> str:
         bits.append(f"Fan: @{mem['handle']}")
     if mem.get("name"):
         bits.append(
-            f"His name: {mem['name']} — use it sometimes for closeness; "
-            f"don't spam pet names"
+            f"His name: {mem['name']} — use sparingly (not every message). "
+            f"Most turns: a light pet name (babe/baby/handsome/cielo…) or none. "
+            f"If you used his name in your last reply, do NOT use it this turn."
         )
     if mem.get("prefer_spanish"):
         bits.append("Language pref: Spanish (he asked) — full Spanish only, no English mix")
