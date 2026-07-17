@@ -333,12 +333,16 @@ def generate_emma_reply(
             "Do NOT claim you already sent/regalaste a photo. That would be a lie. "
             "If a photo attaches this turn, gift THAT. Otherwise apologize briefly and flirt."
         )
-    if delivery_truth and delivery_truth.get("ppv_unpaid"):
+    # LOCK STATUS already covers unpaid vs none via _ppv_truth_block(ppv_status).
+    # If gate says unpaid but status missing, hard fallback:
+    if (
+        delivery_truth
+        and delivery_truth.get("ppv_unpaid")
+        and not ppv_status
+    ):
         turn_blocks.append(
-            "DELIVERY TRUTH: there is already an UNPAID locked photo in this chat "
-            "(timed — it will disappear if he doesn't unlock). "
-            "Do NOT send/claim another lock. Point him to unlock the one waiting. "
-            "Do NOT invent older gifts that are not in the recent chat history."
+            "LOCK STATUS: UNPAID timed lock is waiting. Persist on THAT unlock. "
+            "Do NOT stack another. Do NOT invent older gifts."
         )
 
     vision_desc = None
@@ -545,27 +549,37 @@ def generate_emma_reply(
 
 
 def _ppv_truth_block(status: dict) -> str:
-    """Fact block so Emma never believes fake 'I paid it' claims."""
-    label = status.get("label") or "your locked photo"
-    price = status.get("price")
-    ago = status.get("ago") or "recently"
-    price_txt = f" (${price:.0f})" if isinstance(price, (int, float)) else ""
+    """Fact block: purchased / active timed lock / none — Emma must persist correctly."""
+    from core import ppv_expiry
+
     if status.get("purchased"):
+        label = status.get("label") or "your locked photo"
+        price = status.get("price")
+        ago = status.get("ago") or "recently"
+        price_txt = f" (${price:.0f})" if isinstance(price, (int, float)) else ""
         return (
-            "PPV TRUTH — VERIFIED VIA FANVUE API THIS TURN:\n"
-            f"- The locked photo you sent {ago} — \"{label}\"{price_txt} — HE **DID** PURCHASE IT.\n"
-            "- He really saw it. Thank him warmly, make him feel special about it.\n"
-            "- Do not ask him to unlock it again."
+            "LOCK STATUS — VERIFIED THIS TURN:\n"
+            f"- He **DID** purchase the lock \"{label}\"{price_txt} (sent {ago}).\n"
+            "- Thank him warmly. Do not ask him to unlock it again."
         )
-    return (
-        "PPV TRUTH — VERIFIED VIA FANVUE API THIS TURN:\n"
-        f"- The locked photo you sent {ago} — \"{label}\"{price_txt} — HE HAS **NOT** PURCHASED IT.\n"
-        "- It IS in this chat as a timed lock waiting for him. Point him to unlock THAT one.\n"
-        "- Light urgency OK (won't sit forever) — never beg, never invent countdowns.\n"
-        "- Do NOT claim other gifts/photos arrived unless recent chat history shows them.\n"
-        "- Do NOT stack a second lock. Do NOT invent that he already saw it.\n"
-        "- Never describe the photo's content as if he had seen it."
-    )
+    # Active unpaid or explicit none
+    if status.get("active") is False and not status.get("purchased"):
+        return ppv_expiry.lock_status_prompt_block(status)
+    if status.get("active") or (
+        not status.get("purchased") and status.get("message_uuid")
+    ):
+        # Normalize legacy unpaid dicts into lock status shape
+        if "active" not in status:
+            status = {
+                "active": True,
+                "count": int(status.get("count") or 1),
+                "label": status.get("label") or "",
+                "price": status.get("price"),
+                "minutes_left": status.get("minutes_left"),
+                "ago": status.get("ago"),
+            }
+        return ppv_expiry.lock_status_prompt_block(status)
+    return ppv_expiry.lock_status_prompt_block({"active": False})
 
 
 # Always banned as address words.

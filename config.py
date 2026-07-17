@@ -86,6 +86,8 @@ class Config:
     # Unpaid PPV auto-unsend (creates scarcity; keeps chat + bot state clean)
     PPV_EXPIRE_ENABLED = os.getenv("PPV_EXPIRE_ENABLED", "1") == "1"
     PPV_EXPIRE_MINUTES = int(os.getenv("PPV_EXPIRE_MINUTES", "30"))
+    # On poller boot: wipe every unpaid lock in recent chats (clean slate), then new ones time out
+    PPV_PURGE_ACTIVE_ON_START = os.getenv("PPV_PURGE_ACTIVE_ON_START", "1") == "1"
     DIGEST_WEBHOOK_URL = os.getenv("DIGEST_WEBHOOK_URL", "")  # Discord/Slack incoming webhook
     DIGEST_EMAIL = os.getenv("DIGEST_EMAIL", "")
     SMTP_HOST = os.getenv("SMTP_HOST", "")

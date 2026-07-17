@@ -106,7 +106,11 @@ NEVER:
 | `INJECT_LESSONS` | `0` | Soft never in live |
 | `SOFT_CLASSIFY` | `0` | Extra JSON classify when ambiguous |
 | `SOFT_CLASSIFY_MODEL` | (main model) | Optional cheaper model |
+| `PPV_EXPIRE_ENABLED` | `1` | Unsend unpaid locks on a timer |
 | `PPV_EXPIRE_MINUTES` | `30` | Timed unpaid lock unsend |
+| `PPV_PURGE_ACTIVE_ON_START` | `1` | Wipe ALL unpaid locks when poller boots |
+
+Emma sees a loud **LOCK STATUS** every turn (active + ~minutes left, or none). Persist on the waiting candado; never invent one when none.
 
 ## Code map
 

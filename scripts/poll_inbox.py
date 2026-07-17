@@ -131,42 +131,62 @@ def _record_verified_ppv(
 
 def _check_last_ppv(messages: list, creator_uuid: str, mem: dict):
     """
-    Truth-check the LAST locked PPV using the chat itself: the PPV message
-    object carries `purchasedAt` (null until the fan unlocks it).
-    Scoped to THIS conversation's newest priced message; older than the
-    window → None (never reclaim forgotten PPVs).
+    Truth-check locks in THIS chat via Fanvue messages.
+    Returns purchased status, or LOCK STATUS (active timed unpaid / none).
     """
+    unpaid = ppv_expiry.list_unpaid_locks(
+        messages,
+        creator_uuid,
+        lookback_hours=PPV_CHECK_WINDOW_HOURS,
+    )
+    # Newest priced message overall (paid or unpaid) for purchase detect
+    newest_priced = None
     for msg in messages:  # newest-first
         if _sender_uuid(msg) != creator_uuid:
             continue
-        pricing = msg.get("pricing") or {}
-        if not pricing or not msg.get("mediaUuids"):
+        if not (msg.get("pricing") or {}) or not msg.get("mediaUuids"):
             continue
-        # newest PPV from us found
         sent_raw = msg.get("sentAt") or msg.get("createdAt")
         try:
             sent_at = datetime.fromisoformat(str(sent_raw).replace("Z", "+00:00"))
         except (ValueError, TypeError):
-            return None
+            continue
         age = datetime.now(timezone.utc) - sent_at
         if age > timedelta(hours=PPV_CHECK_WINDOW_HOURS):
-            return None
+            break
+        newest_priced = msg
+        break
+
+    if newest_priced and newest_priced.get("purchasedAt") and not unpaid:
         price = None
-        usd = pricing.get("USD") or {}
+        usd = (newest_priced.get("pricing") or {}).get("USD") or {}
         if usd.get("price") is not None:
             price = float(usd["price"]) / 100.0
-        minutes = int(age.total_seconds() // 60)
+        sent_at = datetime.fromisoformat(
+            str(
+                newest_priced.get("sentAt") or newest_priced.get("createdAt")
+            ).replace("Z", "+00:00")
+        )
+        minutes = int(
+            (datetime.now(timezone.utc) - sent_at).total_seconds() // 60
+        )
         ago = f"{minutes} min ago" if minutes < 120 else f"{minutes // 60}h ago"
         label = ""
-        if (msg.get("mediaUuids") or [None])[0] == mem.get("last_ppv_media_uuid"):
+        if (newest_priced.get("mediaUuids") or [None])[0] == mem.get(
+            "last_ppv_media_uuid"
+        ):
             label = mem.get("last_ppv_label") or ""
         return {
-            "purchased": bool(msg.get("purchasedAt")),
+            "purchased": True,
+            "active": False,
             "label": label,
             "price": price if price is not None else mem.get("last_ppv_price"),
             "ago": ago,
         }
-    return None
+
+    status = ppv_expiry.build_lock_status(unpaid_locks=unpaid, mem=mem)
+    status["purchased"] = False
+    return status
 
 
 def _fan_message_text(msg: dict) -> str:
@@ -340,18 +360,47 @@ def _handle_fan_chat_body(
         # PPV unpaid gate BEFORE route — stop mass stacking
         ppv_status = _check_last_ppv(messages, creator_uuid, mem)
         if ppv_status is not None:
-            state = "PURCHASED" if ppv_status["purchased"] else "NOT purchased"
-            print(
-                f"   ppv-check: {state} — "
-                f"{(ppv_status.get('label') or '')[:40]} ({ppv_status.get('ago')})"
-            )
-            if not ppv_status.get("purchased"):
-                delivery_truth["ppv_unpaid"] = True
-            else:
-                # Bought — stop expiry tracking
+            if ppv_status.get("purchased"):
+                print(
+                    f"   ppv-check: PURCHASED — "
+                    f"{(ppv_status.get('label') or '')[:40]} ({ppv_status.get('ago')})"
+                )
                 try:
                     fan_memory.clear_pending_ppv(
                         fan_uuid, fan_handle=fan_handle, reason="purchased"
+                    )
+                except Exception:
+                    pass
+            elif ppv_status.get("active"):
+                mins = ppv_status.get("minutes_left")
+                print(
+                    f"   ppv-check: ACTIVE unpaid — "
+                    f"{(ppv_status.get('label') or '')[:40]} "
+                    f"({ppv_status.get('ago')}, ~{mins}m left, "
+                    f"n={ppv_status.get('count', 1)})"
+                )
+                delivery_truth["ppv_unpaid"] = True
+                # Keep memory clock synced to the live candado
+                try:
+                    if ppv_status.get("message_uuid"):
+                        ppv_expiry.sync_pending_from_lock(
+                            fan_uuid,
+                            {
+                                "message_uuid": ppv_status.get("message_uuid"),
+                                "media_uuid": ppv_status.get("media_uuid"),
+                                "price": ppv_status.get("price"),
+                                "sent_at": ppv_status.get("sent_at"),
+                            },
+                            fan_handle=fan_handle,
+                            label=ppv_status.get("label") or "",
+                        )
+                except Exception:
+                    pass
+            else:
+                print("   ppv-check: NO active unpaid lock")
+                try:
+                    fan_memory.clear_pending_ppv(
+                        fan_uuid, fan_handle=fan_handle, reason="none_in_chat"
                     )
                 except Exception:
                     pass
@@ -971,6 +1020,13 @@ def main():
             f"   PPV scarcity: unpaid locks unsend after "
             f"{getattr(config, 'PPV_EXPIRE_MINUTES', 30)} min"
         )
+    if getattr(config, "PPV_PURGE_ACTIVE_ON_START", True):
+        print("   PPV purge-on-start: wiping ALL unpaid locks in recent chats…")
+        try:
+            n_purge = ppv_expiry.purge_all_unpaid(fv, creator_uuid)
+            print(f"   PPV purge-on-start: done ({n_purge} deleted)")
+        except Exception as e:
+            print(f"   ⚠️ PPV purge-on-start failed: {e}")
     print("   Ctrl+C to stop\n")
 
     processed = _load_processed()

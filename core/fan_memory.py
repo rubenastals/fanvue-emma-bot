@@ -541,10 +541,76 @@ def set_last_offer(
                     datetime.now(timezone.utc).replace(microsecond=0)
                     + timedelta(minutes=int(mins))
                 ).isoformat()
+                mem["last_ppv_pending"] = True
         except Exception:
             pass
         mem["last_offer_at"] = _now()
         mem["offers_today"] = int(mem.get("offers_today", 0)) + 1
+        _put(fan_uuid, mem)
+
+
+def set_pending_ppv_from_chat(
+    fan_uuid: str,
+    *,
+    media_uuid: str,
+    message_uuid: str,
+    price: Optional[float] = None,
+    label: str = "",
+    sent_at: Optional[str] = None,
+    fan_handle: str = "",
+    expire_minutes: Optional[int] = None,
+) -> None:
+    """Align pending lock clock with an unpaid message found in Fanvue chat."""
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        prev_msg = (mem.get("last_ppv_message_uuid") or "").strip()
+        prev_exp = None
+        try:
+            if mem.get("last_ppv_expires_at"):
+                prev_exp = datetime.fromisoformat(
+                    str(mem.get("last_ppv_expires_at")).replace("Z", "+00:00")
+                )
+        except ValueError:
+            prev_exp = None
+
+        if media_uuid:
+            mem["last_ppv_media_uuid"] = media_uuid
+        if message_uuid:
+            mem["last_ppv_message_uuid"] = message_uuid
+        if price is not None:
+            mem["last_ppv_price"] = float(price)
+        if label:
+            mem["last_ppv_label"] = label
+        if sent_at:
+            mem["last_ppv_at"] = sent_at
+        mem["last_ppv_pending"] = True
+        try:
+            from config import config as _cfg
+
+            mins = expire_minutes
+            if mins is None:
+                mins = int(getattr(_cfg, "PPV_EXPIRE_MINUTES", 30) or 30)
+            base = None
+            if sent_at:
+                try:
+                    base = datetime.fromisoformat(
+                        str(sent_at).replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    base = None
+            if base is None:
+                base = datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc)
+            same_msg = prev_msg == (message_uuid or "").strip()
+            if same_msg and prev_exp and prev_exp > now:
+                mem["last_ppv_expires_at"] = prev_exp.isoformat()
+            else:
+                mem["last_ppv_expires_at"] = (
+                    base.replace(microsecond=0) + timedelta(minutes=int(mins))
+                ).isoformat()
+        except Exception:
+            pass
         _put(fan_uuid, mem)
 
 
@@ -560,6 +626,7 @@ def clear_pending_ppv(
         _ensure_card_fields(mem)
         mem["last_ppv_message_uuid"] = None
         mem["last_ppv_expires_at"] = None
+        mem["last_ppv_pending"] = False
         mem["last_ppv_expired_at"] = _now()
         mem["last_ppv_expire_reason"] = reason
         # Allow a fresh lock after expiry (cooloff uses last_ppv_at — keep it)
@@ -599,10 +666,14 @@ def pending_ppv_candidates() -> List[tuple]:
     for fid, mem in (all_mem or {}).items():
         if not isinstance(mem, dict):
             continue
+        # Explicit pending flag (preferred). Legacy: message uuid + expires still pending.
+        pending = mem.get("last_ppv_pending")
+        if pending is False:
+            continue
         if mem.get("last_ppv_media_uuid") and (
-            mem.get("last_ppv_message_uuid")
+            pending is True
+            or mem.get("last_ppv_message_uuid")
             or mem.get("last_ppv_expires_at")
-            or mem.get("last_ppv_at")
         ):
             out.append((fid, mem))
     return out

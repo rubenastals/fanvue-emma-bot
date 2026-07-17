@@ -1,19 +1,28 @@
 """
-Timed unpaid PPV — unsend after PPV_EXPIRE_MINUTES if not purchased.
+Timed unpaid PPV — scarcity unsend + chat hygiene.
 
-Creates scarcity ("this won't sit forever") and keeps chat + bot state clean
-so we never stack ghost locks.
+- New locks get last_ppv_expires_at (PPV_EXPIRE_MINUTES, default 30).
+- run_pass: unsend expired unpaid locks; drop stacked extras (keep newest only).
+- purge_all_unpaid: wipe every unpaid lock in recent chats (clean slate).
+- Emma gets LOCK STATUS via build_lock_status() (active + minutes left, or none).
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from config import config
 from core import fan_memory
 
 if TYPE_CHECKING:
     from api.fanvue_connector import FanvueConnector
+
+
+def expire_minutes() -> int:
+    try:
+        return max(1, int(getattr(config, "PPV_EXPIRE_MINUTES", 30) or 30))
+    except (TypeError, ValueError):
+        return 30
 
 
 def _parse_iso(s: Optional[str]) -> Optional[datetime]:
@@ -25,16 +34,88 @@ def _parse_iso(s: Optional[str]) -> Optional[datetime]:
         return None
 
 
-def _effective_expires(mem: dict, now: datetime) -> Optional[datetime]:
-    """Explicit expires_at, or last_ppv_at + PPV_EXPIRE_MINUTES for legacy locks."""
+def _msg_sent_at(msg: dict) -> Optional[datetime]:
+    return _parse_iso(msg.get("sentAt") or msg.get("createdAt"))
+
+
+def _msg_price_dollars(msg: dict) -> Optional[float]:
+    pricing = msg.get("pricing") or {}
+    if not pricing:
+        return None
+    usd = pricing.get("USD") or {}
+    if usd.get("price") is not None:
+        try:
+            return float(usd["price"]) / 100.0
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _sender_uuid(msg: dict) -> Optional[str]:
+    sender = msg.get("sender")
+    if isinstance(sender, dict):
+        return sender.get("uuid")
+    return sender
+
+
+def list_unpaid_locks(
+    messages: list,
+    creator_uuid: str,
+    *,
+    lookback_hours: int = 72,
+) -> List[dict]:
+    """
+    All unpaid priced locks from Emma in this chat (newest first).
+    Each: message_uuid, media_uuid, price, sent_at, purchased=False
+    """
+    now = datetime.now(timezone.utc)
+    out: List[dict] = []
+    for msg in messages or []:
+        if _sender_uuid(msg) != creator_uuid:
+            continue
+        if not (msg.get("pricing") or {}):
+            continue
+        media = msg.get("mediaUuids") or []
+        if not media:
+            continue
+        if msg.get("purchasedAt"):
+            continue
+        sent = _msg_sent_at(msg)
+        if sent and now - sent > timedelta(hours=lookback_hours):
+            continue
+        uid = (msg.get("uuid") or "").strip()
+        if not uid:
+            continue
+        out.append(
+            {
+                "message_uuid": uid,
+                "media_uuid": media[0],
+                "price": _msg_price_dollars(msg),
+                "sent_at": sent.isoformat() if sent else None,
+                "purchased": False,
+            }
+        )
+    return out
+
+
+def _effective_expires(mem: dict, sent_at: Optional[datetime] = None) -> Optional[datetime]:
     expires = _parse_iso(mem.get("last_ppv_expires_at"))
     if expires:
         return expires
-    sent = _parse_iso(mem.get("last_ppv_at"))
+    sent = sent_at or _parse_iso(mem.get("last_ppv_at"))
     if not sent:
         return None
-    mins = int(getattr(config, "PPV_EXPIRE_MINUTES", 30) or 30)
-    return sent + timedelta(minutes=mins)
+    return sent + timedelta(minutes=expire_minutes())
+
+
+def minutes_remaining(expires_at: Optional[datetime], now: Optional[datetime] = None) -> Optional[int]:
+    if not expires_at:
+        return None
+    now = now or datetime.now(timezone.utc)
+    secs = (expires_at - now).total_seconds()
+    if secs <= 0:
+        return 0
+    return max(1, int(secs // 60) + (1 if secs % 60 else 0))
 
 
 def _extract_msg_uuid(resp: Optional[dict]) -> Optional[str]:
@@ -74,103 +155,359 @@ def resolve_ppv_message_uuid(
     )
 
 
+def build_lock_status(
+    *,
+    unpaid_locks: List[dict],
+    mem: Optional[dict] = None,
+    label_hint: str = "",
+) -> Dict[str, Any]:
+    """
+    Single source of truth for Emma's LOCK STATUS block.
+    active=True → one waiting timed lock; else none (she may persist toward a new one).
+    """
+    mem = mem or {}
+    now = datetime.now(timezone.utc)
+    if not unpaid_locks:
+        return {
+            "active": False,
+            "count": 0,
+            "label": "",
+            "price": None,
+            "minutes_left": None,
+            "ago": None,
+            "message_uuid": None,
+            "media_uuid": None,
+        }
+
+    newest = unpaid_locks[0]
+    sent = _parse_iso(newest.get("sent_at"))
+    expires = _effective_expires(mem, sent)
+    # If memory doesn't track this message, still invent a soft clock from sent_at
+    if not expires and sent:
+        expires = sent + timedelta(minutes=expire_minutes())
+    mins = minutes_remaining(expires, now)
+    ago = None
+    if sent:
+        age_m = int((now - sent).total_seconds() // 60)
+        ago = f"{age_m} min ago" if age_m < 120 else f"{age_m // 60}h ago"
+
+    label = label_hint or mem.get("last_ppv_label") or ""
+    if newest.get("media_uuid") and newest["media_uuid"] == mem.get("last_ppv_media_uuid"):
+        label = mem.get("last_ppv_label") or label
+
+    return {
+        "active": True,
+        "count": len(unpaid_locks),
+        "label": label,
+        "price": newest.get("price")
+        if newest.get("price") is not None
+        else mem.get("last_ppv_price"),
+        "minutes_left": mins,
+        "expires_at": expires.isoformat() if expires else None,
+        "ago": ago,
+        "sent_at": newest.get("sent_at"),
+        "message_uuid": newest.get("message_uuid"),
+        "media_uuid": newest.get("media_uuid"),
+        "purchased": False,
+    }
+
+
+def lock_status_prompt_block(status: Dict[str, Any]) -> str:
+    """Loud prompt block — Emma must know active lock OR none."""
+    if not status or not status.get("active"):
+        return (
+            "LOCK STATUS — VERIFIED THIS TURN:\n"
+            "- NO unpaid timed lock is waiting in this chat right now.\n"
+            "- Do NOT invent a candado / 'unlock waiting' / 'check the lock above'.\n"
+            "- When your pack allows selling: you may fire a NEW timed lock "
+            f"(~{expire_minutes()} min scarcity). Persist toward that — don't stall forever."
+        )
+
+    label = status.get("label") or "your locked photo"
+    price = status.get("price")
+    price_txt = f" (${price:.0f})" if isinstance(price, (int, float)) else ""
+    mins = status.get("minutes_left")
+    if mins is None:
+        time_txt = "timed — it will disappear if he waits"
+    elif mins <= 0:
+        time_txt = "about to disappear / already expired — urgency NOW"
+    elif mins <= 5:
+        time_txt = f"~{mins} min left — almost gone"
+    else:
+        time_txt = f"~{mins} min left before it disappears"
+    ago = status.get("ago") or "recently"
+    extra = ""
+    if int(status.get("count") or 1) > 1:
+        extra = (
+            f"\n- NOTE: chat had {status['count']} unpaid locks; extras are being cleared. "
+            "Only talk about THIS one."
+        )
+    return (
+        "LOCK STATUS — VERIFIED THIS TURN (ACTIVE UNPAID CANDADO):\n"
+        f"- ONE timed lock is waiting — \"{label}\"{price_txt} (sent {ago}).\n"
+        f"- Clock: {time_txt}.\n"
+        "- PERSIST on THIS unlock. Do NOT send a second lock. Do NOT claim he already saw it.\n"
+        "- Light FOMO OK — never beg, never invent fake glitches."
+        f"{extra}"
+    )
+
+
+def _delete_one(
+    fv: "FanvueConnector",
+    fan_uuid: str,
+    msg_uuid: str,
+    *,
+    handle: str = "",
+    label: str = "",
+) -> bool:
+    try:
+        fv.delete_message(fan_uuid, msg_uuid)
+        print(
+            f"   ⏳ PPV unsent @{handle or fan_uuid[:8]}: "
+            f"{(label or '')[:40]} (msg {msg_uuid[:8]}…)"
+        )
+        return True
+    except Exception as e:
+        err = str(e)
+        if "400" in err or "purchased" in err.lower() or "403" in err:
+            print(f"   ⏳ PPV cannot delete @{handle}: {e}")
+            return False
+        print(f"   ❌ PPV delete @{handle}: {type(e).__name__}: {e}")
+        return False
+
+
+def sync_pending_from_lock(
+    fan_uuid: str,
+    lock: dict,
+    *,
+    fan_handle: str = "",
+    label: str = "",
+) -> None:
+    """Keep memory clock aligned with the newest unpaid lock in chat."""
+    fan_memory.set_pending_ppv_from_chat(
+        fan_uuid,
+        media_uuid=lock.get("media_uuid") or "",
+        message_uuid=lock.get("message_uuid") or "",
+        price=lock.get("price"),
+        label=label,
+        sent_at=lock.get("sent_at"),
+        fan_handle=fan_handle,
+    )
+
+
+def purge_unpaid_in_chat(
+    fv: "FanvueConnector",
+    fan_uuid: str,
+    creator_uuid: str,
+    *,
+    handle: str = "",
+    keep_newest: bool = False,
+) -> int:
+    """
+    Delete unpaid locks in one chat.
+    keep_newest=False → delete ALL (clean slate).
+    keep_newest=True → delete stacked extras only (oldest).
+    """
+    try:
+        msgs = fv.get_messages(fan_uuid, size=40)
+    except Exception as e:
+        print(f"   ⚠️ PPV purge fetch @{handle}: {e}")
+        return 0
+    unpaid = list_unpaid_locks(msgs, creator_uuid)
+    if not unpaid:
+        fan_memory.clear_pending_ppv(
+            fan_uuid, fan_handle=handle, reason="purge_none_found"
+        )
+        return 0
+    targets = unpaid[1:] if keep_newest else unpaid
+    deleted = 0
+    for lock in targets:
+        if _delete_one(
+            fv,
+            fan_uuid,
+            lock["message_uuid"],
+            handle=handle,
+            label="stacked/purge",
+        ):
+            deleted += 1
+    if keep_newest and unpaid:
+        sync_pending_from_lock(
+            fan_uuid, unpaid[0], fan_handle=handle
+        )
+    else:
+        fan_memory.clear_pending_ppv(
+            fan_uuid, fan_handle=handle, reason="purged_all"
+        )
+    return deleted
+
+
+def purge_all_unpaid(
+    fv: "FanvueConnector",
+    creator_uuid: str,
+    *,
+    chat_size: int = 40,
+) -> int:
+    """Wipe every unpaid lock across recent chats. Returns delete count."""
+    deleted = 0
+    try:
+        chats = fv.list_chats(size=chat_size)
+    except Exception as e:
+        print(f"   ⚠️ PPV purge list_chats: {e}")
+        return 0
+    for chat in chats:
+        fan = chat.get("fan") or {}
+        fan_uuid = fan.get("uuid") or chat.get("fanUuid") or chat.get("uuid")
+        if not fan_uuid:
+            continue
+        handle = fan.get("handle") or chat.get("handle") or ""
+        deleted += purge_unpaid_in_chat(
+            fv, fan_uuid, creator_uuid, handle=handle, keep_newest=False
+        )
+    # Also clear any memory-only pending leftovers
+    for fan_uuid, mem in fan_memory.pending_ppv_candidates():
+        fan_memory.clear_pending_ppv(
+            fan_uuid,
+            fan_handle=mem.get("handle") or "",
+            reason="purged_all_memory",
+        )
+    print(f"   ⏳ PPV purge-all: deleted {deleted} unpaid lock(s)")
+    return deleted
+
+
 def run_pass(fv: "FanvueConnector", creator_uuid: str) -> int:
     """
-    Unsend expired unpaid locks. Returns how many were deleted.
-    Purchased locks are left alone (API refuses delete; we clear tracking).
+    Hygiene pass:
+    1) Memory-tracked expired locks → unsend
+    2) Recent chats: unsend expired unpaid; drop stacked extras (keep newest)
+    Returns how many were deleted.
     """
     if not getattr(config, "PPV_EXPIRE_ENABLED", True):
         return 0
 
     now = datetime.now(timezone.utc)
     deleted = 0
+    seen: set = set()
 
+    # --- 1) Memory candidates ---
     for fan_uuid, mem in fan_memory.pending_ppv_candidates():
-        expires = _effective_expires(mem, now)
+        seen.add(fan_uuid)
+        handle = mem.get("handle") or ""
+        expires = _effective_expires(mem)
         msg_uuid = (mem.get("last_ppv_message_uuid") or "").strip()
         media_uuid = (mem.get("last_ppv_media_uuid") or "").strip()
-        handle = mem.get("handle") or ""
 
-        # No expiry clock → skip
-        if not expires:
-            continue
-        if expires > now:
-            continue
-
-        # Resolve message uuid from history if memory lost it
-        if not msg_uuid and media_uuid:
-            try:
-                msg_uuid = fv.find_message_uuid_for_media(
-                    fan_uuid, media_uuid, creator_uuid=creator_uuid
-                ) or ""
-            except Exception:
-                msg_uuid = ""
-
-        if not msg_uuid:
-            # Can't unsend without id — clear tracking so we don't soft-lock forever
-            fan_memory.clear_pending_ppv(
-                fan_uuid, fan_handle=handle, reason="expired_no_message_uuid"
-            )
-            print(
-                f"   ⏳ PPV expire @{handle or fan_uuid[:8]}: "
-                f"no message uuid — cleared tracking"
-            )
-            continue
-
-        # Still in chat + already purchased? keep it, clear timer
         try:
-            msgs = fv.get_messages(fan_uuid, size=25)
+            msgs = fv.get_messages(fan_uuid, size=40)
         except Exception as e:
             print(f"   ⚠️ PPV expire fetch @{handle}: {e}")
             continue
 
-        target = None
-        for m in msgs:
-            if m.get("uuid") == msg_uuid:
-                target = m
-                break
-            # Fallback: match by media if uuid drifted
-            if media_uuid and media_uuid in (m.get("mediaUuids") or []):
-                if m.get("pricing"):
-                    target = m
-                    msg_uuid = m.get("uuid") or msg_uuid
-                    break
+        unpaid = list_unpaid_locks(msgs, creator_uuid)
+        # Drop stacked extras immediately
+        for extra in unpaid[1:]:
+            if _delete_one(
+                fv,
+                fan_uuid,
+                extra["message_uuid"],
+                handle=handle,
+                label="extra stacked",
+            ):
+                deleted += 1
+        unpaid = list_unpaid_locks(
+            fv.get_messages(fan_uuid, size=40), creator_uuid
+        ) if unpaid[1:] else unpaid
 
-        if target is None:
-            # Already gone from chat
+        if not unpaid:
             fan_memory.clear_pending_ppv(
                 fan_uuid, fan_handle=handle, reason="already_gone"
             )
-            print(f"   ⏳ PPV expire @{handle}: already gone from chat")
             continue
 
-        if target.get("purchasedAt"):
-            fan_memory.clear_pending_ppv(
-                fan_uuid, fan_handle=handle, reason="purchased"
-            )
-            print(f"   ⏳ PPV expire @{handle}: purchased — left in place")
-            continue
+        newest = unpaid[0]
+        msg_uuid = newest["message_uuid"] or msg_uuid
+        sent = _parse_iso(newest.get("sent_at"))
+        expires = _effective_expires(mem, sent) or (
+            sent + timedelta(minutes=expire_minutes()) if sent else None
+        )
 
-        try:
-            fv.delete_message(fan_uuid, msg_uuid)
+        # Sync clock onto newest
+        sync_pending_from_lock(
+            fan_uuid,
+            newest,
+            fan_handle=handle,
+            label=mem.get("last_ppv_label") or "",
+        )
+
+        if expires and expires > now:
+            continue  # still live — Emma should persist
+
+        # Expired → unsend
+        if _delete_one(
+            fv,
+            fan_uuid,
+            msg_uuid,
+            handle=handle,
+            label=mem.get("last_ppv_label") or "",
+        ):
+            deleted += 1
             fan_memory.clear_pending_ppv(
                 fan_uuid, fan_handle=handle, reason="expired_unsent"
             )
-            deleted += 1
-            label = (mem.get("last_ppv_label") or "")[:40]
-            print(
-                f"   ⏳ PPV expired/unsent @{handle}: {label} "
-                f"(msg {msg_uuid[:8]}…)"
+        else:
+            # purchased race
+            fan_memory.clear_pending_ppv(
+                fan_uuid, fan_handle=handle, reason="purchased_or_forbidden"
             )
-        except Exception as e:
-            err = str(e)
-            # Purchased race / forbidden
-            if "400" in err or "purchased" in err.lower():
-                fan_memory.clear_pending_ppv(
-                    fan_uuid, fan_handle=handle, reason="purchased_or_forbidden"
-                )
-                print(f"   ⏳ PPV expire @{handle}: cannot delete ({e})")
-            else:
-                print(f"   ❌ PPV expire delete @{handle}: {type(e).__name__}: {e}")
+
+    # --- 2) Chat scan for orphans not in memory ---
+    try:
+        chats = fv.list_chats(size=25)
+    except Exception:
+        chats = []
+    for chat in chats:
+        fan = chat.get("fan") or {}
+        fan_uuid = fan.get("uuid") or chat.get("fanUuid")
+        if not fan_uuid or fan_uuid in seen:
+            continue
+        handle = fan.get("handle") or ""
+        try:
+            msgs = fv.get_messages(fan_uuid, size=30)
+        except Exception:
+            continue
+        unpaid = list_unpaid_locks(msgs, creator_uuid)
+        if not unpaid:
+            continue
+        # extras
+        for extra in unpaid[1:]:
+            if _delete_one(
+                fv,
+                fan_uuid,
+                extra["message_uuid"],
+                handle=handle,
+                label="orphan extra",
+            ):
+                deleted += 1
+        unpaid = list_unpaid_locks(msgs, creator_uuid)
+        if not unpaid:
+            continue
+        newest = unpaid[0]
+        sent = _parse_iso(newest.get("sent_at"))
+        expires = (
+            sent + timedelta(minutes=expire_minutes()) if sent else now
+        )
+        if expires > now:
+            sync_pending_from_lock(fan_uuid, newest, fan_handle=handle)
+            continue
+        if _delete_one(
+            fv,
+            fan_uuid,
+            newest["message_uuid"],
+            handle=handle,
+            label="orphan expired",
+        ):
+            deleted += 1
+            fan_memory.clear_pending_ppv(
+                fan_uuid, fan_handle=handle, reason="orphan_expired"
+            )
 
     return deleted

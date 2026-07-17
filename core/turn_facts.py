@@ -52,7 +52,9 @@ class TurnFacts:
         elif self.free_in_chat is False:
             bits.append("free_in_chat=NO")
         if self.ppv_unpaid:
-            bits.append("ppv_unpaid=YES")
+            bits.append("ppv_unpaid=YES — persist on that timed lock, no second")
+        else:
+            bits.append("ppv_unpaid=NO — no candado waiting")
         if self.cooloff_active:
             bits.append("cooloff=YES")
         if self.fan_sent_media:
