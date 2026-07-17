@@ -525,8 +525,8 @@ def _sanitize_reply(
         s = ln.rstrip()
         if not s:
             continue
-        # Often strip trailing emoji stamp; sometimes keep one vibe
-        if _TRAILING_EMOJI.search(s) and random.random() < 0.6:
+        # Light strip of trailing emoji stamp only when it looks spammy (keep most)
+        if _TRAILING_EMOJI.search(s) and random.random() < 0.25:
             s = _TRAILING_EMOJI.sub("", s).rstrip()
         new_lines.append(s)
     return "\n".join(new_lines).strip()

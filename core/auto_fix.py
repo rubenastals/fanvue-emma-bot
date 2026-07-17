@@ -138,7 +138,7 @@ EXAMPLES FROM REAL CONVERSATIONS:
 Rule meanings:
 - LANGUAGE: replies mixed languages / wrong language vs the fan's / typos
 - NICKNAMES: pet-name spam or banned words (caro/papi/nena)
-- RHYTHM: repetitive structure (same bubble count/length, emoji stamped at end)
+- RHYTHM: repetitive structure (same bubble count/length, emoji spam every line) OR bone-dry zero-emoji cold replies
 - SELLING: pitching too early, stacking pressure, inventing content, ignoring rejections
 - HUMANITY: sounds like a sales agent, ignores what the fan actually said
 - ENGAGEMENT: fan cooling down and the bot doesn't adapt
