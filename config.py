@@ -93,6 +93,9 @@ class Config:
     # On poller boot: wipe every unpaid lock in recent chats (clean slate), then new ones time out
     PPV_PURGE_ACTIVE_ON_START = os.getenv("PPV_PURGE_ACTIVE_ON_START", "1") == "1"
     DIGEST_WEBHOOK_URL = os.getenv("DIGEST_WEBHOOK_URL", "")  # Discord/Slack incoming webhook
+    # When Fanvue refresh dies: alert webhook + optional public callback on poller PORT
+    OAUTH_CALLBACK_HTTP = os.getenv("OAUTH_CALLBACK_HTTP", "0") == "1"
+    OAUTH_ALERT_COOLDOWN_SEC = int(os.getenv("OAUTH_ALERT_COOLDOWN_SEC", "1800"))
     DIGEST_EMAIL = os.getenv("DIGEST_EMAIL", "")
     SMTP_HOST = os.getenv("SMTP_HOST", "")
     SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))

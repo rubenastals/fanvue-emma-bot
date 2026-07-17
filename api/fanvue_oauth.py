@@ -109,25 +109,65 @@ def refresh_access_token(refresh_token: str) -> Dict[str, Any]:
         },
         timeout=30,
     )
+    if not response.ok:
+        # Trigger rescue (Discord alert + backoff) — human must Authorize
+        try:
+            from core.oauth_rescue import OAuthBrokenError, mark_broken
+
+            detail = (response.text or "")[:180]
+            mark_broken(f"refresh HTTP {response.status_code}: {detail}")
+            raise OAuthBrokenError(
+                f"Fanvue refresh failed ({response.status_code}). "
+                "Check Discord/webhook for re-auth link."
+            )
+        except ImportError:
+            response.raise_for_status()
     response.raise_for_status()
     tokens = response.json()
     _save_tokens(tokens)
+    try:
+        from core.oauth_rescue import clear_broken
+
+        clear_broken()
+    except Exception:
+        pass
     return tokens
 
 
 def refresh_if_expired_or_forced(force: bool = False) -> str:
     stored = load_tokens()
     if not stored:
-        raise RuntimeError("No Fanvue tokens found.")
+        try:
+            from core.oauth_rescue import OAuthBrokenError, mark_broken
+
+            mark_broken("no_tokens")
+            raise OAuthBrokenError("No Fanvue tokens found.")
+        except ImportError:
+            raise RuntimeError("No Fanvue tokens found.")
     if force or time.time() >= stored.get("expires_at", 0) - 300:
         if not stored.get("refresh_token"):
-            raise RuntimeError("Token expired and no refresh token.")
+            try:
+                from core.oauth_rescue import OAuthBrokenError, mark_broken
+
+                mark_broken("no_refresh_token")
+                raise OAuthBrokenError("Token expired and no refresh token.")
+            except ImportError:
+                raise RuntimeError("Token expired and no refresh token.")
         stored = refresh_access_token(stored["refresh_token"])
     return stored["access_token"]
 
 
 def get_valid_access_token() -> str:
     """Return a valid access token, refreshing automatically if needed."""
+    try:
+        from core.oauth_rescue import OAuthBrokenError, is_broken
+
+        if is_broken():
+            raise OAuthBrokenError(
+                "OAuth in backoff after refresh failure — waiting for re-auth."
+            )
+    except ImportError:
+        pass
     if not load_tokens():
         raise RuntimeError(
             "No Fanvue tokens found. Run: python scripts/oauth_login.py"

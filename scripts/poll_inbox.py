@@ -1113,8 +1113,27 @@ def main():
         print("❌ No Fanvue tokens. Run oauth login first (or migrate tokens to PG).")
         sys.exit(1)
 
+    # Auto-rescue: Discord alert + optional public /oauth/callback HTTP
+    try:
+        from core import oauth_rescue
+
+        oauth_rescue.maybe_start_callback_http()
+    except Exception as e:
+        print(f"   ⚠️ oauth rescue init: {e}")
+
     fv = FanvueConnector()
-    me = fv.get_current_user()
+    try:
+        me = fv.get_current_user()
+    except Exception as e:
+        print(f"❌ Fanvue auth failed at boot: {e}")
+        try:
+            from core.oauth_rescue import mark_broken
+
+            mark_broken(f"boot: {type(e).__name__}: {e}")
+        except Exception:
+            pass
+        print("   Waiting for re-auth (webhook link / oauth_login)…")
+        me = {"uuid": None, "handle": "?"}
     creator_uuid = me.get("uuid")
     if use_postgres() and creator_uuid:
         from db.schema import ensure_account
@@ -1179,6 +1198,27 @@ def main():
                     if lorebook.ensure_fresh(force=True):
                         print("\n📖 lorebook reloaded from disk\n", flush=True)
 
+                try:
+                    from core.oauth_rescue import is_broken, notify_rescue
+
+                    if is_broken():
+                        print("o", end="", flush=True)  # oauth waiting
+                        notify_rescue("still_broken")
+                        time.sleep(max(args.interval, 30))
+                        continue
+                except Exception:
+                    pass
+
+                if not creator_uuid:
+                    try:
+                        me2 = fv.get_current_user()
+                        creator_uuid = me2.get("uuid")
+                        if creator_uuid:
+                            print(f"\n🔐 Fanvue auth recovered as @{me2.get('handle')}\n")
+                    except Exception:
+                        time.sleep(max(args.interval, 30))
+                        continue
+
                 count = poll_once(fv, processed, creator_uuid)
                 if shutting_down():
                     break
@@ -1241,8 +1281,24 @@ def main():
             except Exception as e:
                 if shutting_down():
                     break
+                err = str(e)
                 print(f"\n⚠️ Poll error: {e}")
-                time.sleep(args.interval)
+                # OAuth dead → alert once + long backoff (don't spam token URL)
+                if (
+                    "oauth" in err.lower()
+                    or "refresh" in err.lower()
+                    or "401" in err
+                    or "token" in err.lower()
+                ):
+                    try:
+                        from core.oauth_rescue import mark_broken
+
+                        mark_broken(err[:180])
+                    except Exception:
+                        pass
+                    time.sleep(max(args.interval, 60))
+                else:
+                    time.sleep(args.interval)
     finally:
         if hold_lock:
             try:
