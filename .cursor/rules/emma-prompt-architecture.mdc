@@ -1,0 +1,40 @@
+---
+description: Emma live prompt architecture — never inflate Soft into chat
+globs: fanvue-emma-bot/**/*
+alwaysApply: false
+---
+
+# Emma prompt architecture (strict)
+
+Live chat quality collapses when Soft lessons / critic norms / sales essays are stacked into the system prompt.
+
+## Live layers ONLY (priority order)
+
+1. **CORE** (`core/prompt_core.py`) — short immutable persona + hard bans. Do not grow forever; replace a rule to add one.
+2. **CLIENT CARD** — durable facts about this fan.
+3. **HISTORY** — up to ~100 recent messages.
+4. **TURN** — language, offer/vision/delivery only when needed (budget-capped).
+5. **AUTHOR** — one short mode line.
+
+## Forbidden in live prompt
+
+- Soft / global lessons (`INJECT_LESSONS` must stay `0`)
+- Fat `EMMA_SYSTEM_PROMPT` essays when `LEAN_CREATIVE=1`
+- Always-on vault catalog spam on chill turns
+- Auto-approve Soft into behavior that affects chat
+
+## When DeepSeek / improve / autofix runs
+
+- Log every proposal in `docs/PROMPT_AUDIT.md` / `.prompt_audit.jsonl` via `core/prompt_audit.py`
+- Soft stays **pending for human review** — never silent live injection
+- Autofix must list files touched; operator reviews `git diff` before deploy
+- Prefer code fixes (policy, verify delivery, name scrub) over new prompt rules
+
+## Operator defaults
+
+```
+LEAN_CREATIVE=1
+INJECT_LESSONS=0
+AUTO_APPROVE_SOFT_LESSONS=0
+DEEPSEEK_TEMPERATURE=0.9
+```

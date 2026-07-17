@@ -128,7 +128,19 @@ def propose_global_lesson(lesson: str, source_fan: str = "") -> bool:
         )
         data["global_pending"] = data["global_pending"][-MAX_GLOBAL_PENDING:]
         _save(data)
-        return True
+    try:
+        from core import prompt_audit
+
+        prompt_audit.log_change(
+            source="critic",
+            action="propose_soft_lesson",
+            detail=lesson[:200],
+            enters_live_prompt=False,
+            meta={"source_fan": source_fan},
+        )
+    except Exception:
+        pass
+    return True
 
 
 def promote_misplaced_fan_lessons() -> Tuple[int, int]:
@@ -178,24 +190,46 @@ def approve_global(index: int) -> Optional[str]:
         data["global_active"].append(lesson)
         data["global_active"] = data["global_active"][-MAX_GLOBAL_ACTIVE:]
         _save(data)
-        return lesson["text"]
+        text = lesson["text"]
+    try:
+        from core import prompt_audit
+
+        prompt_audit.log_change(
+            source="operator",
+            action="approve_soft_lesson",
+            detail=text[:200],
+            enters_live_prompt=False,  # still needs INJECT_LESSONS=1
+        )
+    except Exception:
+        pass
+    return text
 
 
 def auto_approve_pending(*, max_n: int = 40) -> List[str]:
     """
-    Soft path: activate all pending global lessons without human review.
-    Behavioral rules become active for every fan immediately.
+    Soft autopilot DISABLED for live quality.
+
+    Pending Soft lessons stay pending for human review on the board / audit log.
+    They never auto-activate into global_active (and never enter live prompt).
     """
-    activated: List[str] = []
-    for _ in range(max_n):
-        pen = pending()
-        if not pen:
-            break
-        text = approve_global(0)
-        if not text:
-            break
-        activated.append(text)
-    return activated
+    pen = pending()[:max_n]
+    if pen:
+        try:
+            from core import prompt_audit
+
+            prompt_audit.log_change(
+                source="improve",
+                action="soft_held_for_review",
+                detail=(
+                    f"{len(pen)} Soft lesson(s) held — NOT activated, NOT in live prompt. "
+                    f"Sample: {(pen[0].get('text') or '')[:120]}"
+                ),
+                enters_live_prompt=False,
+                meta={"count": len(pen)},
+            )
+        except Exception:
+            pass
+    return []  # nothing activated
 
 
 def reject_global(index: int) -> Optional[str]:

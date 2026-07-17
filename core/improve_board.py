@@ -60,9 +60,11 @@ Return ONLY valid JSON:
 
 Rules:
 - priority 1 = most urgent. Max 5 soft, max 3 hard.
-- Soft = prompt/lesson/lorebook/turn_policy tweak. Hard = new module, schema, deploy behavior, architecture.
+- Soft = proposal for HUMAN review only (lesson/lorebook/tiny policy). Soft NEVER enters the live chat prompt automatically.
+- Hard = code/architecture change with file list. Prefer Hard code fixes over Soft prompt rules.
+- Prefer Soft ONLY when a one-line behavioral reminder is enough AND it will stay off live until approved.
+- Prefer Hard / code when the bug is delivery, memory, name extraction, or API — do NOT add more prompt norms.
 - Only propose what the EVIDENCE + OPERATOR NOTES support. No speculative rewrites.
-- Prefer Soft when Soft would fix it.
 - Empty arrays are fine.
 """
 
@@ -200,6 +202,28 @@ def build_board(*, ask_deepseek: bool = True) -> dict:
         if ask_deepseek
         else {"soft": [], "hard": []}
     )
+    try:
+        from core import prompt_audit
+
+        for p in proposals.get("soft") or []:
+            prompt_audit.log_change(
+                source="deepseek_improve",
+                action="soft_proposal",
+                detail=f"{p.get('title')}: {p.get('detail')}",
+                enters_live_prompt=False,
+                meta={"priority": p.get("priority"), "kind": "soft"},
+            )
+        for p in proposals.get("hard") or []:
+            prompt_audit.log_change(
+                source="deepseek_improve",
+                action="hard_proposal",
+                detail=f"{p.get('title')}: {p.get('problem')}",
+                files=list(p.get("files") or []),
+                enters_live_prompt=False,
+                meta={"priority": p.get("priority"), "kind": "hard"},
+            )
+    except Exception:
+        pass
     board = {
         "generated_at": _now(),
         "new_autofix_queued": len(new_fixes),

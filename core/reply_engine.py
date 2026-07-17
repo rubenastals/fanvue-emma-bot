@@ -19,9 +19,10 @@ from typing import Dict, List, Optional, Tuple
 from openai import OpenAI
 
 from config import config
-from core.system_prompt import EMMA_SYSTEM_PROMPT
-from core import fan_memory, language, lessons, lorebook, persona_time, vault_catalog
+from core.prompt_core import EMMA_CORE_PROMPT  # noqa: F401 — kept for tests/legacy
+from core import fan_memory, language, lessons, lorebook, persona_time, prompt_audit, prompt_layers, vault_catalog
 from core.turn_policy import TurnDecision, author_note_for, decide_turn
+from core.system_prompt import EMMA_SYSTEM_PROMPT  # legacy fat prompt (non-lean only)
 
 _CLIENT: Optional[OpenAI] = None
 
@@ -176,55 +177,38 @@ def generate_emma_reply(
     ):
         turns.append({"role": "user", "content": fan_message})
 
-    messages: List[Dict[str, str]] = [
-        {"role": "system", "content": EMMA_SYSTEM_PROMPT},
-        {"role": "system", "content": language.language_system_block(want_spanish)},
-        {"role": "system", "content": persona_time.time_system_block()},
-    ]
-
     lean = bool(getattr(config, "LEAN_CREATIVE", True))
 
-    if fan_uuid:
-        mem_block = fan_memory.render_block(fan_uuid)
-        if mem_block:
-            messages.append({"role": "system", "content": mem_block})
+    turn_blocks: List[str] = []
 
-    # Soft lessons OFF by default — they flooded the prompt and contradicted the card
+    # Soft lessons NEVER in live path unless operator forces INJECT_LESSONS=1
     if getattr(config, "INJECT_LESSONS", False):
         lessons_block = lessons.render_block(fan_uuid)
         if lessons_block:
-            messages.append({"role": "system", "content": lessons_block})
+            turn_blocks.append(lessons_block)
+            prompt_audit.log_change(
+                source="live_prompt",
+                action="inject_lessons",
+                detail=f"Injected Soft lessons ({len(lessons_block)} chars)",
+                enters_live_prompt=True,
+            )
 
-    # Catalog only when selling / attaching — not every chill turn
     if offer or (decision and decision.allow_price):
-        messages.append({"role": "system", "content": vault_catalog.catalog_summary_block()})
+        turn_blocks.append(vault_catalog.catalog_summary_block())
 
-    # Verified truth about the LAST locked PPV (API-checked this turn)
     if ppv_status:
-        messages.append({"role": "system", "content": _ppv_truth_block(ppv_status)})
+        turn_blocks.append(_ppv_truth_block(ppv_status))
 
-    # Fanvue API: is the free photo actually in this chat?
     if delivery_truth and delivery_truth.get("free_in_chat") is True:
-        messages.append(
-            {
-                "role": "system",
-                "content": (
-                    "DELIVERY TRUTH: your FREE photo IS already in this chat. "
-                    "Tell him to scroll up. Do not re-gift. Do not invent a glitch."
-                ),
-            }
+        turn_blocks.append(
+            "DELIVERY TRUTH: your FREE photo IS already in this chat. "
+            "Tell him to scroll up. Do not re-gift. Do not invent a glitch."
         )
     elif delivery_truth and delivery_truth.get("free_in_chat") is False and offer:
-        messages.append(
-            {
-                "role": "system",
-                "content": (
-                    "DELIVERY TRUTH: free photo is NOT in chat — gift the attached L0 if any."
-                ),
-            }
+        turn_blocks.append(
+            "DELIVERY TRUTH: free photo is NOT in chat — gift the attached L0 if any."
         )
 
-    # Grok Vision: what HE just sent (or fall back to last remembered photo)
     vision_desc = None
     if fan_vision and fan_vision.get("description"):
         vision_desc = fan_vision["description"]
@@ -236,19 +220,14 @@ def generate_emma_reply(
     if vision_desc:
         from core.fan_vision import vision_system_block
 
-        messages.append({"role": "system", "content": vision_system_block(vision_desc)})
+        turn_blocks.append(vision_system_block(vision_desc))
 
     if offer:
-        messages.append({"role": "system", "content": vault_catalog.offer_prompt_block(offer)})
+        turn_blocks.append(vault_catalog.offer_prompt_block(offer))
     else:
-        messages.append(
-            {
-                "role": "system",
-                "content": (
-                    "No photo attached this turn. Flirt only. "
-                    "Never claim you sent/locked a photo. Never invent media titles in brackets."
-                ),
-            }
+        turn_blocks.append(
+            "No photo attached this turn. Flirt only. "
+            "Never claim you sent/locked a photo. Never invent media titles in brackets."
         )
 
     if not lean:
@@ -257,38 +236,61 @@ def generate_emma_reply(
         )
         lore_block = lorebook.render_block(recent_text)
         if lore_block:
-            messages.append({"role": "system", "content": lore_block})
+            turn_blocks.append(lore_block)
 
     name_note = _name_budget_note(
         mem.get("name") or "",
         turns,
         name_confirmed=bool(mem.get("name_confirmed")),
     )
-    if name_note:
-        messages.append({"role": "system", "content": name_note})
 
-    messages.append(
-        {
-            "role": "system",
-            "content": (
-                "PRIORITY: CLIENT CARD + recent chat history are the only truth about him. "
-                "Write like a real girl texting — clear Spanish/English, natural, creative. "
-                "Never invent his first name. Never dump word-salad or glued words."
-            ),
-        }
-    )
+    card_block = ""
+    if fan_uuid:
+        card_block = fan_memory.render_block(fan_uuid) or ""
+
+    if lean:
+        messages, sizes = prompt_layers.build_system_layers(
+            card_block=card_block,
+            language_block=language.language_system_block(want_spanish),
+            time_block=persona_time.time_system_block(),
+            name_block=name_note,
+            turn_blocks=turn_blocks,
+        )
+        print(
+            f"   prompt: CORE={sizes['core']} CARD={sizes['card']} "
+            f"TURN={sizes['turn']} total_sys={sizes['system_total']}"
+        )
+    else:
+        # Legacy fat path (discouraged)
+        messages = [
+            {"role": "system", "content": EMMA_SYSTEM_PROMPT},
+            {"role": "system", "content": language.language_system_block(want_spanish)},
+            {"role": "system", "content": persona_time.time_system_block()},
+        ]
+        if card_block:
+            messages.append({"role": "system", "content": card_block})
+        for b in turn_blocks:
+            messages.append({"role": "system", "content": b})
+        if name_note:
+            messages.append({"role": "system", "content": name_note})
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    "PRIORITY: CLIENT CARD + recent chat history are the only truth about him."
+                ),
+            }
+        )
 
     note = author_note_for(decision, want_spanish=want_spanish, lean=lean)
     if offer:
         is_free = float(offer.get("price") or 0) <= 0 or int(offer.get("level") or 0) == 0
         if is_free:
-            note += (
-                " FREE photo attached this turn — one short flirty line, no caption dump."
-            )
+            note += " FREE photo attached — one short flirty line."
         else:
-            note += (
-                f" Locking one real photo (${offer.get('price'):.0f}) — short tease, no fake 'already sent'."
-            )
+            note += f" Locking one photo (${offer.get('price'):.0f}) — short tease."
+    note = prompt_layers.clip_author(note)
+
     turns_out = [dict(t) for t in turns]
     for i in range(len(turns_out) - 1, -1, -1):
         if turns_out[i]["role"] == "user":
