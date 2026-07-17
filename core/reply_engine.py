@@ -466,7 +466,18 @@ def _strip_photo_script_dump(text: str) -> str:
         "",
         text,
     )
-    # Long shot-script paragraphs (lingerie / pose / camera direction dumps)
+    # Cut mid-message shot scripts that start after a normal tease
+    cut_at = re.search(
+        r"(?i)(?:^|[\s.!?…])("
+        r"mirando a c[aá]mara|looking at (?:the )?camera|recostad[ao] en|"
+        r"lencer[ií]a de|jugando con el tirante|a punto de baj|"
+        r"sonrisa traviesa|ojos bien clavados"
+        r")",
+        text,
+    )
+    if cut_at and cut_at.start(1) > 20:
+        text = text[: cut_at.start(1)].rstrip(" .…")
+
     captionish = re.compile(
         r"(?i)("
         r"mirando a c[aá]mara|looking at (?:the )?camera|recostad[ao]|"
@@ -480,8 +491,6 @@ def _strip_photo_script_dump(text: str) -> str:
         if not b:
             continue
         if len(b) >= 90 and captionish.search(b):
-            continue
-        if len(b) >= 160 and captionish.search(b):
             continue
         kept.append(b)
     return "\n".join(kept).strip()
