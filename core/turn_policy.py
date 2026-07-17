@@ -549,7 +549,7 @@ def author_note_for(
         mode_hint = {
             MODE_CHILL: "Warm, human, no sell.",
             MODE_RAPPORT: "Light flirt, no PPV price.",
-            MODE_TEASE: "Build heat. Only gift free if system attaches L0. Do not stamp his real name.",
+            MODE_TEASE: "Build heat. Only gift free if system attaches L0. Name/pets per ADDRESSING.",
             MODE_SOFT_SELL: (
                 "LOCK one paid photo NOW — system attaches it after your text. "
                 "Do NOT ask permission / 'quieres?' / offer gratis. Short tease then lock."
@@ -560,8 +560,8 @@ def author_note_for(
         }.get(decision.mode, "Stay in character.")
         return (
             f"[Emma texting. {lang} Natural clear grammar — no word-salad. "
-            f"1–3 short lines. Almost NEVER his real name (no 'Ay Ruben' stamp) — pet name or none. "
-            f"{mode_hint}]"
+            f"1–3 short lines. Pet names welcome; real name sometimes OK (see ADDRESSING) — "
+            f"never 'Ay Name' every bubble. {mode_hint}]"
         )
 
     if want_spanish:
@@ -590,8 +590,8 @@ def author_note_for(
         "Never promise vague bonus perks (extra attention, protection). "
         "Only gift a free photo when the system attaches a real L0 tease this turn. "
         f"{lang} "
-        "ADDRESSING: usually a light pet name (babe/baby/handsome/trouble) or none. "
-        "Almost NEVER his real name — never 'Ay Ruben' every bubble. "
+        "ADDRESSING: light pet names (babe/baby/handsome/trouble/cielo/guapo) often OK — vary them. "
+        "His confirmed real name: sometimes for intimacy, not every bubble — never 'Ay Name' spam. "
         "Never invent a first name (no Jamie/Carlos/Alex/Simón). "
         "Spanish pet names only in full-Spanish replies.]"
     )

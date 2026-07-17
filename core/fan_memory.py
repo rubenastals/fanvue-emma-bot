@@ -898,7 +898,8 @@ def render_block(fan_uuid: str) -> str:
             else "guessed from handle — verify before relying"
         )
         lines.append(
-            f"- Name: {name} ({conf}). ALMOST NEVER say it — pet names or none. "
+            f"- Name: {name} ({conf}). Use OCCASIONALLY (every few replies) for intimacy; "
+            f"mix with pet names (babe/baby/handsome/cielo/guapo). "
             f"Never stamp \"Ay {name}\" every message."
         )
 

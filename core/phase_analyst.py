@@ -70,7 +70,7 @@ class PhaseAnalysis:
             "  CLIENT RECALL — READ BEFORE YOU REPLY\n"
             "================================================\n"
             f"Phase diagnosed: {self.phase or '?'} -> pack {self.pack_id or '?'}\n"
-            f"His name (use sparingly): {name}\n"
+            f"His name (use sometimes, not every turn): {name}\n"
             f"Likes / kinks to use: {likes}\n"
             f"Avoid: {avoid}\n"
             f"Conversation so far: {self.summary or '(see history)'}\n"

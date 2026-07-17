@@ -422,7 +422,8 @@ def generate_emma_reply(
         lang = "Spanish only." if want_spanish else "English only."
         note = (
             f"[Emma texting. {lang} Pack={pack_id}. "
-            f"1–3 short lines. Pet name or none — almost never his real name.]"
+            f"1–3 short lines. Light pet names OK; real name sometimes if ADDRESSING allows — "
+            f"never spam \"Ay {{name}}\" every bubble.]"
         )
         if tech_name:
             note += manipulation.author_nudge(pack_id, tech_name)
@@ -641,31 +642,43 @@ def _name_budget_note(
 ) -> Tuple[str, int]:
     """
     Returns (note, max_name_uses_this_turn).
-    Default max_uses=0 — stop 'Ay Ruben' every bubble.
+
+    Goal: real name OCCASIONALLY (feels intimate), not every bubble.
+    Ban only when recent spam risk — never strip the name forever.
+    Pet names stay welcome when not stacked.
     """
     name = _usable_fan_name(name, confirmed=name_confirmed)
     if not name:
         return (
-            "ADDRESSING: pet name or none. HARD BAN: never invent a first name.",
+            "ADDRESSING: light pet names OK (babe/baby/handsome/cielo/guapo) — "
+            "vary them, don't stack 3 in one line. HARD BAN: never invent a first name.",
             0,
         )
     recent_emma = [
         t.get("content") or ""
-        for t in turns[-10:]
+        for t in turns[-12:]
         if t.get("role") == "assistant"
+    ][-6:]
+    used_recent = [
+        c for c in recent_emma if name.lower() in (c or "").lower()
     ]
-    used_count = sum(1 for c in recent_emma if name.lower() in (c or "").lower())
-    # Used in any of last 3 Emma turns → zero this turn
-    if used_count >= 1 or any(name.lower() in (c or "").lower() for c in recent_emma[-3:]):
+    # Back-to-back or 2+ of last 6 → cool off this turn
+    last_had = bool(
+        recent_emma and name.lower() in (recent_emma[-1] or "").lower()
+    )
+    if last_had or len(used_recent) >= 2:
         return (
-            f"NAME BAN THIS TURN: Do NOT write \"{name}\" or \"Ay {name}\" at all. "
-            f"Pet name (bebe/cielo/guapo) or no address. Name spam kills the vibe.",
+            f"ADDRESSING THIS TURN: skip \"{name}\" — you used it recently. "
+            f"Use a light pet name (babe/baby/handsome/cielo/guapo) or none. "
+            f"Vary pet names; don't spam the same one. Never \"Ay {name}\".",
             0,
         )
-    # Rare allowance — still prefer none
+    # Allowed — invite occasional natural use
     return (
-        f"ADDRESSING: Prefer pet name or none. You may say \"{name}\" at most ONCE "
-        f"only if it is a rare apology/greeting beat — never \"Ay {name}\" as a stamp.",
+        f"ADDRESSING: His confirmed name is \"{name}\". You MAY say it ONCE this turn "
+        f"if it feels natural (warm beat, not a sales stamp). Mix with pet names "
+        f"(babe/baby/handsome/cielo/guapo) across turns — name sometimes, pets often, "
+        f"silence OK. Never open every line with \"Ay {name}\".",
         1,
     )
 
