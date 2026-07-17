@@ -39,9 +39,13 @@ class Config:
     CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
     CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", REDIS_URL)
 
-    # Re-engagement
+    # Re-engagement (ladder; see core/reengagement.py)
     REENGAGEMENT_INTERVAL_SECONDS = int(os.getenv("REENGAGEMENT_INTERVAL_SECONDS", "1800"))
     INACTIVE_HOURS = int(os.getenv("INACTIVE_HOURS", "12"))
+    NUDGE_FIRST_MINUTES = int(os.getenv("NUDGE_FIRST_MINUTES", "15"))
+    NUDGE_SECOND_MINUTES = int(os.getenv("NUDGE_SECOND_MINUTES", "30"))
+    MAX_NUDGES_PER_EPISODE = int(os.getenv("MAX_NUDGES_PER_EPISODE", "2"))
+    VICTIM_COOLDOWN_HOURS = int(os.getenv("VICTIM_COOLDOWN_HOURS", "12"))
 
     # Embeddings
     EMBEDDING_DIM = 1536

@@ -119,7 +119,10 @@ def _blank(fan_handle: str) -> dict:
         "last_free_at": None,
         "prefer_spanish": False,
         "nudge_sent_episode": False,
+        "nudge_episode_count": 0,
         "last_nudge_at": None,
+        "last_nudge_style": None,
+        "last_victim_nudge_at": None,
         "last_goodmorning_day": None,
         "note": "",
         "status": "new",
@@ -445,7 +448,9 @@ def observe_message(fan_uuid: str, fan_handle: str, text: str) -> dict:
             mem["name_confirmed"] = False
         mem["messages"] = int(mem.get("messages", 0)) + 1
         mem["last_seen"] = _now()
+        # Fan spoke → new silence episode may start later
         mem["nudge_sent_episode"] = False
+        mem["nudge_episode_count"] = 0
 
         # Corrections first — "no soy Carlos" / "me llamaste Carlos" must NEVER save Carlos
         for m in _NAME_NEGATE.finditer(raw_text):
@@ -814,19 +819,36 @@ def set_prefer_spanish(fan_uuid: str, prefer: bool, fan_handle: str = "") -> Non
         _put(fan_uuid, mem)
 
 
-def mark_nudge(fan_uuid: str, kind: str, fan_handle: str = "") -> None:
-    """kind: 'nudge' (5-min rescue) or 'goodmorning' (next-day)."""
+def mark_nudge(
+    fan_uuid: str,
+    kind: str,
+    fan_handle: str = "",
+    *,
+    style: str = "",
+) -> None:
+    """kind: 'nudge' (15/30m ladder) or 'goodmorning' (next-day)."""
     with _LOCK:
         mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
         _ensure_card_fields(mem)
         if kind == "nudge":
-            mem["nudge_sent_episode"] = True
+            count = int(mem.get("nudge_episode_count") or 0) + 1
+            mem["nudge_episode_count"] = count
             mem["last_nudge_at"] = _now()
+            if style:
+                mem["last_nudge_style"] = style
+            if style == "victim_soft":
+                mem["last_victim_nudge_at"] = _now()
+            # Cap episode when max ladder steps used
+            if count >= 2:
+                mem["nudge_sent_episode"] = True
         elif kind == "goodmorning":
             from core import persona_time
 
             mem["last_goodmorning_day"] = persona_time.la_today()
             mem["nudge_sent_episode"] = True
+            mem["nudge_episode_count"] = int(mem.get("nudge_episode_count") or 0) + 1
+            if style:
+                mem["last_nudge_style"] = style
         _put(fan_uuid, mem)
 
 
