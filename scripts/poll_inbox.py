@@ -4,12 +4,14 @@ Poll Fanvue inbox and auto-reply as Emma.
 Design:
 - DeepSeek gets prompt + real chat history (coherence + full freedom).
 - Long replies are split into several short chat bubbles (never a wall of text).
+- SIGTERM/SIGINT drains: finish the current fan turn, release Redis lock, exit.
 """
 import argparse
 import json
 import os
 import random
 import re
+import signal
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -24,7 +26,7 @@ sys.path.insert(0, _ROOT)
 
 from api.fanvue_connector import FanvueConnector
 from api.fanvue_oauth import load_tokens
-from core import convo_log, critic, fan_memory, fan_vision, memory_extractor, reengagement, vault_catalog
+from core import convo_log, critic, fan_memory, fan_vision, lorebook, memory_extractor, reengagement, vault_catalog
 from core.reply_engine import (
     fanvue_messages_to_turns,
     filter_messages_for_context,
@@ -34,6 +36,23 @@ from core.reply_engine import (
 from core.turn_policy import decide_turn
 from db import account_id, processed_store, use_postgres, use_redis
 from db import redis_client as redis_store
+
+# Graceful shutdown: finish in-flight turn, then stop accepting new chats.
+_shutting_down = False
+_in_fan_turn = False
+
+
+def _request_shutdown(signum=None, frame=None) -> None:
+    global _shutting_down
+    if _shutting_down:
+        return
+    _shutting_down = True
+    where = "after current turn" if _in_fan_turn else "now"
+    print(f"\n⏳ shutdown signal — draining {where}…", flush=True)
+
+
+def shutting_down() -> bool:
+    return _shutting_down
 
 
 def _load_processed() -> set:
@@ -174,9 +193,26 @@ def _handle_fan_chat(
     Drain all pending fan messages for one chat (including ones buried under
     Emma's own bubbles). Returns how many reply turns were sent.
     """
+    global _in_fan_turn
+    _in_fan_turn = True
+    try:
+        return _handle_fan_chat_body(fv, processed, creator_uuid, fan_uuid, fan_handle)
+    finally:
+        _in_fan_turn = False
+
+
+def _handle_fan_chat_body(
+    fv: FanvueConnector,
+    processed: set,
+    creator_uuid: str,
+    fan_uuid: str,
+    fan_handle: str,
+) -> int:
     handled = 0
     # Cap turns per poll so one chat can't starve others
     for _ in range(4):
+        if shutting_down() and handled > 0:
+            break
         messages = fv.get_messages(fan_uuid, size=50)
         if not messages:
             break
@@ -413,6 +449,8 @@ def _handle_fan_chat(
 
 
 def poll_once(fv: FanvueConnector, processed: set, creator_uuid: str) -> int:
+    if shutting_down():
+        return 0
     handled = 0
     chats = fv.list_chats(size=20)
     unread_only = [
@@ -434,6 +472,8 @@ def poll_once(fv: FanvueConnector, processed: set, creator_uuid: str) -> int:
             break
 
     for chat in candidates:
+        if shutting_down():
+            break
         user = chat.get("user", {})
         fan_uuid = user.get("uuid")
         fan_handle = user.get("handle", "fan")
@@ -483,67 +523,93 @@ def main():
     processed = _load_processed()
     last_reengage = 0.0
     last_fix_scan = 0.0
+    last_lore_reload = 0.0
     use_lock = use_redis()
     hold_lock = False
+
+    signal.signal(signal.SIGTERM, _request_shutdown)
+    signal.signal(signal.SIGINT, _request_shutdown)
+
     if use_lock:
         # Acquire once; refresh each loop. SET NX every iteration would
         # block ourselves after the first successful poll.
         for _attempt in range(30):
+            if shutting_down():
+                break
             if redis_store.acquire_poller_lock(aid):
                 hold_lock = True
                 print("   redis lock: acquired")
                 break
             print("z", end="", flush=True)
             time.sleep(2)
-        if not hold_lock:
+        if not hold_lock and not shutting_down():
             print("\n❌ could not acquire poller lock — another replica running?")
             sys.exit(1)
 
-    while True:
-        try:
-            if hold_lock:
-                redis_store.refresh_poller_lock(aid)
+    try:
+        while not shutting_down():
+            try:
+                if hold_lock:
+                    redis_store.refresh_poller_lock(aid)
 
-            count = poll_once(fv, processed, creator_uuid)
-            if count:
-                print(f"\n--- handled {count} ---\n")
-            else:
-                print(".", end="", flush=True)
+                # Soft: pick up lorebook.json edits without process restart
+                if time.time() - last_lore_reload >= 300:
+                    last_lore_reload = time.time()
+                    if lorebook.ensure_fresh(force=True):
+                        print("\n📖 lorebook reloaded from disk\n", flush=True)
 
-            # Re-engagement pass every 60s (5-min nudges + morning openers)
-            if time.time() - last_reengage >= 60:
-                last_reengage = time.time()
-                try:
-                    chats = fv.list_chats(size=20)
-                    n = reengagement.run_pass(fv, chats, creator_uuid)
-                    if n:
-                        print(f"\n--- re-engaged {n} fan(s) ---\n")
-                except Exception as e:
-                    print(f"\n⚠️ Re-engagement error: {e}")
+                count = poll_once(fv, processed, creator_uuid)
+                if shutting_down():
+                    break
+                if count:
+                    print(f"\n--- handled {count} ---\n")
+                else:
+                    print(".", end="", flush=True)
 
-            # Every 30 min: aggregate critic errors into code-fix proposals
-            if time.time() - last_fix_scan >= 1800:
-                last_fix_scan = time.time()
-                try:
-                    from core import auto_fix
+                # Re-engagement pass every 60s (5-min nudges + morning openers)
+                if not shutting_down() and time.time() - last_reengage >= 60:
+                    last_reengage = time.time()
+                    try:
+                        chats = fv.list_chats(size=20)
+                        n = reengagement.run_pass(fv, chats, creator_uuid)
+                        if n:
+                            print(f"\n--- re-engaged {n} fan(s) ---\n")
+                    except Exception as e:
+                        print(f"\n⚠️ Re-engagement error: {e}")
 
-                    new = auto_fix.scan_and_queue()
-                    if new:
-                        rules = ", ".join(i["rule"] for i in new)
-                        print(
-                            f"\n🧠 self-repair: {len(new)} proposal(s) queued ({rules}). "
-                            "Apply with: python scripts/auto_fix.py --run\n"
-                        )
-                except Exception as e:
-                    print(f"\n⚠️ fix-scan error: {e}")
+                # Every 30 min: aggregate critic errors into code-fix proposals
+                if not shutting_down() and time.time() - last_fix_scan >= 1800:
+                    last_fix_scan = time.time()
+                    try:
+                        from core import auto_fix
 
-            time.sleep(args.interval)
-        except KeyboardInterrupt:
-            print("\nStopped.")
-            break
-        except Exception as e:
-            print(f"\n⚠️ Poll error: {e}")
-            time.sleep(args.interval)
+                        new = auto_fix.scan_and_queue()
+                        if new:
+                            rules = ", ".join(i["rule"] for i in new)
+                            print(
+                                f"\n🧠 self-repair: {len(new)} proposal(s) queued ({rules}). "
+                                "Apply with: python scripts/auto_fix.py --run\n"
+                            )
+                    except Exception as e:
+                        print(f"\n⚠️ fix-scan error: {e}")
+
+                # Interruptible sleep so SIGTERM is noticed quickly
+                deadline = time.time() + args.interval
+                while time.time() < deadline and not shutting_down():
+                    time.sleep(min(0.5, deadline - time.time()))
+            except Exception as e:
+                if shutting_down():
+                    break
+                print(f"\n⚠️ Poll error: {e}")
+                time.sleep(args.interval)
+    finally:
+        if hold_lock:
+            try:
+                redis_store.release_poller_lock(aid)
+                print("   redis lock: released", flush=True)
+            except Exception as e:
+                print(f"   ⚠️ lock release failed: {e}", flush=True)
+        print("Stopped gracefully.", flush=True)
 
 
 if __name__ == "__main__":
