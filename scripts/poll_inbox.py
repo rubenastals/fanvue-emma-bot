@@ -527,6 +527,22 @@ def main():
 
         init_schema(seed_account=True)
         print(f"   storage: Postgres + Redis (account={aid})")
+        # Keep vault_media aligned with the shipped media map (L0/L1 ladder, etc.)
+        try:
+            from pathlib import Path
+            from db import vault_store
+
+            map_path = vault_store._default_map_path()
+            if map_path and map_path.is_file():
+                raw = json.loads(Path(map_path).read_text(encoding="utf-8"))
+                n = vault_store.replace_items(
+                    raw.get("items") or [],
+                    aid=aid,
+                    catalog_version=Path(map_path).parent.name,
+                )
+                print(f"   vault synced: {n} items from {Path(map_path).name}")
+        except Exception as e:
+            print(f"   ⚠️ vault sync skipped: {e}")
     else:
         print(f"   storage: local JSON files (account={aid})")
 
