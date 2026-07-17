@@ -19,6 +19,10 @@ def _default_map_path() -> Optional[Path]:
     if env:
         p = Path(env)
         return p if p.is_file() else None
+    # Prefer shipped data/ path (exports/ is often docker/git-ignored)
+    shipped = _ROOT / "data" / "fanvue_media_map.json"
+    if shipped.is_file():
+        return shipped
     maps = sorted(
         glob(str(_ROOT / "exports" / "vault_rank_*" / "fanvue_media_map.json")),
         key=os.path.getmtime,
