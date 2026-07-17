@@ -51,11 +51,16 @@ def load_tokens(aid: Optional[str] = None) -> Optional[Dict[str, Any]]:
                 return file_tok
             return None
         pg_tok = dict(row)
-        # If local file is fresher (e.g. just re-authed), prefer it and push to PG.
-        file_tok = _file_load()
-        if file_tok and int(file_tok.get("expires_at") or 0) > int(pg_tok.get("expires_at") or 0):
-            save_tokens(file_tok, aid=aid)
-            return file_tok
+        # Optional local override (dev only). NEVER let a stale image file on
+        # Railway overwrite a good Postgres refresh token — that burns the chain.
+        allow_file = os.getenv("OAUTH_PREFER_TOKEN_FILE", "0") == "1"
+        if allow_file:
+            file_tok = _file_load()
+            if file_tok and int(file_tok.get("expires_at") or 0) > int(
+                pg_tok.get("expires_at") or 0
+            ):
+                save_tokens(file_tok, aid=aid)
+                return file_tok
         return pg_tok
 
 

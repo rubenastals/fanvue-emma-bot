@@ -47,7 +47,15 @@ class FanvueConnector:
             method, url, headers=self._headers(), timeout=timeout, **kwargs
         )
         if response.status_code == 401:
-            refresh_if_expired_or_forced(force=True)
+            # Single-flight refresh (Fanvue refresh tokens are single-use).
+            # Do NOT nest force-refresh inside tenacity storms — one retry only.
+            try:
+                refresh_if_expired_or_forced(force=True)
+            except Exception as e:
+                raise requests.HTTPError(
+                    f"401 {method} {path}: auth refresh failed: {e}",
+                    response=response,
+                ) from e
             response = requests.request(
                 method, url, headers=self._headers(), timeout=timeout, **kwargs
             )
