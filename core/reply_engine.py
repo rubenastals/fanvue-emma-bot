@@ -176,9 +176,12 @@ def fanvue_messages_to_turns(
 def _thread_mentions_voice(
     turns: List[Dict[str, str]], fan_message: str, *, lookback: int = 10
 ) -> bool:
-    """Recent thread is about audio/voice (for turn blocks, not hard gates)."""
+    """Recent thread is about audio/voice — only check FAN messages, not Emma's."""
     blob = (fan_message or "").lower()
     for t in (turns or [])[-lookback:]:
+        # Only scan fan turns — Emma's own captions/teases must not retrigger
+        if (t.get("role") or "").lower() != "user":
+            continue
         blob += " " + (t.get("content") or "").lower()
     return any(
         k in blob

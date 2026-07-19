@@ -97,13 +97,15 @@ def _voice_thread_active(
         )
     )
     # Emma offered voice in last 2 assistant turns + fan replied
+    # Only count explicit tease lines in Emma's chat bubbles, NOT captions
     emma_offered = False
     for t in reversed((history_turns or [])[-6:]):
         if t.get("role") == "assistant":
             c = (t.get("content") or "").lower()
-            if any(
+            # Captions are short (≤60c) — skip them to avoid false loop
+            if len(c) > 60 and any(
                 p in c
-                for p in ("escúchame", "escuchame", "susurr", "🎙", "voice note", "al oído")
+                for p in ("escúchame", "escuchame", "susurr", "🎙", "voice note", "al oído", "oído")
             ):
                 emma_offered = True
             break
@@ -471,30 +473,30 @@ def _fallback_script(want_spanish: bool, *, whisper: bool = False) -> str:
 _VOICE_CAPTIONS_ES = (
     "cierra los ojos…. 😈",
     "solo para ti…. 🔥",
-    "al oído, guapo…. 💋",
     "shhh…. 🤫",
     "no se lo cuentes a nadie…. 😏",
-    "pensé en ti grabando esto…. 💦",
+    "pensé en ti…. 💦",
     "para cuando estés duro…. 🫦",
-    "te lo susurro…. 😈",
     "dime si te pones…. 💋",
-    "una confesión tuya…. 🔥",
+    "una confesión…. 🔥",
     "ponme en altavoz…. 😏",
     "esto no es para todos…. 🤫",
+    "solo tuyo…. 😈",
+    "escucha bien…. 💋",
 )
 _VOICE_CAPTIONS_EN = (
     "close your eyes…. 😈",
     "just for you…. 🔥",
-    "in your ear, babe…. 💋",
     "shhh…. 🤫",
     "don't share this…. 😏",
     "made this thinking of you…. 💦",
     "for when you're hard…. 🫦",
-    "whispering this one…. 😈",
     "tell me if it gets you…. 💋",
     "a confession…. 🔥",
     "put me on speaker…. 😏",
     "not for everyone…. 🤫",
+    "only yours…. 😈",
+    "listen close…. 💋",
 )
 
 
