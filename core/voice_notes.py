@@ -52,6 +52,14 @@ _BLOCK_PACKS = frozenset(
     }
 )
 
+_ASK_VOICE = re.compile(
+    r"(?i)\b("
+    r"audio|audios|voice note|voice memo|voz|nota de voz|"
+    r"gr[aá]bame|m[aá]ndame audio|env[ií]ame audio|escucharte|"
+    r"whisper|susurra|al o[ií]do"
+    r")\b"
+)
+
 
 def _enabled() -> bool:
     return bool(getattr(config, "VOICE_NOTES_ENABLED", True)) and is_configured()
@@ -82,6 +90,10 @@ def _horny_score(text: str) -> int:
     return len(_HORNY.findall(text))
 
 
+def fan_asked_voice(fan_message: str) -> bool:
+    return bool(_ASK_VOICE.search(fan_message or ""))
+
+
 def should_send(
     *,
     fan_message: str,
@@ -91,6 +103,7 @@ def should_send(
     unpaid: bool,
     media_sent_this_turn: bool,
     barged: bool,
+    apply_roll: bool = True,
 ) -> tuple[bool, str]:
     """Return (ok, reason) for logging."""
     if not _enabled():
@@ -125,7 +138,9 @@ def should_send(
     # Key moments only — need a strong trigger
     trigger = False
     reason = ""
-    if reward:
+    if fan_asked_voice(fan_message):
+        trigger, reason = True, "fan asked voice"
+    elif reward:
         trigger, reason = True, "post-purchase reward"
     elif horny >= 2:
         trigger, reason = True, f"very horny fan ({horny} hits)"
@@ -137,11 +152,34 @@ def should_send(
     if not trigger:
         return False, "no key moment"
 
-    chance = float(getattr(config, "VOICE_NOTES_CHANCE", 0.55) or 0.55)
-    if random.random() > chance:
-        return False, f"roll miss ({reason})"
+    if apply_roll and not fan_asked_voice(fan_message):
+        chance = float(getattr(config, "VOICE_NOTES_CHANCE", 0.55) or 0.55)
+        if random.random() > chance:
+            return False, f"roll miss ({reason})"
 
     return True, reason
+
+
+def plan_send(
+    *,
+    fan_message: str,
+    mem: dict,
+    decision: Any,
+    pack_id: str,
+    unpaid: bool,
+    media_sent_this_turn: bool,
+) -> tuple[bool, str]:
+    """Pre-reply check (includes roll) so text can tease an upcoming voice note."""
+    return should_send(
+        fan_message=fan_message,
+        mem=mem,
+        decision=decision,
+        pack_id=pack_id,
+        unpaid=unpaid,
+        media_sent_this_turn=media_sent_this_turn,
+        barged=False,
+        apply_roll=True,
+    )
 
 
 def _generate_script(
@@ -231,20 +269,26 @@ def maybe_send(
     unpaid: bool,
     media_sent_this_turn: bool,
     barged: bool,
+    pre_planned: Optional[tuple[bool, str]] = None,
 ) -> bool:
     """
     Optionally generate + upload + send a voice note after text bubbles.
     Returns True if a voice note was delivered.
     """
-    ok, why = should_send(
-        fan_message=fan_message,
-        mem=mem,
-        decision=decision,
-        pack_id=pack_id,
-        unpaid=unpaid,
-        media_sent_this_turn=media_sent_this_turn,
-        barged=barged,
-    )
+    if barged or media_sent_this_turn:
+        return False
+    if pre_planned is not None:
+        ok, why = pre_planned
+    else:
+        ok, why = should_send(
+            fan_message=fan_message,
+            mem=mem,
+            decision=decision,
+            pack_id=pack_id,
+            unpaid=unpaid,
+            media_sent_this_turn=media_sent_this_turn,
+            barged=barged,
+        )
     if not ok:
         return False
 

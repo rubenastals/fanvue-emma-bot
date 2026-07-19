@@ -860,6 +860,23 @@ def _handle_fan_chat_body(
                     {**(route_result.active or {}), "phase_pull": True},
                 )
 
+        from core import voice_notes as _vn
+
+        _will_attach_photo = bool(
+            offer
+            and not unpaid
+        )
+        voice_planned = _vn.plan_send(
+            fan_message=text,
+            mem=mem,
+            decision=decision,
+            pack_id=route_result.pack_id,
+            unpaid=unpaid,
+            media_sent_this_turn=_will_attach_photo,
+        )
+        if voice_planned[0]:
+            print(f"   🎙️ voice planned: {voice_planned[1]}")
+
         try:
             # Keep "Emma is typing…" alive during the (multi-second) DeepSeek call.
             with _typing_keepalive(fv, fan_uuid):
@@ -895,6 +912,8 @@ def _handle_fan_chat_body(
                         delivery_truth=delivery_truth,
                         pack_id=route_result.pack_id,
                         route_result=route_result,
+                        voice_will_send=voice_planned[0],
+                        fan_asked_voice=_vn.fan_asked_voice(text),
                     )
         except Exception as e:
             import traceback
@@ -1209,6 +1228,7 @@ def _handle_fan_chat_body(
                     unpaid=unpaid,
                     media_sent_this_turn=bool(free_sent or ppv_sent),
                     barged=barged,
+                    pre_planned=voice_planned if voice_planned[0] else None,
                 )
             except Exception as e:
                 print(f"   ⚠️ voice note error: {type(e).__name__}: {e}")
