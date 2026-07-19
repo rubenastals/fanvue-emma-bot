@@ -520,6 +520,18 @@ def _handle_fan_chat_body(
         )
 
         mem = fan_memory.observe_message(fan_uuid, fan_handle, text)
+        try:
+            from core import fanvue_insights
+
+            mem = fanvue_insights.refresh_if_due(
+                fv,
+                fan_uuid,
+                fan_handle=fan_handle,
+                creator_uuid=creator_uuid,
+                mem=mem,
+            )
+        except Exception as e:
+            print(f"   ⚠️ fanvue insights refresh: {type(e).__name__}: {e}")
         # Sync media Emma already sent in Fanvue history → client card (no repeats)
         synced = fan_memory.merge_sent_from_chat(
             fan_uuid, messages, creator_uuid, fan_handle=fan_handle

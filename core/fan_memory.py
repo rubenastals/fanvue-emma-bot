@@ -135,6 +135,21 @@ def _blank(fan_handle: str) -> dict:
         "facts": [],
         "avoid": [],
         "summary": "",
+        # Fanvue platform sync (insights API + session stats)
+        "fanvue_status": None,
+        "fanvue_spent_usd": 0.0,
+        "fanvue_max_payment_usd": 0.0,
+        "fanvue_spending_sources": {},
+        "fanvue_last_purchase_at": None,
+        "fanvue_sub_created_at": None,
+        "fanvue_sub_renews_at": None,
+        "fanvue_sub_auto_renew": False,
+        "fanvue_insights_at": None,
+        "session_stats": {},
+        "key_fan_quotes": [],
+        "interaction_digest": {},
+        "interaction_digest_at": None,
+        "digest_at_message_count": 0,
     }
 
 
@@ -155,6 +170,14 @@ def _ensure_card_fields(mem: dict) -> None:
         mem["sent_content"] = []
     if not isinstance(mem.get("failed_media_uuids"), list):
         mem["failed_media_uuids"] = []
+    if not isinstance(mem.get("fanvue_spending_sources"), dict):
+        mem["fanvue_spending_sources"] = {}
+    if not isinstance(mem.get("session_stats"), dict):
+        mem["session_stats"] = {}
+    if not isinstance(mem.get("key_fan_quotes"), list):
+        mem["key_fan_quotes"] = []
+    if not isinstance(mem.get("interaction_digest"), dict):
+        mem["interaction_digest"] = {}
 
 
 _MAX_SENT_UUIDS = 200
@@ -380,6 +403,27 @@ def apply_card_update(
         if summary:
             mem["summary"] = summary[:500]
 
+        _put(fan_uuid, mem)
+        return mem
+
+
+def patch_fanvue_platform(
+    fan_uuid: str, patch: dict, *, fan_handle: str = ""
+) -> dict:
+    """Merge Fanvue insights / session stats / digest fields."""
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        if fan_handle:
+            mem["handle"] = fan_handle
+        for k, v in (patch or {}).items():
+            if v is None and k not in (
+                "fanvue_last_purchase_at",
+                "fanvue_sub_created_at",
+                "fanvue_sub_renews_at",
+            ):
+                continue
+            mem[k] = v
         _put(fan_uuid, mem)
         return mem
 
@@ -958,6 +1002,14 @@ def render_block(fan_uuid: str) -> str:
     lines: List[str] = [
         "CLIENT CARD (confirmed facts only — do NOT invent beyond this + recent chat):",
     ]
+    try:
+        from core.fanvue_insights import render_platform_block
+
+        platform = render_platform_block(mem)
+        if platform:
+            lines.append(platform)
+    except Exception:
+        pass
     if mem.get("handle"):
         lines.append(f"- Handle: @{mem['handle']}")
     name = (mem.get("name") or "").strip()

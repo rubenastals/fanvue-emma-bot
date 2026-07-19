@@ -165,5 +165,13 @@ class Config:
     VOICE_NOTE_SEND_DELAY_SEC = float(os.getenv("VOICE_NOTE_SEND_DELAY_SEC", "2.5"))
     VOICE_NOTES_VAULT_FOLDER = os.getenv("VOICE_NOTES_VAULT_FOLDER", "voice_notes")
 
+    # Fanvue platform insights → CLIENT CARD (see core/fanvue_insights.py)
+    FANVUE_INSIGHTS_ENABLED = os.getenv("FANVUE_INSIGHTS_ENABLED", "1") == "1"
+    FANVUE_INSIGHTS_SYNC_HOURS = float(os.getenv("FANVUE_INSIGHTS_SYNC_HOURS", "6"))
+    FANVUE_SESSION_HOURS = int(os.getenv("FANVUE_SESSION_HOURS", "24"))
+    FANVUE_STATS_MESSAGE_LIMIT = int(os.getenv("FANVUE_STATS_MESSAGE_LIMIT", "200"))
+    FANVUE_DIGEST_EVERY_MESSAGES = int(os.getenv("FANVUE_DIGEST_EVERY_MESSAGES", "25"))
+    FANVUE_DIGEST_MAX_AGE_HOURS = float(os.getenv("FANVUE_DIGEST_MAX_AGE_HOURS", "12"))
+
 
 config = Config()

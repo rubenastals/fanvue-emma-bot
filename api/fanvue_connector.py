@@ -405,6 +405,17 @@ class FanvueConnector:
     def get_fan_insights(self, fan_uuid: str) -> dict:
         return self._request("GET", f"/insights/fans/{fan_uuid}")
 
+    def get_fan_insights_bulk(self, fan_uuids: List[str]) -> dict:
+        """Up to 20 fan UUIDs per request."""
+        uuids = [u for u in fan_uuids if u][:20]
+        if not uuids:
+            return {"results": {}, "errors": []}
+        return self._request(
+            "GET",
+            "/insights/fans",
+            params={"fanUuids": ",".join(uuids)},
+        )
+
     def send_typing_indicator(self, fan_uuid: str, is_typing: bool = True) -> None:
         self._request(
             "POST",
