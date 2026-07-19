@@ -134,7 +134,12 @@ def fanvue_messages_to_turns(
             mtype = (msg.get("mediaType") or "").lower()
             priced = bool(msg.get("pricing"))
             if role == "user":
-                text = "[fan sent a video]" if "video" in mtype else "[fan sent a photo]"
+                if "audio" in mtype:
+                    text = "[fan sent a voice note / audio]"
+                elif "video" in mtype:
+                    text = "[fan sent a video]"
+                else:
+                    text = "[fan sent a photo]"
             elif priced:
                 unlocked = bool(msg.get("purchasedAt"))
                 price = None
@@ -149,8 +154,16 @@ def fanvue_messages_to_turns(
                     text = f"[you locked a paid photo{price_bit} — HE UNLOCKED IT]"
                 else:
                     text = f"[you locked a paid photo{price_bit} — still locked / unpaid]"
+            elif "audio" in mtype:
+                text = (text + " " if text else "") + "[you sent a VOICE NOTE — free audio, not a photo]"
             else:
-                text = "[you sent a FREE photo — unlocked gift]"
+                text = (text + " " if text else "") + "[you sent a FREE photo — unlocked gift]"
+        elif text and role == "assistant" and (msg.get("hasMedia") or msg.get("mediaUuids")):
+            mtype = (msg.get("mediaType") or "").lower()
+            if "audio" in mtype and "[voice note" not in text.lower():
+                text = f"{text} [voice note attached]"
+            elif msg.get("pricing") and "[locked" not in text.lower() and "[paid" not in text.lower():
+                text = f"{text} [paid photo lock attached]"
         if not text:
             continue
         if turns and turns[-1]["role"] == role:
@@ -158,6 +171,23 @@ def fanvue_messages_to_turns(
         else:
             turns.append({"role": role, "content": text})
     return turns
+
+
+def _thread_mentions_voice(
+    turns: List[Dict[str, str]], fan_message: str, *, lookback: int = 10
+) -> bool:
+    """Recent thread is about audio/voice (for turn blocks, not hard gates)."""
+    blob = (fan_message or "").lower()
+    for t in (turns or [])[-lookback:]:
+        blob += " " + (t.get("content") or "").lower()
+    return any(
+        k in blob
+        for k in (
+            "audio", "audios", "voz", "voice note", "escúchame", "escuchame",
+            "susurr", "🎙", "oírme", "oírte", "grabar", "waiting for",
+            "esperando", "voice note",
+        )
+    )
 
 
 def generate_emma_reply(
@@ -409,8 +439,8 @@ def generate_emma_reply(
 
     unpaid_gate = bool(delivery_truth and delivery_truth.get("ppv_unpaid"))
     status_active = bool(ppv_status and ppv_status.get("active"))
-    # One LOCK STATUS block only — never "none" + "active" in the same turn.
-    if unpaid_gate or status_active:
+    # One LOCK STATUS block only — skip when voice note attaches (fan wants audio, not lock push)
+    if (unpaid_gate or status_active) and not voice_will_send:
         if status_active and ppv_status:
             turn_blocks.append(_ppv_truth_block(ppv_status))
         elif ppv_status and (
@@ -430,7 +460,7 @@ def generate_emma_reply(
                 "- Do NOT tease another photo, video, bundle, or 'the one I mentioned'.\n"
                 "- Gratis ask → no more free; push THIS lock."
             )
-    elif ppv_status:
+    elif ppv_status and not voice_will_send:
         turn_blocks.append(_ppv_truth_block(ppv_status))
 
     if re.search(r"(?i)\b(v[ií]deo|video|clip|grabaci[oó]n|film|filmar)\b", fan_message or ""):
@@ -472,6 +502,18 @@ def generate_emma_reply(
         from core.fan_vision import vision_system_block
 
         turn_blocks.append(vision_system_block(vision_desc))
+
+    if voice_will_send:
+        turn_blocks.append(
+            "VOICE NOTE THIS TURN: Free sensual audio attaches AFTER your text. "
+            "Tease escúchame briefly. You DO send voice notes — never say solo fotos or no grabar."
+        )
+    elif _thread_mentions_voice(turns, fan_message):
+        turn_blocks.append(
+            "FAN WANTS AUDIO (read history): No voice note this turn. "
+            "Do NOT promise audio, escúchame, or 🎙️. "
+            "Do NOT say 'solo fotos / no grabar' — if you cannot send voice, be honest in text only."
+        )
 
     if not lean:
         recent_text = " ".join(
@@ -559,11 +601,12 @@ def generate_emma_reply(
         if tech_name:
             note += manipulation.author_nudge(pack_id, tech_name)
     if pack_id == "ppv_unpaid" or (ppv_status and ppv_status.get("active")):
-        note += (
-            " UNPAID LOCK: push ONLY that waiting photo (scroll up). "
-            "No other photo, no video, no bundle, no 'the one I mentioned'. "
-            "Gratis ask → deny, push unlock."
-        )
+        if not voice_will_send:
+            note += (
+                " UNPAID LOCK: push ONLY that waiting photo (scroll up). "
+                "No other photo, no video, no bundle, no 'the one I mentioned'. "
+                "Gratis ask → deny, push unlock."
+            )
     if offer:
         is_free = float(offer.get("price") or 0) <= 0 or int(offer.get("level") or 0) == 0
         if is_free:
@@ -580,22 +623,24 @@ def generate_emma_reply(
             "If it's not HIS body / it's your own content / wrong pic: call it out, "
             "don't fake arousal. Demand HIS pic if he dodged."
         )
-    if voice_will_send:
-        note += (
-            " VOICE ATTACHING: a sensual voice note goes out after this text — "
-            "tease briefly (escúchame… / listen…), never say you don't do audios."
-        )
-    elif offer:
-        note += (
-            " PHOTO this turn (not audio) — do NOT promise voice, susurro, escúchame, or 🎙️."
-        )
     note = prompt_layers.clip_author(note)
 
     turns_out = [dict(t) for t in turns]
+    hist_n = len(turns_out)
     for i in range(len(turns_out) - 1, -1, -1):
         if turns_out[i]["role"] == "user":
             turns_out[i]["content"] = f"{turns_out[i]['content']}\n\n{note}"
             break
+    messages.append(
+        {
+            "role": "system",
+            "content": (
+                f"CHAT HISTORY ({hist_n} turns, chronological, newest last). "
+                "This thread is ground truth — stay consistent with what was said; "
+                "react to his LAST message in context."
+            ),
+        }
+    )
     messages.extend(turns_out)
 
     confirmed = bool(mem.get("name_confirmed"))

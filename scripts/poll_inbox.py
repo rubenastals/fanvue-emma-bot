@@ -516,7 +516,8 @@ def _handle_fan_chat_body(
         )
         print(
             f"   history: {len(turns)} turns "
-            f"(≤{hist_max} msgs / {hist_hours}h)"
+            f"(≤{hist_max} msgs / {hist_hours}h) "
+            f"last_fan={text[:60]!r}"
         )
 
         mem = fan_memory.observe_message(fan_uuid, fan_handle, text)

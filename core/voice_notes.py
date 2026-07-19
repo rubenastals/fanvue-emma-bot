@@ -19,10 +19,8 @@ from utils.elevenlabs_client import is_configured, synthesize_to_file
 
 _BLOCK_PACKS = frozenset(
     {
-        "ppv_unpaid",
         "price_objection",
         "delivery_missing",
-        "phase_reengage",
         "ask_free_first",
     }
 )
@@ -51,7 +49,7 @@ def _voice_count_today(mem: dict) -> int:
     return int(mem.get("voice_notes_today") or 0)
 
 
-def _history_snippet(history_turns: Optional[List], *, limit: int = 8) -> str:
+def _history_snippet(history_turns: Optional[List], *, limit: int = 12) -> str:
     lines: List[str] = []
     for t in (history_turns or [])[-limit:]:
         role = (t.get("role") or "").lower()
@@ -62,31 +60,88 @@ def _history_snippet(history_turns: Optional[List], *, limit: int = 8) -> str:
     return "\n".join(lines) or "(no prior turns)"
 
 
+def _voice_thread_active(
+    fan_message: str, history_turns: Optional[List]
+) -> tuple[bool, str]:
+    """
+    Fan is clearly in an audio/voice thread — send without a second AI gate.
+    Reads recent chat context, not single-keyword activation.
+    """
+    parts: List[str] = [(fan_message or "").lower()]
+    for t in (history_turns or [])[-10:]:
+        parts.append((t.get("content") or "").lower())
+    blob = " ".join(parts)
+    waiting = any(
+        p in blob
+        for p in (
+            "esperando", "waiting for", "prometiste", "promised",
+            "no me has pasado", "no me mand", "no eres capaz",
+            "where is the audio", "mandame el audio", "mándame el audio",
+            "y el audio", "sigo esperando",
+        )
+    )
+    audio_ask = any(
+        p in blob
+        for p in (
+            "audio", "audios", "voz", "voice note", "escúchame", "escuchame",
+            "susurr", "oírme", "oírte", "grábame", "grabame", "🎙",
+        )
+    )
+    # Emma offered voice in last 2 assistant turns + fan replied
+    emma_offered = False
+    for t in reversed((history_turns or [])[-6:]):
+        if t.get("role") == "assistant":
+            c = (t.get("content") or "").lower()
+            if any(
+                p in c
+                for p in ("escúchame", "escuchame", "susurr", "🎙", "voice note", "al oído")
+            ):
+                emma_offered = True
+            break
+    if waiting:
+        return True, "fan waiting for promised audio"
+    if emma_offered and (fan_message or "").strip():
+        return True, "emma offered voice — fan replied"
+    if audio_ask and any(
+        p in (fan_message or "").lower()
+        for p in ("audio", "voz", "susurr", "escúch", "🎙", "oír", "oir", "graba")
+    ):
+        return True, "fan asking for voice now"
+    return False, ""
+
+
 def _hard_blocks(
     *,
     mem: dict,
     decision: Any,
     pack_id: str,
-    unpaid: bool,
     media_sent_this_turn: bool,
     barged: bool,
+    fan_message: str = "",
+    history_turns: Optional[List] = None,
+    voice_thread: bool = False,
 ) -> Optional[str]:
     if not _enabled():
         return "disabled or no API key"
     if barged:
         return "barge-in"
-    if unpaid or pack_id in _BLOCK_PACKS:
-        return "sell/objection/reengage block"
+    # unpaid PPV photo does NOT block voice — fan may want audio instead of unlocking
+    if pack_id in _BLOCK_PACKS:
+        return "objection/delivery block"
     if media_sent_this_turn:
         return "photo turn"
     if int(mem.get("messages") or 0) < int(getattr(config, "VOICE_NOTES_MIN_MESSAGES", 8) or 8):
         return "too early in chat"
     if _voice_count_today(mem) >= int(getattr(config, "VOICE_NOTES_MAX_PER_DAY", 2) or 2):
-        return "daily cap"
+        if not voice_thread:
+            return "daily cap"
+        print("   🎙️ daily cap bypass — fan waiting for voice")
     cooldown_h = float(getattr(config, "VOICE_NOTES_COOLDOWN_HOURS", 6) or 6)
     last = _parse_iso(mem.get("last_voice_at"))
     if last and datetime.now(timezone.utc) - last < timedelta(hours=cooldown_h):
-        return "cooldown"
+        if not voice_thread:
+            return "cooldown"
+        print("   🎙️ cooldown bypass — fan waiting for voice")
     mode = (getattr(decision, "mode", "") or "").lower()
     if mode in ("hard_sell", "chill"):
         return f"mode={mode}"
@@ -99,6 +154,7 @@ def _ai_should_send_voice(
     *,
     pack_id: str,
     mode: str,
+    unpaid: bool = False,
 ) -> tuple[bool, str]:
     """DeepSeek reads context — no keyword triggers."""
     from openai import OpenAI
@@ -119,12 +175,15 @@ def _ai_should_send_voice(
         "- Fan complained last audio was weak — she should redo it with voice, not sell a pic\n\n"
         "NO when:\n"
         "- Fan wants a photo/video, price, or unlock\n"
-        "- Objection, cold, reengage, billing, unpaid lock\n"
+        "- Objection, cold, billing dispute\n"
         "- Better to sell PPV or stay text-only this turn\n\n"
+        "IMPORTANT: An unpaid PPV photo in chat does NOT block voice. "
+        "If fan wants audio / is waiting for a voice note, say YES — voice is free, separate from the lock.\n\n"
         "Reply ONE line only: YES: <short reason>  OR  NO: <short reason>"
     )
+    unpaid_note = " (unpaid photo lock open in chat)" if unpaid else ""
     user = (
-        f"Pack: {pack_id} | Mode: {mode}\n\n"
+        f"Pack: {pack_id} | Mode: {mode}{unpaid_note}\n\n"
         f"Recent chat:\n{snippet}\n\n"
         f"Fan message now: {(fan_message or '')[:400]}"
     )
@@ -169,16 +228,23 @@ def should_send(
     history_turns: Optional[List] = None,
 ) -> tuple[bool, str]:
     """Return (ok, reason) for logging."""
+    thread_ok, thread_why = _voice_thread_active(fan_message, history_turns)
     blocked = _hard_blocks(
         mem=mem,
         decision=decision,
         pack_id=pack_id,
-        unpaid=unpaid,
         media_sent_this_turn=media_sent_this_turn,
         barged=barged,
+        fan_message=fan_message,
+        history_turns=history_turns,
+        voice_thread=thread_ok,
     )
     if blocked:
         return False, blocked
+
+    if thread_ok:
+        print(f"   🎙️ voice thread: YES — {thread_why}")
+        return True, thread_why
 
     mode = (getattr(decision, "mode", "") or "").lower()
     ok, reason = _ai_should_send_voice(
@@ -186,6 +252,7 @@ def should_send(
         history_turns,
         pack_id=pack_id,
         mode=mode,
+        unpaid=unpaid,
     )
     if ok:
         print(f"   🎙️ ai voice: YES — {reason[:100]}")

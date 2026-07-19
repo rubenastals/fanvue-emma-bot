@@ -21,7 +21,7 @@ from core.prompt_core import EMMA_CORE_PROMPT
 BUDGET_CORE = 5600
 BUDGET_CARD = 2500
 BUDGET_TURN_SYSTEM = 4200  # pack + manipulation banner need room
-BUDGET_AUTHOR = 400
+BUDGET_AUTHOR = 650
 
 
 def _clip(text: str, budget: int, label: str) -> str:
