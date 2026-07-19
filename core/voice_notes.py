@@ -325,10 +325,13 @@ def _v3_tags_for_prompt() -> str:
 
 
 def _finalize_script(raw: str) -> str:
-    """Keep v3 audio tags; strip emojis; never force extra tags."""
+    """Keep v3 audio tags; strip emojis; ensure natural closing pause."""
     s = (raw or "").strip().strip('"\'')
     s = _EMOJI.sub("", s).strip()
     s = re.sub(r"\s{2,}", " ", s)
+    # If the script has no closing pause, ElevenLabs stops abruptly — add one.
+    if s and not s.endswith(("....", "…", ".", "?", "!", "???")):
+        s = s.rstrip() + "...."
     return s
 
 
@@ -414,7 +417,7 @@ def _generate_script(
         if script and min_c <= len(script) <= max_c:
             return script
         if script and len(script) > max_c:
-            return script[:max_c].rsplit(" ", 1)[0]
+            return script[:max_c].rsplit(" ", 1)[0].rstrip(".,…") + "...."
         if script and len(script) < min_c:
             print(f"   🎙️ script too short ({len(script)}c) — using fallback")
     except Exception as e:
