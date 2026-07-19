@@ -128,6 +128,7 @@ def _blank(fan_handle: str) -> dict:
         "voice_notes_today": 0,
         "voice_notes_day": None,
         "last_voice_at": None,
+        "recent_voice_captions": [],
         "note": "",
         "status": "new",
         # Permanent client card (hybrid memory)
@@ -932,6 +933,7 @@ def record_voice_note(
     fan_handle: str = "",
     *,
     script: str = "",
+    caption: str = "",
 ) -> None:
     with _LOCK:
         mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
@@ -945,6 +947,11 @@ def record_voice_note(
         mem["last_voice_at"] = _now()
         if script:
             mem["last_voice_script"] = script[:200]
+        if caption:
+            mem["last_voice_caption"] = caption[:120]
+            recent = list(mem.get("recent_voice_captions") or [])
+            recent.append(caption[:120])
+            mem["recent_voice_captions"] = recent[-8:]
         _put(fan_uuid, mem)
 
 

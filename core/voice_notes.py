@@ -465,10 +465,41 @@ def _fallback_script(want_spanish: bool, *, whisper: bool = False) -> str:
     return random.choice(opts)
 
 
-def _caption_for(want_spanish: bool) -> str:
-    if want_spanish:
-        return random.choice(["escúchame…. 🎙️", "para ti…. 🔥", "al oído…. 😈"])
-    return random.choice(["listen…. 🎙️", "for you…. 🔥", "in your ear…. 😈"])
+_VOICE_CAPTIONS_ES = (
+    "cierra los ojos…. 😈",
+    "solo para ti…. 🔥",
+    "al oído, guapo…. 💋",
+    "shhh…. 🤫",
+    "no se lo cuentes a nadie…. 😏",
+    "pensé en ti grabando esto…. 💦",
+    "para cuando estés duro…. 🫦",
+    "te lo susurro…. 😈",
+    "dime si te pones…. 💋",
+    "una confesión tuya…. 🔥",
+    "ponme en altavoz…. 😏",
+    "esto no es para todos…. 🤫",
+)
+_VOICE_CAPTIONS_EN = (
+    "close your eyes…. 😈",
+    "just for you…. 🔥",
+    "in your ear, babe…. 💋",
+    "shhh…. 🤫",
+    "don't share this…. 😏",
+    "made this thinking of you…. 💦",
+    "for when you're hard…. 🫦",
+    "whispering this one…. 😈",
+    "tell me if it gets you…. 💋",
+    "a confession…. 🔥",
+    "put me on speaker…. 😏",
+    "not for everyone…. 🤫",
+)
+
+
+def _pick_caption(want_spanish: bool, mem: dict) -> str:
+    pool = _VOICE_CAPTIONS_ES if want_spanish else _VOICE_CAPTIONS_EN
+    recent = set((mem.get("recent_voice_captions") or [])[-6:])
+    choices = [c for c in pool if c not in recent] or list(pool)
+    return random.choice(choices)
 
 
 def maybe_send(
@@ -544,7 +575,7 @@ def maybe_send(
             raise RuntimeError(f"upload missing mediaUuid: {upload!r}")
 
         time.sleep(float(getattr(config, "VOICE_NOTE_SEND_DELAY_SEC", 2.5) or 2.5))
-        caption = _caption_for(want_spanish)
+        caption = _pick_caption(want_spanish, mem)
         fv.send_media_message(
             fan_uuid,
             media_uuids=[media_uuid],
@@ -558,7 +589,9 @@ def maybe_send(
         )
         if not verified:
             print("   ⚠️ voice note sent but not verified in chat")
-        fan_memory.record_voice_note(fan_uuid, fan_handle=fan_handle, script=script)
+        fan_memory.record_voice_note(
+            fan_uuid, fan_handle=fan_handle, script=script, caption=caption
+        )
         print(f"   🎙️ voice note sent to @{fan_handle}")
         return True
     except Exception as e:
