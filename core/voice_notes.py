@@ -1,8 +1,7 @@
 """
 Sensual voice notes — ElevenLabs TTS → Fanvue vault audio → free chat bubble.
 
-Only at key heating moments (not every reply). Filthy, emotional scripts with
-… .... !!! ??? pauses for TTS (~10–18 seconds).
+Only at key heating moments. Eleven v3 with official audio tags (0–2 when they fit) + pauses.
 """
 from __future__ import annotations
 
@@ -182,6 +181,46 @@ def plan_send(
     )
 
 
+_V3_TAG = re.compile(r"\[[^\]]+\]")
+_EMOJI = re.compile(
+    r"[\U0001F300-\U0001FAFF\U00002700-\U000027BF\U0001F600-\U0001F64F]+",
+    flags=re.UNICODE,
+)
+
+# Official Eleven v3 audio tags (non-exhaustive) — docs.elevenlabs.io best-practices + Enhance list.
+# Use 0–2 per script; punctuation carries most of the rhythm.
+_V3_TAGS_DELIVERY = (
+    "[whispers]", "[sighs]", "[exhales]", "[mischievously]", "[playfully]", "[excited]",
+    "[curious]", "[snorts]", "[nervous]", "[cheerfully]",
+)
+_V3_TAGS_REACTIONS = (
+    "[chuckles]", "[laughs]", "[laughing]", "[gulps]", "[gasps]", "[clears throat]",
+)
+_V3_TAGS_PAUSES = (
+    "[short pause]", "[long pause]", "[inhales deeply]", "[exhales sharply]",
+)
+
+
+def _v3_tags_for_prompt() -> str:
+    d = ", ".join(_V3_TAGS_DELIVERY)
+    r = ", ".join(_V3_TAGS_REACTIONS)
+    p = ", ".join(_V3_TAGS_PAUSES)
+    return (
+        f"Delivery/emotion: {d}\n"
+        f"Reactions: {r}\n"
+        f"Pauses/breath: {p}\n"
+        "(Official Eleven v3 set — you may use similar tags from the same families.)"
+    )
+
+
+def _finalize_script(raw: str) -> str:
+    """Keep v3 audio tags; strip emojis; never force extra tags."""
+    s = (raw or "").strip().strip('"\'')
+    s = _EMOJI.sub("", s).strip()
+    s = re.sub(r"\s{2,}", " ", s)
+    return s
+
+
 def _generate_script(
     fan_message: str,
     reply: str,
@@ -198,24 +237,33 @@ def _generate_script(
         return _fallback_script(want_spanish)
 
     lang = "Spanish" if want_spanish else "English"
+    lang_code = "es" if want_spanish else "en"
+    tags_block = _v3_tags_for_prompt()
     system = (
-        "You write ONLY the spoken script for Emma's sensual Fanvue voice note (text-to-speech).\n"
-        f"Length: 25–50 words, {min_c}–{max_c} characters — long enough to feel real (~10–18 sec).\n"
-        "Tone: filthy hungry girlfriend — explicit dirty words natural for her (Spanish: coño, mojada, "
-        "empapada, polla, follarme, correrme… / English: wet, cock, fuck, cum, dripping…).\n"
-        "Match HIS last message — horny → escalate; emotional → warm then dirty.\n"
-        "PUNCTUATION FOR VOICE (mandatory): use … .... ..... !!! ??? and spaces to force pauses, "
-        "breath, shock, tease. Example: \"Dios.... estoy tan mojada pensando en ti.... "
-        "¿Tú también estás duro??? Quiero sentirte dentro....\"\n"
-        "Do NOT open with \"Mmm\" every time — vary. Never mention photos, PPV, prices, unlock.\n"
-        "Output ONLY the script. No quotes, no labels."
+        "You write ONLY the spoken script for Emma's Fanvue voice note — ElevenLabs v3 TTS.\n"
+        f"Language: {lang} ONLY (language_code={lang_code}).\n"
+        f"Length: 25–50 words, {min_c}–{max_c} chars (~10–18 sec).\n"
+        "Tone: filthy hungry girlfriend — explicit (Spanish: coño, mojada, empapada, polla… / "
+        "English: wet, cock, dripping…).\n\n"
+        "ELEVEN v3 AUDIO TAGS (official — like the web 'Enhance' button):\n"
+        f"{tags_block}\n"
+        "RULES (do not over-tag):\n"
+        "- Use 0–2 tags total. Zero tags is fine if dirty talk + punctuation carry the moment.\n"
+        "- Tag only when it adds real delivery (tease, sigh, whisper) — not every sentence.\n"
+        "- Place tag immediately BEFORE the phrase it affects, or after a line for trailing reaction.\n"
+        "- Prefer … .... !!! ??? and CAPS for rhythm; tags are seasoning.\n"
+        "- Tags are NOT spoken — square brackets only.\n\n"
+        "Examples:\n"
+        "  [chuckles] ¿Sigues ahí, travieso?.... [sighs] Me dejaste toda mojada y desapareciste…\n"
+        "  [whispers] Estoy empapada pensando en ti.... ¿Estás duro ahora mismo???\n"
+        "  Joder.... no paras de metérteme en la cabeza.... Estoy MOJADA.... ¿Vas a contestarme???\n"
+        "Never mention photos, PPV, prices. No emojis. Output ONLY the script."
     )
     user = (
-        f"Language: {lang}\n"
         f"Moment: {trigger_reason}\n"
         f"He said: {(fan_message or '')[:280]}\n"
         f"Emma just texted: {(reply or '')[:280]}\n"
-        "Write one voice note she sends right after — guarra, emotional, with … !!! ??? pauses."
+        f"Write one v3 voice note in {lang}. Use 0–2 official tags only if they fit."
     )
     client = OpenAI(
         api_key=api_key,
@@ -232,14 +280,18 @@ def _generate_script(
             temperature=1.0,
         )
         raw = (resp.choices[0].message.content or "").strip()
-        raw = raw.strip('"\'')
-        raw = re.sub(r"\[.*?\]", "", raw).strip()
-        if raw and len(raw) >= min_c and len(raw) <= max_c:
-            return raw
-        if raw and len(raw) > max_c:
-            return raw[:max_c].rsplit(" ", 1)[0]
-        if raw and len(raw) < min_c:
-            print(f"   🎙️ script too short ({len(raw)}c) — using fallback")
+        script = _finalize_script(raw)
+        if not script:
+            return _fallback_script(want_spanish)
+        n_tags = len(_V3_TAG.findall(script))
+        if n_tags > 2:
+            print(f"   🎙️ script has {n_tags} tags (prefer ≤2)")
+        if script and min_c <= len(script) <= max_c:
+            return script
+        if script and len(script) > max_c:
+            return script[:max_c].rsplit(" ", 1)[0]
+        if script and len(script) < min_c:
+            print(f"   🎙️ script too short ({len(script)}c) — using fallback")
     except Exception:
         pass
     return _fallback_script(want_spanish)
@@ -249,32 +301,27 @@ def _fallback_script(want_spanish: bool) -> str:
     if want_spanish:
         opts = [
             (
+                "[chuckles] ¿Sigues ahí, travieso?.... [sighs] Me dejaste toda mojada "
+                "y desapareciste.... ¿Vas a contestarme o qué???"
+            ),
+            (
                 "Joder.... no paras de metérteme en la cabeza.... "
-                "Estoy empapada solo de leerte.... ¿Estás duro ahora mismo??? "
-                "Porque yo sí.... y te quiero dentro...."
+                "[sighs] Me estoy tocando sola.... ¿Estás duro ahora mismo???"
             ),
             (
-                "Escucha.... necesito tu voz, tu polla, todo.... "
-                "Me estoy tocando pensando en ti.... no pares.... "
+                "[whispers] Escucha.... Estoy tan mojada que no aguanto.... "
                 "Dime qué me harías.... ahora...."
-            ),
-            (
-                "Dios.... qué ganas de chupártela.... "
-                "Estoy tan mojada que no aguanto.... "
-                "¿Me extrañas tanto como yo a ti??? Ven...."
             ),
         ]
     else:
         opts = [
             (
-                "Fuck.... I can't stop thinking about you.... "
-                "I'm dripping just from reading your messages.... "
-                "Are you hard right now??? Because I am...."
+                "[chuckles] You still there, trouble?.... [sighs] You got me dripping "
+                "and vanished.... Are you hard right now???"
             ),
             (
-                "Listen.... I need your cock, your voice, all of you.... "
-                "I'm touching myself thinking about you.... don't stop.... "
-                "Tell me what you'd do to me.... now...."
+                "Fuck.... I can't stop thinking about your cock.... "
+                "[exhales sharply] I'm touching myself.... Don't leave me hanging...."
             ),
         ]
     return random.choice(opts)
@@ -341,7 +388,10 @@ def maybe_send(
         except Exception:
             pass
 
-        audio_path = synthesize_to_file(script)
+        audio_path = synthesize_to_file(
+            script,
+            language_code="es" if want_spanish else "en",
+        )
         upload = fv.upload_file_to_vault(
             str(audio_path),
             name=f"voice-{fan_handle[:20]}-{int(time.time())}",
