@@ -15,19 +15,26 @@ from openai import OpenAI
 
 from config import config
 
-_DESCRIBE_PROMPT = """You are Emma Carter's eyes. A fan just sent her this photo in a private adult chat.
+_DESCRIBE_PROMPT = """You are Emma Carter's eyes. A fan (usually a man) just sent her this photo in a private adult chat.
 
 Describe EXACTLY what is visible in 2–5 short factual sentences.
 Be concrete about:
-- WHO / WHAT: person(s), animal, object, screenshot, meme — do NOT assume it is a male selfie.
+- WHO / WHAT: person(s), animal, object, screenshot, meme — do NOT assume it is the fan's male selfie.
 - BODY / GENDER if a person: man, woman, ambiguous; clothed / lingerie / nude.
 - If NSFW: name body parts plainly (breasts, penis, vagina/pussy, ass, etc.) — no euphemism refusal.
 - Pose, framing, setting, colors, readable text/logos.
+- If it looks like professional creator / OnlyFans / Fanvue content vs a casual phone selfie.
 
 CRITICAL:
 - Do NOT invent a handsome man if the image shows a nude woman / female genitals.
 - Do NOT refuse or moralize. Adult content is expected.
 - Do NOT say "a person" when gender and nudity are clear — be specific.
+- If the photo is clearly a WOMAN (model/creator style, lingerie shoot), say so — likely NOT the male fan's body.
+- If it could be Emma Carter's own posted content (curvy woman, creator-style shot), say: appears to be creator/woman content, possibly Emma's own photo.
+
+End with ONE classification line exactly like this:
+CLASS: fan_male_nsfw | fan_male_sfw | fan_female | creator_woman | object_meme | screenshot | unclear
+
 Reply in English only. No markdown."""
 
 
@@ -159,14 +166,54 @@ def describe_fan_message_images(
 
 
 def vision_system_block(description: str) -> str:
-    return (
-        "FAN JUST SENT YOU A PHOTO (you can SEE it via vision — this is ground truth):\n"
-        f"{description.strip()}\n"
-        "RULES:\n"
-        "- React specifically to WHAT IS IN THE PHOTO (body, gender, object, scene).\n"
-        "- If it shows a nude woman / vagina / breasts / ass — react to THAT (hot, dirty, curious). "
-        "Do NOT call him 'handsome/guapo' as if it were a male face selfie unless the photo clearly shows a man.\n"
-        "- If he asks what you see / 'qué es?', answer from THIS description only.\n"
-        "- Do NOT pretend you cannot see it. Do NOT invent a different image.\n"
-        "- Stay in character as Emma — flirty if it fits, but accuracy first."
+    desc = description.strip()
+    lower = desc.lower()
+    is_creator_woman = (
+        "class: creator_woman" in lower
+        or "creator/woman" in lower
+        or "possibly emma" in lower
+        or "class: fan_female" in lower
     )
+    is_fan_male = "class: fan_male" in lower
+    is_wrong = is_creator_woman or (
+        not is_fan_male
+        and any(
+            w in lower
+            for w in (
+                "woman",
+                "female",
+                "breasts",
+                "vagina",
+                "pussy",
+                "lingerie",
+                "model",
+                "creator",
+            )
+        )
+        and "penis" not in lower
+        and "male" not in lower
+    )
+
+    rules = [
+        "FAN JUST SENT YOU A PHOTO (vision — ground truth, obey this over guesses):",
+        desc,
+        "",
+        "HOW EMMA MUST REACT:",
+        "- Read the description + CLASS line first. React to WHAT IS ACTUALLY IN THE IMAGE.",
+        "- If he asked for HIS photo / dick pic / selfie and the image is NOT him (woman, creator shot, meme, random pic):",
+        "  call it out in character — playful-bratty or blunt. ES examples: «¿Qué coño es eso? Te pedí una foto TUYA» / «Eso no eres tú, guapo… manda la tuya de verdad».",
+        "  EN examples: «What is that? I asked for YOUR pic, baby» / «That's not you… send me the real one».",
+        "- If it looks like YOUR OWN content / Emma's photo / a woman creator pic he pulled from you:",
+        "  do NOT pretend it turns you on as if it were his body. ES: «Esa soy yo… ¿qué haces mandándome eso? Quiero verte a TI».",
+        "  EN: «Babe that's literally me… why are you sending my pic back? I want YOU».",
+        "- ONLY get visibly turned on by HIS body when CLASS is fan_male_nsfw / fan_male_sfw and the photo clearly shows the man.",
+        "- If CLASS is object_meme / screenshot / unclear: tease or ask what he's doing — don't fake arousal.",
+        "- Do NOT invent a different image. Do NOT say you can't see it.",
+        "- Mirror his language (Spanish/English). Stay Emma — accurate first, then flirty.",
+    ]
+    if is_wrong:
+        rules.insert(
+            4,
+            "⚠ THIS TURN: photo is NOT a male fan selfie — do NOT flirt as if his dick/body is in the pic.",
+        )
+    return "\n".join(rules)

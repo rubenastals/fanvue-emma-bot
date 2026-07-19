@@ -551,6 +551,12 @@ def generate_emma_reply(
                 "Do NOT ask if he wants it. Do NOT offer free/gratis. Do NOT claim older gifts. "
                 "Tease once then lock."
             )
+    if fan_vision and (fan_vision.get("description") or "").strip():
+        note += (
+            " FAN PHOTO attached — obey vision block: react to what's IN the pic. "
+            "If it's not HIS body / it's your own content / wrong pic: call it out, "
+            "don't fake arousal. Demand HIS pic if he dodged."
+        )
     note = prompt_layers.clip_author(note)
 
     turns_out = [dict(t) for t in turns]
