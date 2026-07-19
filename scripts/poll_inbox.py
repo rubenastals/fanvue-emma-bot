@@ -135,7 +135,7 @@ def _record_verified_ppv(
 
 def _check_last_ppv(messages: list, creator_uuid: str, mem: dict):
     """
-    Truth-check locks in THIS chat via Fanvue messages.
+    Truth-check locks in THIS chat via Fanvue messages + memory fallback.
     Returns purchased status, or LOCK STATUS (active timed unpaid / none).
     """
     unpaid = ppv_expiry.list_unpaid_locks(
@@ -148,7 +148,14 @@ def _check_last_ppv(messages: list, creator_uuid: str, mem: dict):
     for msg in messages:  # newest-first
         if _sender_uuid(msg) != creator_uuid:
             continue
-        if not (msg.get("pricing") or {}) or not msg.get("mediaUuids"):
+        if not ppv_expiry._msg_has_pricing(msg):
+            continue
+        media = msg.get("mediaUuids") or []
+        if not media:
+            for m in msg.get("media") or []:
+                if isinstance(m, dict) and m.get("uuid"):
+                    media.append(m["uuid"])
+        if not media:
             continue
         sent_raw = msg.get("sentAt") or msg.get("createdAt")
         try:
@@ -161,19 +168,51 @@ def _check_last_ppv(messages: list, creator_uuid: str, mem: dict):
         newest_priced = msg
         break
 
-    if newest_priced and newest_priced.get("purchasedAt") and not unpaid:
-        price = None
-        usd = (newest_priced.get("pricing") or {}).get("USD") or {}
-        if usd.get("price") is not None:
-            price = float(usd["price"]) / 100.0
-        sent_at = datetime.fromisoformat(
-            str(
-                newest_priced.get("sentAt") or newest_priced.get("createdAt")
-            ).replace("Z", "+00:00")
-        )
-        minutes = int(
-            (datetime.now(timezone.utc) - sent_at).total_seconds() // 60
-        )
+    # Tracked message uuid purchased in chat → clear unpaid
+    tracked_msg = (mem.get("last_ppv_message_uuid") or "").strip()
+    if tracked_msg and mem.get("last_ppv_pending"):
+        for msg in messages or []:
+            if (msg.get("uuid") or "").strip() != tracked_msg:
+                continue
+            if ppv_expiry._msg_is_purchased(msg):
+                price = ppv_expiry._msg_price_dollars(msg)
+                sent_at = ppv_expiry._msg_sent_at(msg)
+                minutes = 0
+                if sent_at:
+                    minutes = int(
+                        (datetime.now(timezone.utc) - sent_at).total_seconds()
+                        // 60
+                    )
+                ago = (
+                    f"{minutes} min ago"
+                    if minutes < 120
+                    else f"{minutes // 60}h ago"
+                )
+                return {
+                    "purchased": True,
+                    "active": False,
+                    "label": mem.get("last_ppv_label") or "",
+                    "price": price
+                    if price is not None
+                    else mem.get("last_ppv_price"),
+                    "ago": ago,
+                    "message_uuid": tracked_msg,
+                    "source": "tracked_purchase",
+                }
+            break
+
+    if (
+        newest_priced
+        and ppv_expiry._msg_is_purchased(newest_priced)
+        and not unpaid
+    ):
+        price = ppv_expiry._msg_price_dollars(newest_priced)
+        sent_at = ppv_expiry._msg_sent_at(newest_priced)
+        minutes = 0
+        if sent_at:
+            minutes = int(
+                (datetime.now(timezone.utc) - sent_at).total_seconds() // 60
+            )
         ago = f"{minutes} min ago" if minutes < 120 else f"{minutes // 60}h ago"
         label = ""
         if (newest_priced.get("mediaUuids") or [None])[0] == mem.get(
@@ -186,9 +225,20 @@ def _check_last_ppv(messages: list, creator_uuid: str, mem: dict):
             "label": label,
             "price": price if price is not None else mem.get("last_ppv_price"),
             "ago": ago,
+            "source": "chat_purchase",
         }
 
     status = ppv_expiry.build_lock_status(unpaid_locks=unpaid, mem=mem)
+    status["purchased"] = False
+    if status.get("active"):
+        status["source"] = "chat"
+        return status
+
+    # Chat scan empty/missed — trust our pending clock so we never stack sells
+    mem_lock = ppv_expiry.memory_pending_lock_status(mem)
+    if mem_lock:
+        return mem_lock
+
     status["purchased"] = False
     return status
 
@@ -245,17 +295,16 @@ def _pending_fan_messages(messages: list, fan_uuid: str, processed: set) -> list
 
 
 def _human_bubble_delay(text: str, *, first: bool) -> float:
-    """Short, coherent typing pause — not 10–14s walls."""
+    """Human typing pause scaled to the bubble length."""
     n = len(text or "")
     if first:
-        lo = float(getattr(config, "BUBBLE_DELAY_FIRST_MIN", 2.0))
-        hi = float(getattr(config, "BUBBLE_DELAY_FIRST_MAX", 4.0))
-        # ~40 chars/sec feel + small jitter
-        delay = lo + min(1.5, n / 80.0) + random.uniform(0.0, 0.6)
+        lo = float(getattr(config, "BUBBLE_DELAY_FIRST_MIN", 4.0))
+        hi = float(getattr(config, "BUBBLE_DELAY_FIRST_MAX", 6.5))
+        delay = lo + min(1.8, n / 70.0) + random.uniform(0.0, 0.7)
         return min(hi, max(lo, delay))
-    lo = float(getattr(config, "BUBBLE_DELAY_NEXT_MIN", 1.2))
-    hi = float(getattr(config, "BUBBLE_DELAY_NEXT_MAX", 2.8))
-    delay = lo + min(1.2, n / 100.0) + random.uniform(0.0, 0.5)
+    lo = float(getattr(config, "BUBBLE_DELAY_NEXT_MIN", 2.8))
+    hi = float(getattr(config, "BUBBLE_DELAY_NEXT_MAX", 4.8))
+    delay = lo + min(1.4, n / 85.0) + random.uniform(0.0, 0.6)
     return min(hi, max(lo, delay))
 
 
@@ -453,11 +502,21 @@ def _handle_fan_chat_body(
         text = "\n".join(t for t in texts if t)
         pending_ids = {m["uuid"] for m in pending_chrono if m.get("uuid")}
 
+        hist_hours = int(getattr(config, "HISTORY_HOURS", 36) or 36)
+        hist_max = int(getattr(config, "HISTORY_MAX_MESSAGES", 36) or 36)
+        hist_min = int(getattr(config, "HISTORY_MIN_MESSAGES", 12) or 12)
         ctx_messages = filter_messages_for_context(
-            messages, hours=72, max_messages=100, min_messages=8
+            messages,
+            hours=hist_hours,
+            max_messages=hist_max,
+            min_messages=hist_min,
         )
         turns = fanvue_messages_to_turns(
-            ctx_messages, fan_uuid, creator_uuid, max_messages=100
+            ctx_messages, fan_uuid, creator_uuid, max_messages=hist_max
+        )
+        print(
+            f"   history: {len(turns)} turns "
+            f"(≤{hist_max} msgs / {hist_hours}h)"
         )
 
         mem = fan_memory.observe_message(fan_uuid, fan_handle, text)
@@ -588,13 +647,15 @@ def _handle_fan_chat_body(
                     except Exception:
                         pass
             else:
-                print("   ppv-check: NO active unpaid lock")
-                try:
-                    fan_memory.clear_pending_ppv(
-                        fan_uuid, fan_handle=fan_handle, reason="none_in_chat"
+                # Do NOT wipe memory pending just because chat scan was empty —
+                # that caused stacking a second PPV while the first was still locked.
+                if mem.get("last_ppv_pending"):
+                    print(
+                        "   ppv-check: NO unpaid in chat scan, but memory still "
+                        "pending — keeping lock (will not clear / will not stack)"
                     )
-                except Exception:
-                    pass
+                else:
+                    print("   ppv-check: NO active unpaid lock")
 
         snippets = [
             (m.get("text") or "")[:120]
@@ -610,7 +671,10 @@ def _handle_fan_chat_body(
             history_snippets=snippets,
         )
         decision = route_result.decision
-        use_v2 = bool(getattr(config, "REPLY_V2", True))
+        # SIMPLE brain owns creative path — REPLY_V2 must not bypass it.
+        use_v2 = bool(getattr(config, "REPLY_V2", False)) and not bool(
+            getattr(config, "SIMPLE_PROMPT", True)
+        )
 
         preview = text.replace("\n", " | ")[:80]
         print(f"\n📩 @{fan_handle}: {preview}")
@@ -688,14 +752,53 @@ def _handle_fan_chat_body(
         _CONVERT_PACKS = frozenset(
             {"phase_close", "lock_now", "escalate_paid", "delivery_missing"}
         )
-        unpaid = bool(delivery_truth.get("ppv_unpaid"))
+        unpaid = bool(delivery_truth.get("ppv_unpaid")) or bool(
+            ppv_status and ppv_status.get("active")
+        )
+        # Belt: memory pending with live clock blocks sell even if status glitched
+        if not unpaid and mem.get("last_ppv_pending"):
+            mem_lock = ppv_expiry.memory_pending_lock_status(mem)
+            if mem_lock:
+                unpaid = True
+                delivery_truth["ppv_unpaid"] = True
+                if not (ppv_status and ppv_status.get("active")):
+                    ppv_status = mem_lock
+                print(
+                    f"   SELL: blocked by memory pending lock "
+                    f"(~{mem_lock.get('minutes_left')}m left)"
+                )
+
         want_sell = bool(decision.allow_price) or (
             route_result.pack_id in _CONVERT_PACKS
         )
         want_free = bool(getattr(decision, "allow_free_tease", False)) and not want_sell
 
         if unpaid:
+            offer = None  # never attach a second lock
             print("   SELL: skipped (unpaid lock already in chat)")
+            # Force router pack so creative gets ppv_unpaid rails
+            if route_result.pack_id != "ppv_unpaid":
+                from core.turn_policy import MODE_TEASE, TurnDecision
+                from core.intent_router import RouteResult as _RR
+
+                decision = TurnDecision(
+                    mode=MODE_TEASE,
+                    reason="unpaid PPV still open — push unlock, don't stack",
+                    max_bubbles=2,
+                    allow_ppv_talk=True,
+                    allow_price=False,
+                    allow_free_tease=False,
+                )
+                route_result = _RR(
+                    "ppv_unpaid",
+                    decision,
+                    route_result.facts,
+                    {**(route_result.active or {}), "ppv_unpaid": True},
+                )
+                try:
+                    route_result.facts.ppv_unpaid = True
+                except Exception:
+                    pass
         elif want_free:
             offer = vault_catalog.select_free_tease(mem)
             if offer:
@@ -819,6 +922,12 @@ def _handle_fan_chat_body(
                 or int(offer.get("level") or 0) == 0
             )
         )
+        # Absolute hard stop: never attach a new paid lock while one is unpaid
+        if unpaid and offer and not is_free_offer:
+            print(
+                "   🛑 HARD BLOCK: unpaid lock still open — refusing new PPV attach"
+            )
+            offer = None
         is_paid_offer = bool(offer and not is_free_offer)
 
         # FREE L0: attach image WITH the first bubble so barge-in can't skip the gift
@@ -1075,7 +1184,13 @@ def _handle_fan_chat_body(
             print("   ⚠️ no bubble sent — leaving fan msgs unprocessed for retry")
 
         # Legacy fallback: paid offer still pending (e.g. no bubbles) — verify before memory
-        if offer and not barged and not ppv_sent and not is_free_offer:
+        if (
+            offer
+            and not barged
+            and not ppv_sent
+            and not is_free_offer
+            and not unpaid
+        ):
             try:
                 fv.send_typing_indicator(fan_uuid, True)
             except Exception:
@@ -1260,6 +1375,23 @@ def main():
     args = parser.parse_args()
 
     aid = account_id()
+
+    from config import config as _cfg
+    from core.prompt_core import EMMA_CORE_PROMPT_SIMPLE, PROMPT_VERSION
+
+    print(
+        f"   brain: REPLY_V2={int(bool(_cfg.REPLY_V2))} "
+        f"SIMPLE_PROMPT={int(bool(_cfg.SIMPLE_PROMPT))} "
+        f"LEAN_CREATIVE={int(bool(_cfg.LEAN_CREATIVE))} "
+        f"PHASE_ANALYST={int(bool(_cfg.PHASE_ANALYST))} "
+        f"| prompt={PROMPT_VERSION} core_chars={len(EMMA_CORE_PROMPT_SIMPLE)}"
+    )
+    if _cfg.SIMPLE_PROMPT and _cfg.REPLY_V2:
+        print(
+            "   ⚠️ REPLY_V2=1 ignored while SIMPLE_PROMPT=1 "
+            "(SIMPLE core is the live brain)"
+        )
+
     if use_postgres():
         from db.schema import ensure_account, init_schema
 

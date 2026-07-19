@@ -66,6 +66,24 @@ def _msg_has_pricing(msg: dict) -> bool:
         return True
     if msg.get("isPaid") or msg.get("isLocked") or msg.get("locked"):
         return True
+    if msg.get("ppv") or msg.get("isPpv") or msg.get("payToView"):
+        return True
+    return False
+
+
+def _msg_is_purchased(msg: dict) -> bool:
+    """True when Fanvue marks the lock as unlocked/paid by the fan."""
+    if msg.get("purchasedAt") or msg.get("unlockedAt"):
+        return True
+    if msg.get("purchased") is True or msg.get("isPurchased") is True:
+        return True
+    if msg.get("unlocked") is True or msg.get("isUnlocked") is True:
+        return True
+    status = str(
+        msg.get("purchaseStatus") or msg.get("lockStatus") or ""
+    ).lower()
+    if status in ("purchased", "unlocked", "paid", "opened"):
+        return True
     return False
 
 
@@ -94,7 +112,7 @@ def list_unpaid_locks(
                     media.append(m["uuid"])
         if not media:
             continue
-        if msg.get("purchasedAt"):
+        if _msg_is_purchased(msg):
             continue
         sent = _msg_sent_at(msg)
         if (
@@ -116,6 +134,54 @@ def list_unpaid_locks(
             }
         )
     return out
+
+
+def memory_pending_lock_status(mem: Optional[dict]) -> Optional[Dict[str, Any]]:
+    """
+    Fallback when Fanvue chat scan misses the lock but our memory still tracks
+    an unpaid timed PPV. Prevents stacking a second sell.
+    """
+    mem = mem or {}
+    if not mem.get("last_ppv_pending"):
+        return None
+    media = (mem.get("last_ppv_media_uuid") or "").strip()
+    msg_uuid = (mem.get("last_ppv_message_uuid") or "").strip()
+    if not media and not msg_uuid:
+        return None
+
+    now = datetime.now(timezone.utc)
+    expires = _effective_expires(mem)
+    # Grace: keep treating as unpaid until expire + 2 min (scan lag / clock skew)
+    if expires and now > expires + timedelta(minutes=2):
+        return None
+
+    mins = minutes_remaining(expires, now)
+    sent = _parse_iso(mem.get("last_ppv_at"))
+    ago = None
+    if sent:
+        age_m = int((now - sent).total_seconds() // 60)
+        ago = f"{age_m} min ago" if age_m < 120 else f"{age_m // 60}h ago"
+
+    price = mem.get("last_ppv_price")
+    try:
+        price = float(price) if price is not None else None
+    except (TypeError, ValueError):
+        price = None
+
+    return {
+        "active": True,
+        "count": 1,
+        "label": mem.get("last_ppv_label") or "",
+        "price": price,
+        "minutes_left": mins,
+        "expires_at": expires.isoformat() if expires else None,
+        "ago": ago or "recently",
+        "sent_at": mem.get("last_ppv_at"),
+        "message_uuid": msg_uuid or None,
+        "media_uuid": media or None,
+        "purchased": False,
+        "source": "memory",
+    }
 
 
 def _effective_expires(mem: dict, sent_at: Optional[datetime] = None) -> Optional[datetime]:

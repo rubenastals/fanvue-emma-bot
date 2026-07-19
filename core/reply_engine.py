@@ -42,7 +42,8 @@ _CLIENT: Optional[OpenAI] = None
 
 # Legacy constant (tests / old callers). Live path uses author_note_for(mode).
 AUTHOR_NOTE = (
-    "[Stay in character as Emma. Reply in 1-3 short lines, like real texting. "
+    "[Stay in character as Emma. Reply in 1-2 very short bubbles, usually one. "
+    "Keep the full reply under ~220 characters, like real texting. "
     "Don't repeat your previous openings or emojis. React to his LAST message. "
     "If he's horny or asking for content, move toward locking PPV instead of stalling.]"
 )
@@ -229,7 +230,7 @@ def generate_emma_reply(
         turns.append({"role": "user", "content": fan_message})
 
     lean = bool(getattr(config, "LEAN_CREATIVE", True))
-    simple = bool(getattr(config, "SIMPLE_PROMPT", False))
+    simple = bool(getattr(config, "SIMPLE_PROMPT", True))
 
     # --- PHASE ANALYST: read full chat + client card BEFORE creative ---
     card_block = ""
@@ -405,7 +406,29 @@ def generate_emma_reply(
     if offer:
         turn_blocks.append(vault_catalog.offer_prompt_block(offer))
 
-    if ppv_status:
+    unpaid_gate = bool(delivery_truth and delivery_truth.get("ppv_unpaid"))
+    status_active = bool(ppv_status and ppv_status.get("active"))
+    # One LOCK STATUS block only — never "none" + "active" in the same turn.
+    if unpaid_gate or status_active:
+        if status_active and ppv_status:
+            turn_blocks.append(_ppv_truth_block(ppv_status))
+        elif ppv_status and (
+            ppv_status.get("price") is not None
+            or ppv_status.get("minutes_left") is not None
+            or ppv_status.get("label")
+        ):
+            forced = dict(ppv_status)
+            forced["active"] = True
+            forced["purchased"] = False
+            turn_blocks.append(_ppv_truth_block(forced))
+        else:
+            turn_blocks.append(
+                "LOCK STATUS — VERIFIED THIS TURN (ACTIVE UNPAID CANDADO):\n"
+                "- ONE timed lock is STILL waiting in this chat (not unlocked yet).\n"
+                "- PERSIST on THAT unlock only. Do NOT sell or attach another photo.\n"
+                "- Push the waiting candado with soft FOMO — never invent a second lock."
+            )
+    elif ppv_status:
         turn_blocks.append(_ppv_truth_block(ppv_status))
 
     if delivery_truth and delivery_truth.get("free_in_chat") is True:
@@ -418,17 +441,6 @@ def generate_emma_reply(
             "DELIVERY TRUTH: Fanvue chat does NOT show any free gift from you. "
             "Do NOT claim you already sent/regalaste a photo. That would be a lie. "
             "If a photo attaches this turn, gift THAT. Otherwise apologize briefly and flirt."
-        )
-    # LOCK STATUS already covers unpaid vs none via _ppv_truth_block(ppv_status).
-    # If gate says unpaid but status missing, hard fallback:
-    if (
-        delivery_truth
-        and delivery_truth.get("ppv_unpaid")
-        and not ppv_status
-    ):
-        turn_blocks.append(
-            "LOCK STATUS: UNPAID timed lock is waiting. Persist on THAT unlock. "
-            "Do NOT stack another. Do NOT invent older gifts."
         )
 
     vision_desc = None
@@ -461,9 +473,11 @@ def generate_emma_reply(
     if lean:
         core_prompt = None
         if simple:
-            from core.prompt_core import EMMA_CORE_PROMPT_SIMPLE
+            from core.prompt_core import EMMA_CORE_PROMPT_SIMPLE, PROMPT_VERSION
 
             core_prompt = EMMA_CORE_PROMPT_SIMPLE
+        else:
+            PROMPT_VERSION = "legacy"
         messages, sizes = prompt_layers.build_system_layers(
             card_block=card_block,
             language_block=language.language_system_block(want_spanish),
@@ -473,7 +487,7 @@ def generate_emma_reply(
             core_prompt=core_prompt,
         )
         print(
-            f"   prompt: CORE={sizes['core']} CARD={sizes['card']} "
+            f"   prompt: v={PROMPT_VERSION} CORE={sizes['core']} CARD={sizes['card']} "
             f"TURN={sizes['turn']} total_sys={sizes['system_total']} "
             f"pack={pack_id}{' SIMPLE' if simple else ''}"
         )
@@ -503,15 +517,21 @@ def generate_emma_reply(
     if lean and simple:
         lang = "Spanish only." if want_spanish else "English only."
         note = (
-            f"[Emma texting. {lang} #1 = sell PPV unlock. React to his LAST message, "
-            f"ONE tactic, never repeat a bit. NEVER open with Ay/qué rico/pillín. "
-            f"1–3 short lines. Light pet names OK — never \"Ay {{name}}\" every bubble.]"
+            f"[Emma texting. {lang} Horny girlfriend on her phone — NOT a sales agent. "
+            f"Usually ONE short bubble. MUST: pet name + 2–4 emojis "
+            f"(😈🔥💋😘💕❤️💗😏👀🥵💦). Filthy when he's hot; bratty then warm. "
+            f"No Ay…/Mmm… openers. No would-you-like / exclusive content / special offer. "
+            f"React to his LAST message. Stay consistent with YOUR history. "
+            f"One move (exclusivity/guilt/curiosity/micro-yes/reward; "
+            f"FOMO only if a real lock). Prefer <~120 chars. "
+            f"Sell only what STATUS attaches.]"
         )
     elif lean:
         lang = "Spanish only." if want_spanish else "English only."
         note = (
             f"[Emma texting. {lang} Pack={pack_id}. "
-            f"1–3 short lines. Light pet names OK; real name sometimes if ADDRESSING allows — "
+            f"1–2 short bubbles, under ~220 total characters. Light pet names OK; "
+            f"real name sometimes if ADDRESSING allows — "
             f"never spam \"Ay {{name}}\" every bubble.]"
         )
         if tech_name:
@@ -805,6 +825,14 @@ def generate_emma_reply(
         else:
             print(f"   💵 price-truth rewrite ok (real=${real_price if real_price else 'none'})")
 
+    # Length: rewrite short if over budget — never ship a mid-sentence hard-cut later
+    reply = _rewrite_if_too_long(
+        reply,
+        call=_call,
+        messages=messages,
+        want_spanish=want_spanish,
+    )
+
     # Scheme meta + deterministic guard
     decision.pack_id = pack_id or ""
     decision.technique = tech_name or ""
@@ -933,8 +961,9 @@ def _name_budget_note(
     name = _usable_fan_name(name, confirmed=name_confirmed)
     if not name:
         return (
-            "ADDRESSING: light pet names OK (babe/baby/handsome/cielo/guapo) — "
-            "vary them, don't stack 3 in one line. HARD BAN: never invent a first name.",
+            "ADDRESSING: USE a pet name this turn (baby/babe/cielo/guapo/mi vida/"
+            "handsome/trouble) — rotate, don't stack 3 in one line. "
+            "HARD BAN: never invent a first name.",
             0,
         )
     recent_emma = [
@@ -952,16 +981,16 @@ def _name_budget_note(
     if last_had or len(used_recent) >= 2:
         return (
             f"ADDRESSING THIS TURN: skip \"{name}\" — you used it recently. "
-            f"Use a light pet name (babe/baby/handsome/cielo/guapo) or none. "
-            f"Vary pet names; don't spam the same one. Never \"Ay {name}\".",
+            f"USE a pet name (baby/babe/cielo/guapo/mi vida/handsome/trouble). "
+            f"Vary pets; don't spam the same one. Never \"Ay {name}\".",
             0,
         )
     # Allowed — invite occasional natural use
     return (
         f"ADDRESSING: His confirmed name is \"{name}\". You MAY say it ONCE this turn "
-        f"if it feels natural (warm beat, not a sales stamp). Mix with pet names "
-        f"(babe/baby/handsome/cielo/guapo) across turns — name sometimes, pets often, "
-        f"silence OK. Never open every line with \"Ay {name}\".",
+        f"if natural. Still USE a pet name most turns "
+        f"(baby/babe/cielo/guapo/mi vida/handsome/trouble). "
+        f"Never open every line with \"Ay {name}\".",
         1,
     )
 
@@ -1267,6 +1296,78 @@ def _enforce_delivery_truth(
     )
 
 
+def _char_budgets() -> tuple[int, int, int]:
+    """max_len per bubble, max bubbles, soft total chars for one reply."""
+    max_len = max(80, int(getattr(config, "BUBBLE_MAX_CHARS", 140) or 140))
+    max_bubbles = max(1, int(getattr(config, "MAX_BUBBLES", 2) or 2))
+    soft_total = max(
+        max_len,
+        int(getattr(config, "REPLY_SOFT_MAX_CHARS", 220) or 220),
+    )
+    return max_len, max_bubbles, soft_total
+
+
+def _reply_needs_shorten(reply: str) -> bool:
+    """True if the reply would be hard-cut or is over the soft total budget."""
+    max_len, max_bubbles, soft_total = _char_budgets()
+    text = (reply or "").strip()
+    if not text:
+        return False
+    if len(text) > soft_total:
+        return True
+    lines = [b.strip() for b in re.split(r"\n{1,}", text) if b.strip()]
+    if len(lines) > max_bubbles:
+        return True
+    return any(len(b) > max_len for b in lines)
+
+
+def _rewrite_if_too_long(
+    reply: str,
+    *,
+    call,
+    messages: List[Dict[str, str]],
+    want_spanish: bool,
+) -> str:
+    """
+    If the model wrote past the bubble budget, rewrite shorter — do NOT
+    ship a reply that split_into_messages would mutilate with mid-word cuts.
+    """
+    if not _reply_needs_shorten(reply):
+        return reply
+    max_len, max_bubbles, soft_total = _char_budgets()
+    instr = (
+        f"REWRITE SHORTER — same meaning, same dirty/sweet tone, same price if any. "
+        f"Max {max_bubbles} short bubbles (newline between). Each bubble under "
+        f"{max_len} characters. Whole reply under ~{soft_total} characters. "
+        f"Finish every sentence — never trail off mid-thought."
+        if not want_spanish
+        else (
+            f"REESCRIBE MÁS CORTO — mismo significado, mismo tono guarro/dulce, "
+            f"mismo precio si hay. Máx {max_bubbles} burbujas cortas (salto de línea). "
+            f"Cada burbuja bajo {max_len} caracteres. Todo el reply bajo ~{soft_total} "
+            f"caracteres. Termina cada frase — nunca cortes a mitad."
+        )
+    )
+    try:
+        shorter = call(
+            messages
+            + [
+                {"role": "assistant", "content": reply},
+                {"role": "user", "content": instr},
+            ]
+        )
+    except Exception as exc:
+        print(f"   ⚠️ length-rewrite failed: {exc}")
+        return reply
+    if (shorter or "").strip() and len(shorter.strip()) < len(reply.strip()):
+        print(
+            f"   ✂️ length-rewrite {len(reply)}→{len(shorter.strip())}c "
+            f"(budget ~{soft_total})"
+        )
+        return shorter.strip()
+    return reply
+
+
 def split_into_messages(
     reply: str,
     *,
@@ -1277,24 +1378,38 @@ def split_into_messages(
     """
     Turn one AI reply into several short Fanvue bubbles.
 
-    Newlines become bubbles. Blocks longer than `max_len` (~200) are split
-    on sentence boundaries so she never dumps a paragraph in one message.
-    Cap at `max_bubbles` (default 3).
+    Newlines become bubbles. Overlong blocks split on sentence boundaries.
+    Never mid-sentence truncate with "…" — drop overflow bubbles instead.
+    Slight overshoot (~15%) allowed so a finished thought stays intact.
     """
     if max_len is None:
         max_len = int(getattr(config, "BUBBLE_MAX_CHARS", 200) or 200)
     max_len = max(80, int(max_len))
+    # Prefer complete sentences over ugly chops
+    soft_len = int(max_len * 1.15)
 
     reply = (reply or "").strip()
     if not reply:
         return []
 
-    def _hard_slice(text: str) -> List[str]:
+    def _soft_slice(text: str) -> List[str]:
+        """Split long text on punctuation/spaces; keep pieces readable (no …)."""
         out: List[str] = []
-        while len(text) > max_len:
-            cut = text.rfind(" ", 0, max_len)
+        while len(text) > soft_len:
+            window = text[:soft_len]
+            cut = -1
+            for sep in (". ", "! ", "? ", "… ", "; ", ", ", " "):
+                cut = window.rfind(sep)
+                if cut >= max_len // 3:
+                    cut = cut + len(sep) - 1 if sep != " " else cut
+                    break
             if cut < max_len // 3:
-                cut = max_len
+                # Last resort: space near limit — still no ellipsis mutilation
+                cut = text.rfind(" ", 0, max_len)
+                if cut < max_len // 3:
+                    # Keep whole remaining as one bubble (better than "foo…")
+                    out.append(text.strip())
+                    return out
             out.append(text[:cut].strip())
             text = text[cut:].strip()
         if text:
@@ -1309,7 +1424,7 @@ def split_into_messages(
 
     parts: List[str] = []
     for block in raw_parts:
-        if len(block) <= max_len:
+        if len(block) <= soft_len:
             parts.append(block)
             continue
         sentences = re.split(r"(?<=[.!?…])\s+", block)
@@ -1318,29 +1433,21 @@ def split_into_messages(
             s = s.strip()
             if not s:
                 continue
-            if buf and len(buf) + 1 + len(s) > max_len:
-                parts.extend(_hard_slice(buf) if len(buf) > max_len else [buf])
+            if buf and len(buf) + 1 + len(s) > soft_len:
+                parts.extend(_soft_slice(buf) if len(buf) > soft_len else [buf])
                 buf = s
             else:
                 buf = f"{buf} {s}".strip()
         if buf:
-            parts.extend(_hard_slice(buf) if len(buf) > max_len else [buf])
+            parts.extend(_soft_slice(buf) if len(buf) > soft_len else [buf])
 
     if not parts:
-        parts = _hard_slice(reply)
+        parts = _soft_slice(reply)
 
     default_cap = int(getattr(config, "MAX_BUBBLES", 3) or 3)
     hard_cap = max(1, max_bubbles if max_bubbles is not None else default_cap)
     if len(parts) > hard_cap:
-        head = parts[: hard_cap - 1]
-        # Keep overflow as more bubbles only if under cap; else trim last
-        rest = parts[hard_cap - 1 :]
-        # Prefer first hard_cap intact short pieces; drop extreme overflow
-        last = rest[0]
-        if len(rest) > 1:
-            last = (rest[0] + " " + rest[1]).strip()
-        if len(last) > max_len:
-            last = last[: max_len - 1].rsplit(" ", 1)[0] + "…"
-        parts = head + [last]
+        # Keep first N complete bubbles; drop the rest (no glue + "…" chop)
+        parts = parts[:hard_cap]
 
     return parts

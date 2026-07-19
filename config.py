@@ -59,12 +59,20 @@ class Config:
     TOP_P = float(os.getenv("DEEPSEEK_TOP_P", "0.95"))
     FREQUENCY_PENALTY = float(os.getenv("DEEPSEEK_FREQUENCY_PENALTY", "0.4"))
     PRESENCE_PENALTY = float(os.getenv("DEEPSEEK_PRESENCE_PENALTY", "0.5"))
-    # Keep replies punchy; splitter + prompt enforce short chat bubbles.
-    MAX_RESPONSE_TOKENS = int(os.getenv("MAX_RESPONSE_TOKENS", "350"))
+    # Ceiling so the API can finish the thought; length rewrite + splitter keep it short.
+    MAX_RESPONSE_TOKENS = int(os.getenv("MAX_RESPONSE_TOKENS", "220"))
     DEEPSEEK_DISABLE_THINKING = os.getenv("DEEPSEEK_DISABLE_THINKING", "1") == "1"
-    # Per Fanvue bubble (hard split if the model writes a wall of text)
-    BUBBLE_MAX_CHARS = int(os.getenv("BUBBLE_MAX_CHARS", "200"))
-    MAX_BUBBLES = int(os.getenv("MAX_BUBBLES", "3"))
+    # Per Fanvue bubble. Over-long replies are REWRITTEN short — not mid-cut with "…".
+    BUBBLE_MAX_CHARS = int(os.getenv("BUBBLE_MAX_CHARS", "140"))
+    MAX_BUBBLES = int(os.getenv("MAX_BUBBLES", "2"))
+    # Soft total for the whole reply (triggers length rewrite before send)
+    REPLY_SOFT_MAX_CHARS = int(os.getenv("REPLY_SOFT_MAX_CHARS", "160"))
+
+    # Chat history fed to DeepSeek (not the whole inbox — recent window only).
+    # Too much history → model imitates old bland turns and loses voice consistency.
+    HISTORY_HOURS = int(os.getenv("HISTORY_HOURS", "36"))
+    HISTORY_MAX_MESSAGES = int(os.getenv("HISTORY_MAX_MESSAGES", "36"))
+    HISTORY_MIN_MESSAGES = int(os.getenv("HISTORY_MIN_MESSAGES", "12"))
 
     # V2 brain: one English psychology prompt + recent history (default ON).
     # Old pack/analyst/manipulation path only if REPLY_V2=0.
@@ -115,10 +123,10 @@ class Config:
     TYPING_WHILE_THINKING = os.getenv("TYPING_WHILE_THINKING", "1") == "1"
     TYPING_PING_SEC = float(os.getenv("TYPING_PING_SEC", "2.5"))
     # Human-like pause before each bubble (wall-clock; no Fanvue poll stacking)
-    BUBBLE_DELAY_FIRST_MIN = float(os.getenv("BUBBLE_DELAY_FIRST_MIN", "2.0"))
-    BUBBLE_DELAY_FIRST_MAX = float(os.getenv("BUBBLE_DELAY_FIRST_MAX", "4.0"))
-    BUBBLE_DELAY_NEXT_MIN = float(os.getenv("BUBBLE_DELAY_NEXT_MIN", "1.2"))
-    BUBBLE_DELAY_NEXT_MAX = float(os.getenv("BUBBLE_DELAY_NEXT_MAX", "2.8"))
+    BUBBLE_DELAY_FIRST_MIN = float(os.getenv("BUBBLE_DELAY_FIRST_MIN", "4.0"))
+    BUBBLE_DELAY_FIRST_MAX = float(os.getenv("BUBBLE_DELAY_FIRST_MAX", "6.5"))
+    BUBBLE_DELAY_NEXT_MIN = float(os.getenv("BUBBLE_DELAY_NEXT_MIN", "2.8"))
+    BUBBLE_DELAY_NEXT_MAX = float(os.getenv("BUBBLE_DELAY_NEXT_MAX", "4.8"))
     # How often to check barge-in during a bubble delay (API is slow — keep rare)
     BUBBLE_BARGE_CHECK_SEC = float(os.getenv("BUBBLE_BARGE_CHECK_SEC", "3.0"))
 

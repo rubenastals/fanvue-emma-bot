@@ -100,7 +100,9 @@ def _send_thank_you(fan_uuid: str, amount):
             allow_ppv_talk=False,
             allow_price=False,
         )
-        if getattr(config, "REPLY_V2", True):
+        if getattr(config, "REPLY_V2", False) and not getattr(
+            config, "SIMPLE_PROMPT", True
+        ):
             from core.intent_router import RouteResult
             from core.reply_v2 import generate_reply_v2
             from core.turn_facts import TurnFacts

@@ -321,7 +321,9 @@ def _send_generated(
     try:
         from config import config
 
-        if getattr(config, "REPLY_V2", True):
+        if getattr(config, "REPLY_V2", False) and not getattr(
+            config, "SIMPLE_PROMPT", True
+        ):
             from core.reply_v2 import generate_reply_v2
             from core.intent_router import RouteResult
             from core.turn_facts import TurnFacts
