@@ -226,18 +226,6 @@ def choose_offer(
     if not candidates:
         return OfferChoice(False, None, "paid catalog exhausted", 1.0, "code")
 
-    # Never attach PAID when fan explicitly asked free/regalo (poller sends L0 or text-only).
-    if re.search(
-        r"(?i)\b(gratis|grastis|gratiz|regalo|free\s*(?:photo|pic|foto)?)\b",
-        fan_message or "",
-    ) and not re.search(
-        r"(?i)\b(pago|pagar|paid|unlock|compro|buy|\$\s*\d|€\s*\d)\b",
-        fan_message or "",
-    ):
-        return OfferChoice(
-            False, None, "fan asked free/regalo — no paid attach this turn", 1.0, "code"
-        )
-
     direct = bool(_DIRECT_BUY.search(fan_message or "")) or bool(
         getattr(facts, "buying", False)
     )

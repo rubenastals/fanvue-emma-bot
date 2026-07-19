@@ -773,27 +773,19 @@ def _handle_fan_chat_body(
         )
         want_free = bool(getattr(decision, "allow_free_tease", False)) and not want_sell
 
-        # Fan asked gratis/free → L0 or text-only; never sneak a paid lock on same turn.
-        from core.turn_policy import _ASK_FREE, _free_tease_ok
+        # Already got free teases — gratis ask = push paid, never another L0.
+        frees_done = int(mem.get("free_teases_sent") or 0)
+        from core.turn_policy import _ASK_FREE
 
         ask_free_now = bool(getattr(route_result.facts, "ask_free", False)) or bool(
             re.search(_ASK_FREE, text or "", re.I)
         )
-        if not unpaid and ask_free_now:
-            if _free_tease_ok(
-                mem,
-                msgs=int(mem.get("messages") or 0),
-                force_ask=True,
-            ):
-                want_sell = False
-                want_free = True
-                print("   SELL: free priority — fan asked gratis/regalo")
-            else:
-                want_sell = False
-                want_free = False
-                print(
-                    "   SELL: gratis ask but no L0 left — text only, no paid attach"
-                )
+        if not unpaid and ask_free_now and frees_done >= 2:
+            want_free = False
+            want_sell = True
+            print(
+                f"   SELL: gratis refused ({frees_done} free already) — force paid path"
+            )
 
         if unpaid:
             offer = None  # never attach a second lock

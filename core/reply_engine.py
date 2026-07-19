@@ -424,9 +424,10 @@ def generate_emma_reply(
         else:
             turn_blocks.append(
                 "LOCK STATUS — VERIFIED THIS TURN (ACTIVE UNPAID CANDADO):\n"
-                "- ONE timed lock is STILL waiting in this chat (not unlocked yet).\n"
-                "- PERSIST on THAT unlock only. Do NOT sell or attach another photo.\n"
-                "- Push the waiting candado with soft FOMO — never invent a second lock."
+                "- ONE timed lock is STILL waiting (not unlocked yet).\n"
+                "- Push ONLY that unlock — scroll up. Same photo, same price.\n"
+                "- Do NOT tease another photo, video, bundle, or 'the one I mentioned'.\n"
+                "- Gratis ask → no more free; push THIS lock."
             )
     elif ppv_status:
         turn_blocks.append(_ppv_truth_block(ppv_status))
@@ -556,6 +557,12 @@ def generate_emma_reply(
         note = author_note_for(decision, want_spanish=want_spanish, lean=lean)
         if tech_name:
             note += manipulation.author_nudge(pack_id, tech_name)
+    if pack_id == "ppv_unpaid" or (ppv_status and ppv_status.get("active")):
+        note += (
+            " UNPAID LOCK: push ONLY that waiting photo (scroll up). "
+            "No other photo, no video, no bundle, no 'the one I mentioned'. "
+            "Gratis ask → deny, push unlock."
+        )
     if offer:
         is_free = float(offer.get("price") or 0) <= 0 or int(offer.get("level") or 0) == 0
         if is_free:

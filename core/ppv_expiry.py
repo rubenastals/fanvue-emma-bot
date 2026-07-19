@@ -334,8 +334,13 @@ def lock_status_prompt_block(status: Dict[str, Any]) -> str:
         "LOCK STATUS — VERIFIED THIS TURN (ACTIVE UNPAID CANDADO):\n"
         f"- ONE timed lock is waiting — \"{label}\"{price_txt} (sent {ago}).\n"
         f"- Clock: {time_txt}.\n"
-        "- PERSIST on THIS unlock. Do NOT send a second lock. Do NOT claim he already saw it.\n"
-        "- Light FOMO OK — never beg, never invent fake glitches."
+        "- THIS is the ONLY product in play. Push him to UNLOCK THIS — scroll up in chat.\n"
+        "- HARD BAN: do NOT tease/send/offer a DIFFERENT photo, 'another one', 'the one I "
+        "mentioned', or a new lock. No second candado. No catalog menu.\n"
+        "- HARD BAN: do NOT promise video, clip, bundle, or 'both for $X'. Photos only.\n"
+        "- If he asks gratis/free: NO more free — he already had gifts. Push THIS unlock.\n"
+        "- If he asks video: NO video exists — ONLY this waiting photo at the price above.\n"
+        "- Light FOMO OK — never beg, never invent glitches."
         f"{extra}"
     )
 
