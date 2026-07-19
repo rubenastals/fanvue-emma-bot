@@ -2,9 +2,9 @@
 Automatic re-engagement — hot/cold ladder + visto-gated victim.
 
 TIMING (no farewell / conversation left open):
-  HOT chat  → 1st nudge ≥ NUDGE_HOT_MINUTES  (default 2)
-  COLD chat → 1st nudge ≥ NUDGE_COLD_MINUTES (default 5)
-  2nd nudge ≥ NUDGE_SECOND_MINUTES (default 8), only if still silent
+  HOT chat  → 1st nudge ≥ NUDGE_HOT_MINUTES  (default 7)
+  COLD chat → 1st nudge ≥ NUDGE_COLD_MINUTES (default 7)
+  2nd nudge ≥ NUDGE_SECOND_MINUTES (default 36), only if still silent
   Max 2 mid-flow nudges per silence episode.
 
 Victim "me has olvidado" ONLY when Fanvue marks Emma's last msg isRead (visto)
@@ -30,10 +30,10 @@ from core.reply_engine import (
 )
 from core.turn_policy import TurnDecision
 
-NUDGE_HOT_MINUTES = int(os.getenv("NUDGE_HOT_MINUTES", "2"))
-NUDGE_COLD_MINUTES = int(os.getenv("NUDGE_COLD_MINUTES", "5"))
+NUDGE_HOT_MINUTES = int(os.getenv("NUDGE_HOT_MINUTES", "7"))
+NUDGE_COLD_MINUTES = int(os.getenv("NUDGE_COLD_MINUTES", "7"))
 # 2nd touch after first (absolute silence minutes from Emma's last msg)
-NUDGE_SECOND_MINUTES = int(os.getenv("NUDGE_SECOND_MINUTES", "8"))
+NUDGE_SECOND_MINUTES = int(os.getenv("NUDGE_SECOND_MINUTES", "36"))
 # Back-compat: old NUDGE_FIRST_MINUTES alone → cold first gate
 if os.getenv("NUDGE_FIRST_MINUTES") and not os.getenv("NUDGE_COLD_MINUTES"):
     NUDGE_COLD_MINUTES = int(os.getenv("NUDGE_FIRST_MINUTES", "5"))
@@ -278,7 +278,7 @@ def _nudge_step_for_silence(
     silence: timedelta, mem: dict, *, hot: bool
 ) -> Optional[int]:
     """
-    step 1 at ≥2m (hot) or ≥5m (cold)
+    step 1 at ≥7m (hot or cold)
     step 2 at ≥ NUDGE_SECOND_MINUTES if episode count 1
     """
     count = int(mem.get("nudge_episode_count") or 0)

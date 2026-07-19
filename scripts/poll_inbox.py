@@ -1585,7 +1585,7 @@ def main():
                 else:
                     print(".", end="", flush=True)
 
-                # Re-engagement pass every 60s (15/30m ladder + morning openers)
+                # Re-engagement pass every 60s (7/36m ladder + morning openers)
                 if not shutting_down() and time.time() - last_reengage >= 60:
                     last_reengage = time.time()
                     try:
