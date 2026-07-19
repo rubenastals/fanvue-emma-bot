@@ -1,7 +1,8 @@
 """
 Sensual voice notes — ElevenLabs TTS → Fanvue vault audio → free chat bubble.
 
-Only at key heating moments. Eleven v3 with official audio tags (0–2 when they fit) + pauses.
+DeepSeek reads the chat and decides when a voice note fits (no keyword lists).
+Code only enforces hard limits: cooldown, daily cap, no photo turn, block packs.
 """
 from __future__ import annotations
 
@@ -16,31 +17,6 @@ from config import config
 from core import fan_memory, language
 from utils.elevenlabs_client import is_configured, synthesize_to_file
 
-_HORNY = re.compile(
-    r"(?i)\b("
-    r"hard|horny|wet|cock|dick|pussy|fuck|cum|stroke|jerk|"
-    r"duro|caliente|mojada|polla|follar|correr|"
-    r"tetas?|culo|ass|mojad|empapad|"
-    r"te quiero|te deseo|thinking about you|pienso en ti"
-    r")\b"
-)
-_EMOTIONAL = re.compile(
-    r"(?i)\b("
-    r"te quiero|te extra[nñ]o|miss you|thinking about you|"
-    r"me encantas|you turn me on|me pones|need you|"
-    r"pienso en ti|solo t[uú]|only you"
-    r")\b"
-)
-
-_HEAT_PACKS = frozenset(
-    {
-        "phase_spiral",
-        "phase_pull",
-        "rapport",
-        "reward_purchase",
-        "phase_hook",
-    }
-)
 _BLOCK_PACKS = frozenset(
     {
         "ppv_unpaid",
@@ -49,14 +25,6 @@ _BLOCK_PACKS = frozenset(
         "phase_reengage",
         "ask_free_first",
     }
-)
-
-_ASK_VOICE = re.compile(
-    r"(?i)\b("
-    r"audio|audios|voice note|voice memo|voz|nota de voz|"
-    r"gr[aá]bame|m[aá]ndame audio|env[ií]ame audio|escucharte|"
-    r"whisper|susurra|al o[ií]do"
-    r")\b"
 )
 
 
@@ -83,14 +51,110 @@ def _voice_count_today(mem: dict) -> int:
     return int(mem.get("voice_notes_today") or 0)
 
 
-def _horny_score(text: str) -> int:
-    if not text:
-        return 0
-    return len(_HORNY.findall(text))
+def _history_snippet(history_turns: Optional[List], *, limit: int = 8) -> str:
+    lines: List[str] = []
+    for t in (history_turns or [])[-limit:]:
+        role = (t.get("role") or "").lower()
+        who = "Emma" if role == "assistant" else "Fan"
+        content = (t.get("content") or "").replace("\n", " ")[:220]
+        if content:
+            lines.append(f"{who}: {content}")
+    return "\n".join(lines) or "(no prior turns)"
 
 
-def fan_asked_voice(fan_message: str) -> bool:
-    return bool(_ASK_VOICE.search(fan_message or ""))
+def _hard_blocks(
+    *,
+    mem: dict,
+    decision: Any,
+    pack_id: str,
+    unpaid: bool,
+    media_sent_this_turn: bool,
+    barged: bool,
+) -> Optional[str]:
+    if not _enabled():
+        return "disabled or no API key"
+    if barged:
+        return "barge-in"
+    if unpaid or pack_id in _BLOCK_PACKS:
+        return "sell/objection/reengage block"
+    if media_sent_this_turn:
+        return "photo turn"
+    if int(mem.get("messages") or 0) < int(getattr(config, "VOICE_NOTES_MIN_MESSAGES", 8) or 8):
+        return "too early in chat"
+    if _voice_count_today(mem) >= int(getattr(config, "VOICE_NOTES_MAX_PER_DAY", 2) or 2):
+        return "daily cap"
+    cooldown_h = float(getattr(config, "VOICE_NOTES_COOLDOWN_HOURS", 6) or 6)
+    last = _parse_iso(mem.get("last_voice_at"))
+    if last and datetime.now(timezone.utc) - last < timedelta(hours=cooldown_h):
+        return "cooldown"
+    mode = (getattr(decision, "mode", "") or "").lower()
+    if mode in ("hard_sell", "chill"):
+        return f"mode={mode}"
+    return None
+
+
+def _ai_should_send_voice(
+    fan_message: str,
+    history_turns: Optional[List],
+    *,
+    pack_id: str,
+    mode: str,
+) -> tuple[bool, str]:
+    """DeepSeek reads context — no keyword triggers."""
+    from openai import OpenAI
+
+    api_key = (getattr(config, "DEEPSEEK_API_KEY", "") or "").strip()
+    if not api_key:
+        return False, "no deepseek key"
+
+    snippet = _history_snippet(history_turns)
+    system = (
+        "You decide if Emma should send a FREE sensual voice note THIS turn on Fanvue.\n"
+        "Voice notes are intimate spoken audio (whisper, dirty talk) — NOT photos, NOT PPV.\n"
+        "They are rare (max ~2/day). Read the full thread, not just keywords.\n\n"
+        "YES when examples like:\n"
+        "- Fan wants to hear her / whisper / audio / something spoken dirty\n"
+        "- She offered to whisper or record and fan agreed (sii, vava, do it…)\n"
+        "- Hot peak where voice fits better than pushing a paid photo right now\n"
+        "- Fan complained last audio was weak — she should redo it with voice, not sell a pic\n\n"
+        "NO when:\n"
+        "- Fan wants a photo/video, price, or unlock\n"
+        "- Objection, cold, reengage, billing, unpaid lock\n"
+        "- Better to sell PPV or stay text-only this turn\n\n"
+        "Reply ONE line only: YES: <short reason>  OR  NO: <short reason>"
+    )
+    user = (
+        f"Pack: {pack_id} | Mode: {mode}\n\n"
+        f"Recent chat:\n{snippet}\n\n"
+        f"Fan message now: {(fan_message or '')[:400]}"
+    )
+    client = OpenAI(
+        api_key=api_key,
+        base_url=getattr(config, "DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
+    )
+    try:
+        resp = client.chat.completions.create(
+            model=getattr(config, "DEEPSEEK_MODEL", "deepseek-v4-pro"),
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            max_tokens=60,
+            temperature=0.2,
+        )
+        raw = (resp.choices[0].message.content or "").strip()
+        upper = raw.upper()
+        if upper.startswith("YES"):
+            reason = raw.split(":", 1)[1].strip() if ":" in raw else raw[3:].strip()
+            return True, reason or "ai yes"
+        if upper.startswith("NO"):
+            reason = raw.split(":", 1)[1].strip() if ":" in raw else raw[2:].strip()
+            return False, reason or "ai no"
+        print(f"   🎙️ ai voice parse unclear: {raw[:80]!r}")
+        return False, "ai unclear"
+    except Exception as e:
+        print(f"   🎙️ ai voice check failed: {type(e).__name__}: {e}")
+        return False, "ai error"
 
 
 def should_send(
@@ -102,61 +166,32 @@ def should_send(
     unpaid: bool,
     media_sent_this_turn: bool,
     barged: bool,
-    apply_roll: bool = True,
+    history_turns: Optional[List] = None,
 ) -> tuple[bool, str]:
     """Return (ok, reason) for logging."""
-    if not _enabled():
-        return False, "disabled or no API key"
-    if barged:
-        return False, "barge-in"
-    if unpaid or pack_id in _BLOCK_PACKS:
-        return False, "sell/objection/reengage block"
-    if media_sent_this_turn:
-        return False, "photo turn"
-    if int(mem.get("messages") or 0) < int(getattr(config, "VOICE_NOTES_MIN_MESSAGES", 8) or 8):
-        return False, "too early in chat"
-
-    max_day = int(getattr(config, "VOICE_NOTES_MAX_PER_DAY", 2) or 2)
-    if _voice_count_today(mem) >= max_day:
-        return False, "daily cap"
-
-    cooldown_h = float(getattr(config, "VOICE_NOTES_COOLDOWN_HOURS", 6) or 6)
-    last = _parse_iso(mem.get("last_voice_at"))
-    if last and datetime.now(timezone.utc) - last < timedelta(hours=cooldown_h):
-        return False, "cooldown"
+    blocked = _hard_blocks(
+        mem=mem,
+        decision=decision,
+        pack_id=pack_id,
+        unpaid=unpaid,
+        media_sent_this_turn=media_sent_this_turn,
+        barged=barged,
+    )
+    if blocked:
+        return False, blocked
 
     mode = (getattr(decision, "mode", "") or "").lower()
-    if mode in ("hard_sell", "chill"):
-        return False, f"mode={mode}"
-
-    horny = _horny_score(fan_message)
-    emotional = bool(_EMOTIONAL.search(fan_message or ""))
-    heat_pack = pack_id in _HEAT_PACKS
-    reward = pack_id == "reward_purchase"
-
-    # Key moments only — need a strong trigger
-    trigger = False
-    reason = ""
-    if fan_asked_voice(fan_message):
-        trigger, reason = True, "fan asked voice"
-    elif reward:
-        trigger, reason = True, "post-purchase reward"
-    elif horny >= 2:
-        trigger, reason = True, f"very horny fan ({horny} hits)"
-    elif horny >= 1 and heat_pack and mode in ("tease", "soft_sell", "rapport"):
-        trigger, reason = True, "heating spiral"
-    elif emotional and heat_pack:
-        trigger, reason = True, "emotional bond moment"
-
-    if not trigger:
-        return False, "no key moment"
-
-    if apply_roll and not fan_asked_voice(fan_message):
-        chance = float(getattr(config, "VOICE_NOTES_CHANCE", 0.55) or 0.55)
-        if random.random() > chance:
-            return False, f"roll miss ({reason})"
-
-    return True, reason
+    ok, reason = _ai_should_send_voice(
+        fan_message,
+        history_turns,
+        pack_id=pack_id,
+        mode=mode,
+    )
+    if ok:
+        print(f"   🎙️ ai voice: YES — {reason[:100]}")
+    else:
+        print(f"   🎙️ ai voice: NO — {reason[:100]}")
+    return ok, reason
 
 
 def plan_send(
@@ -167,8 +202,9 @@ def plan_send(
     pack_id: str,
     unpaid: bool,
     media_sent_this_turn: bool,
+    history_turns: Optional[List] = None,
 ) -> tuple[bool, str]:
-    """Pre-reply check (includes roll) so text can tease an upcoming voice note."""
+    """Pre-reply: DeepSeek + hard limits. Voice beats photo when this returns True."""
     return should_send(
         fan_message=fan_message,
         mem=mem,
@@ -177,7 +213,7 @@ def plan_send(
         unpaid=unpaid,
         media_sent_this_turn=media_sent_this_turn,
         barged=False,
-        apply_roll=True,
+        history_turns=history_turns,
     )
 
 
@@ -187,8 +223,6 @@ _EMOJI = re.compile(
     flags=re.UNICODE,
 )
 
-# Official Eleven v3 audio tags (non-exhaustive) — docs.elevenlabs.io best-practices + Enhance list.
-# Use 0–2 per script; punctuation carries most of the rhythm.
 _V3_TAGS_DELIVERY = (
     "[whispers]", "[sighs]", "[exhales]", "[mischievously]", "[playfully]", "[excited]",
     "[curious]", "[snorts]", "[nervous]", "[cheerfully]",
@@ -348,6 +382,7 @@ def maybe_send(
     media_sent_this_turn: bool,
     barged: bool,
     pre_planned: Optional[tuple[bool, str]] = None,
+    history_turns: Optional[List] = None,
 ) -> bool:
     """
     Optionally generate + upload + send a voice note after text bubbles.
@@ -366,6 +401,7 @@ def maybe_send(
             unpaid=unpaid,
             media_sent_this_turn=media_sent_this_turn,
             barged=barged,
+            history_turns=history_turns,
         )
     if not ok:
         return False

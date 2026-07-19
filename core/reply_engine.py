@@ -175,7 +175,6 @@ def generate_emma_reply(
     pack_id: Optional[str] = None,
     route_result: Optional[RouteResult] = None,
     voice_will_send: bool = False,
-    fan_asked_voice: bool = False,
 ) -> Tuple[str, TurnDecision]:
     """
     Prompt + memory + ONE situation pack + mode-aware author's note.
@@ -581,15 +580,14 @@ def generate_emma_reply(
             "If it's not HIS body / it's your own content / wrong pic: call it out, "
             "don't fake arousal. Demand HIS pic if he dodged."
         )
-    if fan_asked_voice:
-        note += (
-            " VOICE: fan asked for audio — you DO send sensual voice notes. "
-            "Flirt yes, never refuse or say solo texto."
-        )
     if voice_will_send:
         note += (
             " VOICE ATTACHING: a sensual voice note goes out after this text — "
             "tease briefly (escúchame… / listen…), never say you don't do audios."
+        )
+    elif offer:
+        note += (
+            " PHOTO this turn (not audio) — do NOT promise voice, susurro, escúchame, or 🎙️."
         )
     note = prompt_layers.clip_author(note)
 

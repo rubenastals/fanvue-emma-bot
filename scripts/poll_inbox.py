@@ -799,6 +799,23 @@ def _handle_fan_chat_body(
                 f"   SELL: gratis refused ({frees_done} free already) — force paid path"
             )
 
+        from core import voice_notes as _vn
+
+        # DeepSeek reads chat — voice turn skips photo/PPV (no keyword lists)
+        voice_planned = _vn.plan_send(
+            fan_message=text,
+            mem=mem,
+            decision=decision,
+            pack_id=route_result.pack_id,
+            unpaid=unpaid,
+            media_sent_this_turn=False,
+            history_turns=turns,
+        )
+        if voice_planned[0]:
+            print(f"   🎙️ voice planned: {voice_planned[1]} — no photo this turn")
+            want_sell = False
+            want_free = False
+
         if unpaid:
             offer = None  # never attach a second lock
             print("   SELL: skipped (unpaid lock already in chat)")
@@ -872,22 +889,14 @@ def _handle_fan_chat_body(
                     {**(route_result.active or {}), "phase_pull": True},
                 )
 
-        from core import voice_notes as _vn
-
         _will_attach_photo = bool(
             offer
             and not unpaid
         )
-        voice_planned = _vn.plan_send(
-            fan_message=text,
-            mem=mem,
-            decision=decision,
-            pack_id=route_result.pack_id,
-            unpaid=unpaid,
-            media_sent_this_turn=_will_attach_photo,
-        )
-        if voice_planned[0]:
-            print(f"   🎙️ voice planned: {voice_planned[1]}")
+        if voice_planned[0] and offer:
+            print("   🎙️ voice wins — clearing photo/PPV offer")
+            offer = None
+            _will_attach_photo = False
 
         try:
             # Keep "Emma is typing…" alive during the (multi-second) DeepSeek call.
@@ -925,7 +934,6 @@ def _handle_fan_chat_body(
                         pack_id=route_result.pack_id,
                         route_result=route_result,
                         voice_will_send=voice_planned[0],
-                        fan_asked_voice=_vn.fan_asked_voice(text),
                     )
         except Exception as e:
             import traceback
@@ -1241,6 +1249,7 @@ def _handle_fan_chat_body(
                     media_sent_this_turn=bool(free_sent or ppv_sent),
                     barged=barged,
                     pre_planned=voice_planned if voice_planned[0] else None,
+                    history_turns=turns,
                 )
             except Exception as e:
                 print(f"   ⚠️ voice note error: {type(e).__name__}: {e}")
