@@ -431,6 +431,21 @@ def generate_emma_reply(
     elif ppv_status:
         turn_blocks.append(_ppv_truth_block(ppv_status))
 
+    if re.search(r"(?i)\b(v[ií]deo|video|clip|grabaci[oó]n|film|filmar)\b", fan_message or ""):
+        if status_active or unpaid_gate:
+            turn_blocks.append(
+                "FAN ASKED ABOUT VIDEO — CRITICAL:\n"
+                "- You have NO videos. Catalog = PHOTOS only.\n"
+                "- ONE unpaid PHOTO lock is already waiting (see LOCK STATUS above).\n"
+                "- Say clearly: no video — only THAT photo at the REAL price in LOCK STATUS.\n"
+                "- Never promise video, clip, bundle, or 'both for $X'. Push the waiting photo lock."
+            )
+        else:
+            turn_blocks.append(
+                "FAN ASKED ABOUT VIDEO: You have NO videos — photos only. "
+                "Never promise to record or send a clip. Tease a vault PHOTO only if STATUS attaches."
+            )
+
     if delivery_truth and delivery_truth.get("free_in_chat") is True:
         turn_blocks.append(
             "DELIVERY TRUTH: your FREE photo IS already in this chat. "
@@ -721,21 +736,28 @@ def generate_emma_reply(
         ]
         reply = _call(fix_msgs)
         if scheme_guard.invented_video_claim(reply):
+            rp = None
             if offer and float(offer.get("price") or 0) > 0:
                 rp = float(offer["price"])
+            elif ppv_status and ppv_status.get("active") and ppv_status.get("price"):
+                try:
+                    rp = float(ppv_status["price"])
+                except (TypeError, ValueError):
+                    rp = None
+            if rp is not None:
                 reply = (
-                    f"De vídeo no… pero esta foto sí te va a dejar mal 😏 "
-                    f"${rp:.0f} y la abres."
+                    f"De vídeo no… solo fotos 😏 Tienes UNA candada esperando — "
+                    f"${rp:.0f} y la abres, guapo."
                     if want_spanish
-                    else f"No video… but this photo will wreck you 😏 "
-                    f"${rp:.0f} and you unlock it."
+                    else f"No video… photos only 😏 You have ONE lock waiting — "
+                    f"${rp:.0f} and unlock it, babe."
                 )
             else:
                 reply = (
-                    "Mmm… vídeo no tengo ahora 😏 Pero fotos del vault que pegan fuerte… "
+                    "Mmm… vídeo no tengo 😏 Solo fotos en el vault — "
                     "dime qué te pone y te cierro una de verdad."
                     if want_spanish
-                    else "Mmm… no video right now 😏 But vault photos that hit harder… "
+                    else "Mmm… no video 😏 Photos only in the vault — "
                     "tell me what you want and I'll lock a real one."
                 )
             print("   📷 invented-video rewrite → photos-only fallback")
