@@ -29,6 +29,8 @@ class TurnFacts:
     horny: bool = False
     smalltalk: bool = False
     pushback_billing: bool = False
+    broke_soft: bool = False
+    heavy_vent: bool = False
     heated: bool = False
 
     # Memory snapshot

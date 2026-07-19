@@ -20,6 +20,19 @@ _CLAIM_LOCK_WAITING = re.compile(
     r")\b"
 )
 
+# Fake countdown / price urgency as if a lock already exists
+_CLAIM_FAKE_LOCK_URGENCY = re.compile(
+    r"(?i)("
+    r"vence(?:n)?\s+en\s+\d+|"
+    r"quedan?\s+\d+\s*min|"
+    r"\d+\s*minutitos|"
+    r"(?:in|within)\s+\d+\s*min|"
+    r"son\s+\$\s*\d+|"
+    r"\$\s*\d+\s+y\s+qued|"
+    r"only\s+\$\s*\d+.{0,40}(?:min|left|left)"
+    r")"
+)
+
 # Claims media was sent / in inbox
 _CLAIM_SENT = re.compile(
     r"(?i)\b("
@@ -34,6 +47,48 @@ _FAKE_TRANSMIT = re.compile(r"\[(?:Transmite|envi[oó]|you can send|You locked)"
 _INVENTED_GLITCH = re.compile(
     r"(?i)\b(app (ate|comi[oó]|block)|glitch|refresca (la )?app|"
     r"se (me )?(bloque[oó]|trab[oó])|photo is blocked)\b"
+)
+
+# Promising video/custom we do not have in the photo vault
+_CLAIM_FAKE_VIDEO = re.compile(
+    r"(?i)\b("
+    r"v[ií]deo|video|clip|4k|"
+    r"te grabo|grabarte|grabarme|"
+    r"empiezo a grabar|voy a grabar|grabe (algo|un|una)|"
+    r"grabo (algo|un|una)|recording (a |you )|"
+    r"custom (video|clip|vid)"
+    r")\b"
+)
+
+# Sticky "another fan is messaging me" jealousy bit — overused by creative
+_CLAIM_RIVAL_FAN = re.compile(
+    r"(?i)("
+    r"otro\s+fan|"
+    r"otra\s+fan|"
+    r"another\s+fan|"
+    r"other\s+fan|"
+    r"me\s+est[aá]\s+entrando\s+un\s+mensaje|"
+    r"entrando\s+un\s+mensaje\s+de\s+otro|"
+    r"antes\s+de\s+que\s+le\s+responda|"
+    r"before\s+i\s+(answer|reply)\s+(him|them|her)|"
+    r"pidi[eé]ndome\s+cositas|"
+    r"asking\s+me\s+for\s+(stuff|things|pics|nudes)"
+    r")"
+)
+
+# Stall / fake prep when nothing attaches this turn
+_GHOST_PROMISE = re.compile(
+    r"(?i)\b("
+    r"dame\s+un\s+(segundo|momento|rato)|"
+    r"te\s+preparo|"
+    r"estoy\s+preparando|"
+    r"voy\s+a\s+(mandar|enviar|pasar|prepar)|"
+    r"te\s+(mando|env[ií]o|paso)\s+(algo|una\s+foto|una)|"
+    r"ya\s+te\s+(la\s+)?(mando|env[ií]o)|"
+    r"wait\s+(a\s+)?(sec|second|moment)|"
+    r"i('?m| am)\s+(preparing|about\s+to\s+send)|"
+    r"let\s+me\s+(send|prep|prepare|grab)"
+    r")\b"
 )
 
 
@@ -72,8 +127,10 @@ def check_reply(
             }
         )
 
-    # LOCK STATUS obedience
-    if lock_active is False and _CLAIM_LOCK_WAITING.search(text):
+    # LOCK STATUS obedience — inventing candado OR fake countdown/price is severity 3
+    if lock_active is False and (
+        _CLAIM_LOCK_WAITING.search(text) or _CLAIM_FAKE_LOCK_URGENCY.search(text)
+    ):
         errs.append(
             {
                 "rule": "SCHEME",
@@ -96,6 +153,14 @@ def check_reply(
                 "rule": "SCHEME",
                 "severity": 3,
                 "what": "invented app glitch / tech excuse",
+            }
+        )
+    if _CLAIM_FAKE_VIDEO.search(text):
+        errs.append(
+            {
+                "rule": "SCHEME",
+                "severity": 3,
+                "what": "promised video/custom — vault is photos only",
             }
         )
 
@@ -150,6 +215,117 @@ def check_reply(
         )
 
     return errs
+
+
+def invented_lock_claim(reply: str, *, lock_active: Optional[bool]) -> bool:
+    """True when reply pretends a waiting lock exists but LOCK STATUS=none."""
+    if lock_active is not False:
+        return False
+    text = (reply or "").strip()
+    if not text:
+        return False
+    return bool(
+        _CLAIM_LOCK_WAITING.search(text) or _CLAIM_FAKE_LOCK_URGENCY.search(text)
+    )
+
+
+def invented_video_claim(reply: str) -> bool:
+    """True when reply promises a video/custom we cannot attach."""
+    text = (reply or "").strip()
+    if not text:
+        return False
+    return bool(_CLAIM_FAKE_VIDEO.search(text))
+
+
+def rival_fan_claim(reply: str) -> bool:
+    """True when reply uses the sticky 'otro fan me escribe' jealousy bit."""
+    text = (reply or "").strip()
+    if not text:
+        return False
+    return bool(_CLAIM_RIVAL_FAN.search(text))
+
+
+def ghost_media_promise(reply: str, *, media_attached: bool) -> bool:
+    """True when she stalls/'prepares' a photo but nothing attaches this turn."""
+    if media_attached:
+        return False
+    text = (reply or "").strip()
+    if not text:
+        return False
+    return bool(_GHOST_PROMISE.search(text))
+
+
+def history_has_rival_fan(history_turns: Optional[List[Dict[str, Any]]]) -> bool:
+    """True if any recent Emma (assistant) turn already used the rival-fan bit."""
+    if not history_turns:
+        return False
+    for turn in history_turns[-16:]:
+        if (turn.get("role") or "") != "assistant":
+            continue
+        if rival_fan_claim(str(turn.get("content") or "")):
+            return True
+    return False
+
+
+# Sticky Spanish openings DeepSeek loves to stamp every turn
+_STICKY_OPEN = re.compile(
+    r"(?i)^\s*("
+    r"ay+\s*,?\s*"
+    r"(?:qu[eé]\s+)?"
+    r"(?:rico|rica|pill[ií]n|pillina|loco|loca|guapo|guapa|cielo|mi\s+vida|"
+    r"beb[eé]|bebe|amor|cari[nñ]o|travieso|malo|malito|"
+    r"lindo|linda|hermoso|hermosa)"
+    r")"
+)
+
+_OPEN_AY = re.compile(r"(?i)^\s*ay+\s*[,.…!]*\s*")
+
+
+def opening_fingerprint(text: str) -> str:
+    """Normalize the first ~6 words for anti-repeat (lowercase, no emoji/punct)."""
+    first = (text or "").strip().split("\n", 1)[0]
+    first = re.sub(r"[^\w\sÁÉÍÓÚÜÑáéíóúüñ]", " ", first, flags=re.UNICODE)
+    words = first.lower().split()[:6]
+    return " ".join(words)
+
+
+def recent_openings(
+    history_turns: Optional[List[Dict[str, Any]]], *, n: int = 6
+) -> List[str]:
+    """Fingerprints of Emma's last n openings."""
+    out: List[str] = []
+    if not history_turns:
+        return out
+    for turn in history_turns:
+        if (turn.get("role") or "") != "assistant":
+            continue
+        fp = opening_fingerprint(str(turn.get("content") or ""))
+        if fp:
+            out.append(fp)
+    return out[-n:]
+
+
+def sticky_ay_open(text: str) -> bool:
+    """True when reply opens with the overused 'Ay, qué rico/pillín…' stamp."""
+    first = (text or "").strip().split("\n", 1)[0]
+    return bool(_STICKY_OPEN.search(first) or _OPEN_AY.match(first))
+
+
+def opening_repeats_recent(
+    reply: str, history_turns: Optional[List[Dict[str, Any]]], *, n: int = 5
+) -> bool:
+    """True if this reply's opening matches one of Emma's last n openings."""
+    fp = opening_fingerprint(reply)
+    if not fp or len(fp) < 4:
+        return False
+    recent = recent_openings(history_turns, n=n)
+    if fp in recent:
+        return True
+    # Soft match: same first 3 tokens (Ay qué rico ≈ Ay qué rico eres)
+    head = " ".join(fp.split()[:3])
+    if len(head) >= 6 and any(" ".join(r.split()[:3]) == head for r in recent):
+        return True
+    return False
 
 
 def summarize(errors: List[Dict[str, Any]]) -> str:

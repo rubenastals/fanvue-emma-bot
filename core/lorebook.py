@@ -6,7 +6,8 @@ conversation mentions a matching key. Keeps the base prompt small while
 giving Emma the right ammo exactly when relevant.
 
 Source of truth: core/lorebook.json (hot-reloaded when the file mtime changes).
-Edit the JSON for Soft style fixes without needing a full redesign.
+Poller calls ensure_fresh about every 5 minutes — Soft style fixes without redeploy
+or redesign agent. See docs/REDESIGN_BRIEF.md.
 """
 from __future__ import annotations
 

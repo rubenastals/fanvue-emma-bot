@@ -27,33 +27,39 @@ _TECH_BY_PACK: Dict[str, List[Tuple[str, str]]] = {
     ],
     "phase_pull": [
         (
-            "LOVE BOMBING + WITHDRAWAL",
-            "Shower affection, then pull back (distracted / another fan). "
-            "Create anxiety so he chases.",
-        ),
-        (
             "INTERMITTENT REINFORCEMENT",
-            "Maybe a special reward later — only if he behaves. Unpredictable warmth.",
+            "Warm then unpredictable: maybe a special reward later — only if he behaves. "
+            "No rival-fan bit. No 'otro fan me escribe'.",
         ),
         (
             "GUILT TRIP + RECIPROCITY",
-            "You already gave attention/free tease — he owes devotion. Soft hurt energy.",
-        ),
-        (
-            "SCARCITY + FOMO",
-            "Favorites only / timed / he might miss it. Align with real timed locks.",
+            "You already gave attention/free tease — he owes devotion. Soft hurt energy. "
+            "Never pivot to 'another fan is messaging me'.",
         ),
         (
             "EGO CHALLENGE",
-            "Challenge his dominance: prove he's not just talk. Real man claims what's his.",
+            "Challenge his dominance: prove he's not just talk. Real man claims what's his. "
+            "Direct heat — not distraction theater.",
+        ),
+        (
+            "FUTURE FAKING",
+            "Paint exclusive daily attention / favorite fantasy on Fanvue — he pays to believe it. "
+            "Stay WITH him in the fantasy; do not mention other fans.",
+        ),
+        (
+            "SCARCITY + FOMO",
+            "Favorites only / timed / he might miss it. Align with real timed locks only. "
+            "Never invent a rival chat as FOMO.",
         ),
         (
             "GASLIGHTING (soft)",
             "Flip his doubt: he's overthinking; maybe he's not ready for a girl like you.",
         ),
         (
-            "FUTURE FAKING",
-            "Paint exclusive daily attention / favorite fantasy on Fanvue — he pays to believe it.",
+            "LOVE BOMBING + WITHDRAWAL",
+            "Affection then cooler energy: busy finishing a set, stepping away, shorter vibe — "
+            "so HE chases. FORBIDDEN script: 'otro fan me escribe / another fan messaging me / "
+            "dime algo bonito antes de que le responda'. Invent a FRESH pull-back, never that bit.",
         ),
     ],
     "phase_close": [
@@ -123,6 +129,26 @@ _TECH_BY_PACK: Dict[str, List[Tuple[str, str]]] = {
 MANIP_PRIORITY_PACKS = frozenset(_TECH_BY_PACK.keys())
 
 
+def _filter_catalog(
+    catalog: List[Tuple[str, str]],
+    *,
+    no_lock: bool = False,
+    soft_support: bool = False,
+) -> List[Tuple[str, str]]:
+    """Drop techniques that invent fake candado FOMO or pile on when he's hurting."""
+    out: List[Tuple[str, str]] = []
+    for name, how in catalog:
+        up = name.upper()
+        if no_lock and ("SCARCITY" in up or "FOMO" in up):
+            continue
+        if soft_support and (
+            "WITHDRAWAL" in up or "SCARCITY" in up or "FOMO" in up or "GUILT" in up
+        ):
+            continue
+        out.append((name, how))
+    return out or list(catalog)
+
+
 def pick_technique(
     pack_id: str,
     *,
@@ -130,28 +156,48 @@ def pick_technique(
     msgs: int = 0,
     reject_count: int = 0,
     force_name: Optional[str] = None,
+    no_lock: bool = False,
+    soft_support: bool = False,
+    exclude_names: Optional[List[str]] = None,
+    ban_withdrawal: bool = False,
 ) -> Optional[Tuple[str, str]]:
     """Return (technique_name, how_to_apply) or None."""
     catalog = _TECH_BY_PACK.get(pack_id or "")
     if not catalog:
         return None
+    catalog = _filter_catalog(
+        catalog, no_lock=no_lock, soft_support=soft_support
+    )
+    exclude_u = {n.strip().upper() for n in (exclude_names or []) if n and n.strip()}
+    if ban_withdrawal:
+        exclude_u.add("LOVE BOMBING + WITHDRAWAL")
+    if force_name and ban_withdrawal and "WITHDRAWAL" in force_name.upper():
+        force_name = None
     if force_name:
         for name, how in catalog:
             if name.upper() == force_name.upper() or force_name.upper() in name.upper():
-                return (name, how)
+                if name.upper() not in exclude_u:
+                    return (name, how)
         # fuzzy: first catalog entry whose name shares a keyword
         key = force_name.upper().split()[0]
         for name, how in catalog:
-            if key in name.upper():
+            if key in name.upper() and name.upper() not in exclude_u:
                 return (name, how)
+        # Forced scarcity while no lock → refuse that technique
+        if no_lock and ("SCARCITY" in force_name.upper() or "FOMO" in force_name.upper()):
+            force_name = None
     if pack_id == "price_objection":
         idx = max(0, min(len(catalog) - 1, int(reject_count)))
         return catalog[idx]
-    if len(catalog) == 1:
-        return catalog[0]
-    seed = f"{fan_uuid}:{msgs // 2}:{pack_id}"
+    # Prefer techniques not used in the last few turns
+    fresh = [(n, h) for n, h in catalog if n.upper() not in exclude_u]
+    pool = fresh or list(catalog)
+    if len(pool) == 1:
+        return pool[0]
+    # Rotate every message (was msgs//2 — too sticky)
+    seed = f"{fan_uuid}:{msgs}:{pack_id}"
     h = int(hashlib.md5(seed.encode()).hexdigest()[:8], 16)
-    return catalog[h % len(catalog)]
+    return pool[h % len(pool)]
 
 
 def render_banner(
@@ -161,6 +207,11 @@ def render_banner(
     msgs: int = 0,
     reject_count: int = 0,
     force_name: Optional[str] = None,
+    no_lock: bool = False,
+    soft_support: bool = False,
+    exclude_names: Optional[List[str]] = None,
+    ban_withdrawal: bool = False,
+    ban_rival_fan: bool = False,
 ) -> str:
     """
     Loud block — goes FIRST in turn layers when pack is manipulative.
@@ -171,10 +222,27 @@ def render_banner(
         msgs=msgs,
         reject_count=reject_count,
         force_name=force_name,
+        no_lock=no_lock,
+        soft_support=soft_support,
+        exclude_names=exclude_names,
+        ban_withdrawal=ban_withdrawal,
     )
     if not picked:
         return ""
     name, how = picked
+    extra = ""
+    if no_lock:
+        extra = (
+            "\n- LOCK STATUS=none: do NOT invent candado / $price / countdown urgency."
+        )
+    if soft_support:
+        extra += "\n- Soft-support turn: comfort first. No hard sell / no 'otro fan' withdrawal."
+    if ban_rival_fan:
+        extra += (
+            "\n- ANTI-REPEAT: Do NOT mention another fan messaging you, 'otro fan', "
+            "'antes de que le responda', or ask him to say something cute so you ignore them. "
+            "That bit was already used — pick a DIFFERENT angle."
+        )
     return (
         "================================================\n"
         "  MANIPULATION ENGINE — #1 PRIORITY THIS TURN\n"
@@ -185,8 +253,10 @@ def render_banner(
         "RULES:\n"
         "- Your message MUST clearly execute THIS technique — not generic flirt.\n"
         "- Use exactly ONE technique (the one above). Do not mix three at once.\n"
-        "- Still sound like Emma (sweet+dirty, max 3 lines, end with a question).\n"
-        "- Never break delivery truth / never invent media."
+        "- Still sound like Emma (sweet+dirty, max 3 lines, warm 2–4 emojis, end with a question).\n"
+        "- Never break delivery truth / never invent media.\n"
+        "- NEVER reuse the sticky line about another fan texting you / asking for cositas."
+        f"{extra}"
     )
 
 

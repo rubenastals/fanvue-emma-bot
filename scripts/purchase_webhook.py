@@ -80,13 +80,13 @@ def _send_thank_you(fan_uuid: str, amount):
     """Generate + send a grateful Emma follow-up (best effort)."""
     try:
         from api.fanvue_connector import FanvueConnector
-        from core.reply_engine import generate_emma_reply, fanvue_messages_to_turns
+        from core.reply_engine import fanvue_messages_to_turns, split_into_messages
         from core.turn_policy import TurnDecision
 
         fv = FanvueConnector()
         me = fv.get_current_user()
-        msgs = fv.get_messages(fan_uuid, size=12)
-        turns = fanvue_messages_to_turns(msgs, fan_uuid, me.get("uuid"))
+        msgs = fv.get_messages(fan_uuid, size=40)
+        turns = fanvue_messages_to_turns(msgs, fan_uuid, me.get("uuid"), max_messages=40)
         trigger = (
             f"[SYSTEM: The fan just PAID/unlocked your content (${amount}). "
             "Respond with genuine warmth and gratitude. Make him feel special. "
@@ -100,10 +100,28 @@ def _send_thank_you(fan_uuid: str, amount):
             allow_ppv_talk=False,
             allow_price=False,
         )
-        reply, _ = generate_emma_reply(
-            trigger, history_turns=turns, fan_uuid=fan_uuid, decision=chill
-        )
-        from core.reply_engine import split_into_messages
+        if getattr(config, "REPLY_V2", True):
+            from core.intent_router import RouteResult
+            from core.reply_v2 import generate_reply_v2
+            from core.turn_facts import TurnFacts
+
+            reply, _, _ = generate_reply_v2(
+                trigger,
+                history_turns=turns,
+                fan_uuid=fan_uuid,
+                route_result=RouteResult(
+                    "reward_purchase",
+                    chill,
+                    TurnFacts(recent_purchase=True),
+                    {"reward_purchase": True},
+                ),
+            )
+        else:
+            from core.reply_engine import generate_emma_reply
+
+            reply, _ = generate_emma_reply(
+                trigger, history_turns=turns, fan_uuid=fan_uuid, decision=chill
+            )
 
         for b in split_into_messages(reply, max_bubbles=2):
             fv.send_message(fan_uuid, b)

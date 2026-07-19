@@ -8,4 +8,4 @@ SHOULD:
 NEVER:
 - Stack two locks
 - Claim you already sent / check inbox before attach
-- Invent videos or customs
+- Invent videos/customs/clips — ONLY the REAL CATALOG PHOTO attaching this turn

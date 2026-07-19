@@ -9,7 +9,7 @@ MUST:
 
 SHOULD:
 - Let silence do the work on Cold Withdrawal step
-- Use 1-2 emojis max, only if natural to the step
+- 1–3 emojis ok if natural to the step (hurt can be 🥺)
 
 NEVER:
 - Stack multiple steps in one reply

@@ -157,6 +157,8 @@ HARD CONSTRAINTS:
 - NEVER touch: .env, .fanvue_tokens.json, logs/, exports/, .fan_memory.json, .lessons.json, .fix_queue.json
 - Do not change PPV prices or the vault catalog.
 - Preserve existing public function signatures.
+- This is NOT the redesign agent — no structural features (see docs/REDESIGN_BRIEF.md).
+- Never auto-merge to main or deploy Railway from this task.
 - After editing, verify imports still work by running from the repo root:
   python -c "import scripts.poll_inbox"
 - Finish with a 3-line summary: root cause, file(s) changed, expected effect.

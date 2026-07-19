@@ -229,6 +229,7 @@ def generate_emma_reply(
         turns.append({"role": "user", "content": fan_message})
 
     lean = bool(getattr(config, "LEAN_CREATIVE", True))
+    simple = bool(getattr(config, "SIMPLE_PROMPT", False))
 
     # --- PHASE ANALYST: read full chat + client card BEFORE creative ---
     card_block = ""
@@ -237,19 +238,45 @@ def generate_emma_reply(
     hard_pack = None
     if route_result and route_result.facts.hard_pack:
         hard_pack = route_result.facts.hard_pack
+
+    # Lock truth early — analyst + manip + rewrite all need it
+    lock_active = None
+    if ppv_status is not None:
+        if ppv_status.get("purchased"):
+            lock_active = False
+        else:
+            lock_active = bool(ppv_status.get("active"))
+    elif delivery_truth is not None:
+        lock_active = bool(delivery_truth.get("ppv_unpaid"))
+    no_lock = lock_active is False
+    soft_support = bool(
+        route_result
+        and (
+            getattr(route_result.facts, "broke_soft", False)
+            or getattr(route_result.facts, "heavy_vent", False)
+        )
+    )
+    facts_line = ""
+    if route_result is not None:
+        facts_line = route_result.facts.facts_line()
+
     analysis = None
     force_tech = None
     phase_name = ""
-    try:
-        analysis = phase_analyst.analyze(
-            fan_message=fan_message,
-            history_turns=turns,
-            card_text=card_block,
-            hard_pack=hard_pack,
-            code_pack=pack_id,
-        )
-    except Exception as e:
-        print(f"   phase-analyst error: {type(e).__name__}: {e}")
+    if not simple:
+        try:
+            analysis = phase_analyst.analyze(
+                fan_message=fan_message,
+                history_turns=turns,
+                card_text=card_block,
+                hard_pack=hard_pack,
+                code_pack=pack_id,
+                facts_line=facts_line,
+                lock_active=lock_active,
+                allow_price=bool(decision and decision.allow_price),
+            )
+        except Exception as e:
+            print(f"   phase-analyst error: {type(e).__name__}: {e}")
 
     if analysis:
         phase_name = analysis.phase or ""
@@ -258,8 +285,14 @@ def generate_emma_reply(
             f"name={analysis.name_to_use or '-'} "
             f"likes={','.join(analysis.likes[:3]) or '-'}"
         )
-        # Soft packs: analyst can refine phase from full conversation
-        if not hard_pack and analysis.pack_id and analysis.pack_id != pack_id:
+        # Soft packs only — never downgrade convert / hard packs
+        if (
+            not hard_pack
+            and analysis.pack_id
+            and analysis.pack_id != pack_id
+            and pack_id not in phase_analyst._CONVERT_PACKS
+            and not (decision and decision.allow_price)
+        ):
             pack_id = analysis.pack_id
             if route_result is not None:
                 decision = decision_for_pack(
@@ -269,6 +302,17 @@ def generate_emma_reply(
                     f"analyst:{analysis.phase}",
                 )
             print(f"   pack←analyst: {pack_id}")
+        elif (
+            analysis.pack_id
+            and analysis.pack_id != pack_id
+            and (
+                pack_id in phase_analyst._CONVERT_PACKS
+                or (decision and decision.allow_price)
+            )
+        ):
+            print(
+                f"   analyst pack {analysis.pack_id} ignored — keep convert {pack_id}"
+            )
         if analysis.technique_hint:
             force_tech = phase_analyst.apply_technique_hint(
                 pack_id, analysis.technique_hint
@@ -292,35 +336,74 @@ def generate_emma_reply(
     if analysis:
         turn_blocks.append(analysis.recall_block())
 
-    # MANIPULATION ENGINE first (loudest), then situation pack
-    facts_line = ""
+    # Rival-fan / cooling flags shared by both paths
     msgs_n = int(mem.get("messages") or 0)
     objection_step = int(mem.get("price_objection_step") or 0)
-    manip_banner = manipulation.render_banner(
-        pack_id,
-        fan_uuid=fan_uuid or "",
-        msgs=msgs_n,
-        reject_count=objection_step,
-        force_name=force_tech,
+    ban_rival = bool(mem.get("rival_fan_used")) or scheme_guard.history_has_rival_fan(
+        turns
     )
-    tech = manipulation.pick_technique(
-        pack_id,
-        fan_uuid=fan_uuid or "",
-        msgs=msgs_n,
-        reject_count=objection_step,
-        force_name=force_tech,
-    )
-    tech_name = tech[0] if tech else ""
-    if manip_banner:
-        turn_blocks.append(manip_banner)
-        print(f"   manip: {tech_name} (pack={pack_id})")
+    ban_withdrawal = ban_rival
+    tech_name = ""
 
-    if route_result is not None:
-        facts_line = route_result.facts.facts_line()
-    turn_blocks.append(packs.render(pack_id, facts_line=facts_line))
+    if simple:
+        # Tactics live in the self-contained SIMPLE core; only per-turn FACTS here.
+        from core import strategy_prompt
 
-    if offer or (decision and decision.allow_price):
-        turn_blocks.append(vault_catalog.catalog_summary_block())
+        cooling = _looks_cooling(fan_message, turns)
+        banned_opens = scheme_guard.recent_openings(turns, n=5)
+        ts = strategy_prompt.truth_state(
+            lock_active=lock_active,
+            offer_price=float(offer.get("price") or 0) if offer else None,
+            cooling=cooling,
+            rival_used=ban_rival,
+            banned_openings=banned_opens,
+        )
+        if ts:
+            turn_blocks.append(ts)
+        print(
+            f"   simple: cooling={cooling} rival_banned={ban_rival} "
+            f"banned_opens={len(banned_opens)} pack={pack_id}"
+        )
+    else:
+        # MANIPULATION ENGINE first (loudest), then situation pack
+        exclude_techs = (
+            fan_memory.recent_techniques(fan_uuid, n=4) if fan_uuid else []
+        )
+        manip_banner = manipulation.render_banner(
+            pack_id,
+            fan_uuid=fan_uuid or "",
+            msgs=msgs_n,
+            reject_count=objection_step,
+            force_name=force_tech,
+            no_lock=no_lock,
+            soft_support=soft_support,
+            exclude_names=exclude_techs,
+            ban_withdrawal=ban_withdrawal,
+            ban_rival_fan=ban_rival,
+        )
+        tech = manipulation.pick_technique(
+            pack_id,
+            fan_uuid=fan_uuid or "",
+            msgs=msgs_n,
+            reject_count=objection_step,
+            force_name=force_tech,
+            no_lock=no_lock,
+            soft_support=soft_support,
+            exclude_names=exclude_techs,
+            ban_withdrawal=ban_withdrawal,
+        )
+        tech_name = tech[0] if tech else ""
+        if manip_banner:
+            turn_blocks.append(manip_banner)
+            print(f"   manip: {tech_name} (pack={pack_id})")
+
+        turn_blocks.append(packs.render(pack_id, facts_line=facts_line))
+
+    # Code-first sell: SELL STATUS is law. Never dump full catalog when not attaching
+    # (that menu taught the model to invent prices).
+    turn_blocks.append(vault_catalog.sell_status_prompt_block(offer))
+    if offer:
+        turn_blocks.append(vault_catalog.offer_prompt_block(offer))
 
     if ppv_status:
         turn_blocks.append(_ppv_truth_block(ppv_status))
@@ -361,14 +444,6 @@ def generate_emma_reply(
 
         turn_blocks.append(vision_system_block(vision_desc))
 
-    if offer:
-        turn_blocks.append(vault_catalog.offer_prompt_block(offer))
-    else:
-        turn_blocks.append(
-            "No photo attached this turn. Flirt only. "
-            "Never claim you sent/locked a photo. Never invent media titles in brackets."
-        )
-
     if not lean:
         recent_text = " ".join(
             t["content"] for t in turns[-4:] if t["role"] == "user"
@@ -384,16 +459,23 @@ def generate_emma_reply(
     )
 
     if lean:
+        core_prompt = None
+        if simple:
+            from core.prompt_core import EMMA_CORE_PROMPT_SIMPLE
+
+            core_prompt = EMMA_CORE_PROMPT_SIMPLE
         messages, sizes = prompt_layers.build_system_layers(
             card_block=card_block,
             language_block=language.language_system_block(want_spanish),
             time_block=persona_time.time_system_block(),
             name_block=name_note,
             turn_blocks=turn_blocks,
+            core_prompt=core_prompt,
         )
         print(
             f"   prompt: CORE={sizes['core']} CARD={sizes['card']} "
-            f"TURN={sizes['turn']} total_sys={sizes['system_total']} pack={pack_id}"
+            f"TURN={sizes['turn']} total_sys={sizes['system_total']} "
+            f"pack={pack_id}{' SIMPLE' if simple else ''}"
         )
     else:
         # Legacy fat path (discouraged)
@@ -418,7 +500,14 @@ def generate_emma_reply(
         )
 
     # Lean author: pack + MANDATORY technique nudge
-    if lean:
+    if lean and simple:
+        lang = "Spanish only." if want_spanish else "English only."
+        note = (
+            f"[Emma texting. {lang} #1 = sell PPV unlock. React to his LAST message, "
+            f"ONE tactic, never repeat a bit. NEVER open with Ay/qué rico/pillín. "
+            f"1–3 short lines. Light pet names OK — never \"Ay {{name}}\" every bubble.]"
+        )
+    elif lean:
         lang = "Spanish only." if want_spanish else "English only."
         note = (
             f"[Emma texting. {lang} Pack={pack_id}. "
@@ -536,7 +625,8 @@ def generate_emma_reply(
     if fan_uuid:
         fan_memory.set_last_mode(fan_uuid, decision.mode, fan_handle=fan_handle)
         if re.search(
-            r"\b(too expensive|caro|expensive|can'?t|no money|later|nah|pass)\b",
+            r"\b(too expensive|caro|expensive|can'?t|no money|later|nah|pass|"
+            r"pelado|pelá|sin (plata|dinero|pasta)|no tengo (plata|dinero))\b",
             fan_message.lower(),
         ):
             fan_memory.record_reject(fan_uuid, fan_handle=fan_handle)
@@ -549,16 +639,173 @@ def generate_emma_reply(
             except Exception:
                 pass
 
-    # Scheme meta + deterministic guard (does not rewrite Soft — logs + critic food)
-    lock_active = None
-    if ppv_status is not None:
-        if ppv_status.get("purchased"):
-            lock_active = False
-        else:
-            lock_active = bool(ppv_status.get("active"))
-    elif delivery_truth is not None:
-        lock_active = bool(delivery_truth.get("ppv_unpaid"))
+    # Invented candado when LOCK STATUS=none → forced rewrite (same rail as delivery)
+    if no_lock and not offer and scheme_guard.invented_lock_claim(
+        reply, lock_active=False
+    ):
+        fix_msgs = messages + [
+            {"role": "assistant", "content": reply},
+            {
+                "role": "user",
+                "content": (
+                    "REWRITE HARD: LOCK STATUS=none. You invented a waiting candado, "
+                    "price, or countdown. Remove EVERY unlock/$/minutes claim. "
+                    "Flirt or comfort only — do not invent urgency."
+                    if not want_spanish
+                    else (
+                        "REESCRIBE DURO: LOCK STATUS=none. Inventaste un candado, "
+                        "precio o countdown. Quita TODA mención a unlock/$/minutos. "
+                        "Solo flirteo o apoyo — sin urgencia inventada."
+                    )
+                ),
+            },
+        ]
+        reply = _call(fix_msgs)
+        if scheme_guard.invented_lock_claim(reply, lock_active=False):
+            reply = (
+                "Mmm… ahora mismo no tengo un candado esperándote. "
+                "Cuéntame qué te pasa, estoy aquí 🥺"
+                if want_spanish
+                else (
+                    "Mmm… I don't have a lock waiting for you right now. "
+                    "Tell me what's going on — I'm here 🥺"
+                )
+            )
+            print("   🔒 invented-lock rewrite → safe fallback")
 
+    # Vault is photos only — never promise video/custom/grabar
+    if scheme_guard.invented_video_claim(reply):
+        fix_msgs = messages + [
+            {"role": "assistant", "content": reply},
+            {
+                "role": "user",
+                "content": (
+                    "REWRITE HARD: You promised a VIDEO/custom/recording. "
+                    "Catalog is PHOTOS only. Remove every video/grabar/clip/custom "
+                    "promise. Offer a vault PHOTO tease only, or flirt — never film."
+                    if not want_spanish
+                    else (
+                        "REESCRIBE DURO: Prometiste un VÍDEO/custom/grabar. "
+                        "El catálogo es SOLO FOTOS. Quita video/grabar/clip/custom. "
+                        "Solo puedes teaser una FOTO del vault, o flirtear — nunca grabar."
+                    )
+                ),
+            },
+        ]
+        reply = _call(fix_msgs)
+        if scheme_guard.invented_video_claim(reply):
+            if offer and float(offer.get("price") or 0) > 0:
+                rp = float(offer["price"])
+                reply = (
+                    f"De vídeo no… pero esta foto sí te va a dejar mal 😏 "
+                    f"${rp:.0f} y la abres."
+                    if want_spanish
+                    else f"No video… but this photo will wreck you 😏 "
+                    f"${rp:.0f} and you unlock it."
+                )
+            else:
+                reply = (
+                    "Mmm… vídeo no tengo ahora 😏 Pero fotos del vault que pegan fuerte… "
+                    "dime qué te pone y te cierro una de verdad."
+                    if want_spanish
+                    else "Mmm… no video right now 😏 But vault photos that hit harder… "
+                    "tell me what you want and I'll lock a real one."
+                )
+            print("   📷 invented-video rewrite → photos-only fallback")
+
+    # Ghost "dame un segundo / te preparo" with nothing attaching
+    if scheme_guard.ghost_media_promise(reply, media_attached=bool(offer)):
+        fix_msgs = messages + [
+            {"role": "assistant", "content": reply},
+            {
+                "role": "user",
+                "content": (
+                    "REWRITE HARD: You promised/stalled sending a photo ('dame un segundo', "
+                    "'te preparo', 'voy a mandar') but NOTHING attaches this turn. "
+                    "Remove every send/prep promise. Flirt dirty or push a REAL lock only "
+                    "if LOCK STATUS says one exists — never fake preparation."
+                    if not want_spanish
+                    else (
+                        "REESCRIBE DURO: Prometiste/retrasaste una foto ('dame un segundo', "
+                        "'te preparo', 'voy a mandar') pero este turno NO se adjunta nada. "
+                        "Quita toda promesa de envío/preparación. Flirtea guarro o empuja un "
+                        "candado REAL solo si LOCK STATUS lo confirma — nunca finjas preparar."
+                    )
+                ),
+            },
+        ]
+        reply = _call(fix_msgs)
+        if scheme_guard.ghost_media_promise(reply, media_attached=False):
+            reply = (
+                "Mmm… ahora mismo no te puedo soltar esa foto así, pillín 🔥 "
+                "Pero dime qué te vuelve loco de mis tetas… ¿así te caliento más?"
+                if want_spanish
+                else (
+                    "Mmm… I can't drop that photo like that right now, baby 🔥 "
+                    "Tell me what drives you crazy about my tits… want me hotter?"
+                )
+            )
+            print("   👻 ghost-promise rewrite → no-stall fallback")
+        else:
+            print("   👻 ghost-promise rewrite ok")
+
+    # Style rewrites (rival-fan / Ay openings) removed — Group A; CORE guides tone only.
+    if fan_uuid and tech_name:
+        fan_memory.record_technique(
+            fan_uuid,
+            tech_name,
+            fan_handle=fan_handle or "",
+            used_rival_fan=False,
+        )
+
+    # Price truth: reply must not assert a $ amount that isn't the real lock/offer price
+    real_price = None
+    if offer and float(offer.get("price") or 0) > 0:
+        real_price = float(offer["price"])
+    elif ppv_status and ppv_status.get("active") and ppv_status.get("price"):
+        try:
+            real_price = float(ppv_status["price"])
+        except (TypeError, ValueError):
+            real_price = None
+    stated = _stated_prices(reply)
+    bad_price = [p for p in stated if real_price is None or abs(p - real_price) > 0.5]
+    if bad_price:
+        if real_price is not None:
+            instr = (
+                f"REWRITE: The only real price is ${real_price:.0f}. Remove any other "
+                f"amount ({', '.join(f'${p:.0f}' for p in bad_price)}). State ${real_price:.0f} or no price."
+                if not want_spanish
+                else (
+                    f"REESCRIBE: El único precio real es ${real_price:.0f}. Quita cualquier "
+                    f"otra cifra ({', '.join(f'${p:.0f}' for p in bad_price)}). Di ${real_price:.0f} o ningún precio."
+                )
+            )
+        else:
+            instr = (
+                "REWRITE: There is NO active lock/price this turn. Remove every $ / € amount "
+                "and any candado/unlock claim. Flirt or reconnect only."
+                if not want_spanish
+                else (
+                    "REESCRIBE: NO hay candado/precio activo este turno. Quita toda cifra $ / € "
+                    "y cualquier mención a candado/unlock. Solo flirteo o reconexión."
+                )
+            )
+        fix_msgs = messages + [
+            {"role": "assistant", "content": reply},
+            {"role": "user", "content": instr},
+        ]
+        reply = _call(fix_msgs)
+        still = [
+            p for p in _stated_prices(reply)
+            if real_price is None or abs(p - real_price) > 0.5
+        ]
+        if still:
+            reply = re.sub(r"(?:\$|€)\s*\d{1,4}|\d{1,4}\s*(?:€|\$|eur|euros?)", "", reply).strip()
+            print("   💵 price-truth rewrite → stripped bad amounts")
+        else:
+            print(f"   💵 price-truth rewrite ok (real=${real_price if real_price else 'none'})")
+
+    # Scheme meta + deterministic guard
     decision.pack_id = pack_id or ""
     decision.technique = tech_name or ""
     decision.phase = phase_name
@@ -574,6 +821,42 @@ def generate_emma_reply(
         print(f"   ⚠️ {scheme_guard.summarize(decision.scheme_errors)}")
 
     return reply, decision
+
+
+_COOL_RE = re.compile(
+    r"(?i)^\s*(no s[eé]|nose|dime t[uú]|vale|ok|bueno|nada|meh|nah|luego|"
+    r"despu[eé]s|quiz[aá]s?|puede|paso|da igual|ya veremos|no s[eé] dime)\b"
+)
+
+
+def _looks_cooling(fan_message: str, turns: List[Dict[str, str]]) -> bool:
+    """Cheap cooling read: short/non-committal last message or a run of tiny replies."""
+    msg = (fan_message or "").strip()
+    if not msg:
+        return True
+    if _COOL_RE.search(msg):
+        return True
+    fan_turns = [t.get("content") or "" for t in turns if t.get("role") == "user"]
+    recent = [t for t in fan_turns[-3:] if not t.startswith("[")]
+    if len(recent) >= 2 and all(len(t.strip()) <= 12 for t in recent):
+        return True
+    return False
+
+
+def _stated_prices(text: str) -> List[float]:
+    """Dollar/euro amounts the reply asserts (for price-truth guard)."""
+    out: List[float] = []
+    for m in re.finditer(
+        r"(?:\$|€)\s*(\d{1,4})|(\d{1,4})\s*(?:€|\$|eur|euros?|d[oó]lares?)", text
+    ):
+        raw = m.group(1) or m.group(2)
+        try:
+            val = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if 3 <= val <= 500:
+            out.append(val)
+    return out
 
 
 def _ppv_truth_block(status: dict) -> str:
@@ -841,8 +1124,9 @@ def _sanitize_reply(
         s = ln.rstrip()
         if not s:
             continue
-        # Light strip of trailing emoji stamp only when it looks spammy (keep most)
-        if _TRAILING_EMOJI.search(s) and random.random() < 0.25:
+        # Only strip if a line ends with a pile of 4+ trailing emojis (spam)
+        trail = _TRAILING_EMOJI.search(s)
+        if trail and len(trail.group(0).strip()) >= 8:
             s = _TRAILING_EMOJI.sub("", s).rstrip()
         new_lines.append(s)
     return "\n".join(new_lines).strip()
@@ -986,22 +1270,36 @@ def _enforce_delivery_truth(
 def split_into_messages(
     reply: str,
     *,
-    max_len: int = 600,
+    max_len: Optional[int] = None,
     max_bubbles: Optional[int] = None,
-    vary: bool = True,  # kept for backward compatibility; no longer forces sizes
+    vary: bool = True,  # kept for backward compatibility
 ) -> List[str]:
     """
-    Split a reply into chat bubbles following the MODEL's own structure.
+    Turn one AI reply into several short Fanvue bubbles.
 
-    No min/max character shaping: each newline the model wrote becomes a
-    bubble. Only two safety nets remain:
-    - a block longer than `max_len` chars (a real wall of text) is split
-      on sentence boundaries
-    - at most `max_bubbles` bubbles (default 3) so she never spams
+    Newlines become bubbles. Blocks longer than `max_len` (~200) are split
+    on sentence boundaries so she never dumps a paragraph in one message.
+    Cap at `max_bubbles` (default 3).
     """
+    if max_len is None:
+        max_len = int(getattr(config, "BUBBLE_MAX_CHARS", 200) or 200)
+    max_len = max(80, int(max_len))
+
     reply = (reply or "").strip()
     if not reply:
         return []
+
+    def _hard_slice(text: str) -> List[str]:
+        out: List[str] = []
+        while len(text) > max_len:
+            cut = text.rfind(" ", 0, max_len)
+            if cut < max_len // 3:
+                cut = max_len
+            out.append(text[:cut].strip())
+            text = text[cut:].strip()
+        if text:
+            out.append(text)
+        return out
 
     raw_parts: List[str] = []
     for block in re.split(r"\n{1,}", reply):
@@ -1021,21 +1319,28 @@ def split_into_messages(
             if not s:
                 continue
             if buf and len(buf) + 1 + len(s) > max_len:
-                parts.append(buf)
+                parts.extend(_hard_slice(buf) if len(buf) > max_len else [buf])
                 buf = s
             else:
                 buf = f"{buf} {s}".strip()
         if buf:
-            parts.append(buf)
+            parts.extend(_hard_slice(buf) if len(buf) > max_len else [buf])
 
     if not parts:
-        parts = [reply]
+        parts = _hard_slice(reply)
 
-    hard_cap = max(1, max_bubbles if max_bubbles is not None else 3)
+    default_cap = int(getattr(config, "MAX_BUBBLES", 3) or 3)
+    hard_cap = max(1, max_bubbles if max_bubbles is not None else default_cap)
     if len(parts) > hard_cap:
-        # keep the model's first bubbles intact, fold the overflow into the last
         head = parts[: hard_cap - 1]
-        tail = " ".join(parts[hard_cap - 1 :]).strip()
-        parts = head + [tail]
+        # Keep overflow as more bubbles only if under cap; else trim last
+        rest = parts[hard_cap - 1 :]
+        # Prefer first hard_cap intact short pieces; drop extreme overflow
+        last = rest[0]
+        if len(rest) > 1:
+            last = (rest[0] + " " + rest[1]).strip()
+        if len(last) > max_len:
+            last = last[: max_len - 1].rsplit(" ", 1)[0] + "…"
+        parts = head + [last]
 
     return parts

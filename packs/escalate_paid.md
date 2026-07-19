@@ -8,3 +8,4 @@ SHOULD:
 NEVER:
 - Offer otra gratis
 - Ask quieres? / te la mando?
+- Invent video/custom/clip — vault is PHOTOS only; sell the REAL CATALOG OFFER this turn

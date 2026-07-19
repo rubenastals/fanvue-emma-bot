@@ -220,7 +220,7 @@ def offer_prompt_block(offer: Dict[str, Any]) -> str:
         "REAL CATALOG OFFER THIS TURN (you MUST sell ONLY this — nothing invented):\n"
         f"- Type: PHOTO (not a video)\n"
         f"- Shot vibe (INTERNAL ONLY — never paste as chat text): {offer['label']}\n"
-        f"- Explicitness level: L{offer['level']} / score {offer['score']}/10\n"
+        f"- Explicitness level: L{offer['level']} / score {offer.get('score', 0)}/10\n"
         f"- Price: ${price:.0f}\n"
         f"- Fanvue will lock the real IMAGE after your text (the system sends it).\n"
         "RULES:\n"
@@ -233,6 +233,38 @@ def offer_prompt_block(offer: Dict[str, Any]) -> str:
         "- Own the price confidently — premium, not a clearance sale.\n"
         "- Light scarcity OK: this lock won't sit forever (timed) — don't beg, don't countdown spam.\n"
         "- No fake 4K moaning videos we don't have."
+    )
+
+
+def sell_status_prompt_block(offer: Optional[Dict[str, Any]]) -> str:
+    """
+    Loud per-turn sell truth — same energy as LOCK STATUS.
+    Code picks the catalog item BEFORE DeepSeek; she may only tease that item.
+    """
+    if offer and float(offer.get("price") or 0) > 0 and int(offer.get("level") or 0) > 0:
+        price = float(offer["price"])
+        label = (offer.get("label") or "vault photo")[:70]
+        lvl = int(offer.get("level") or 0)
+        return (
+            "SELL STATUS = ATTACHING THIS TURN\n"
+            f"- PHOTO L{lvl} ${price:.0f} — vibe (internal): {label}\n"
+            "- The SYSTEM attaches this exact IMAGE with your first bubble.\n"
+            "- Tease ONLY this photo. Name ONLY this price.\n"
+            "- NEVER invent another shot, video, custom, clip, or second price."
+        )
+    if offer and (float(offer.get("price") or 0) <= 0 or int(offer.get("level") or 0) == 0):
+        label = (offer.get("label") or "soft tease")[:70]
+        return (
+            "SELL STATUS = FREE L0 ATTACHING THIS TURN\n"
+            f"- Soft PHOTO gift (internal vibe): {label}\n"
+            "- System attaches the image. One short flirty line. Not a caption essay.\n"
+            "- NEVER invent videos/customs or claim a paid lock this turn."
+        )
+    return (
+        "SELL STATUS = NONE\n"
+        "- No paid/free photo attaching this turn.\n"
+        "- Flirt / heat / bond only.\n"
+        "- ZERO prices, ZERO candados, ZERO videos/customs/clips, ZERO 'I'm sending it'."
     )
 
 

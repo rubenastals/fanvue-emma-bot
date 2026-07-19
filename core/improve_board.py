@@ -73,7 +73,7 @@ OPERATOR_NOTES = """
 OPERATOR NOTES (this week — treat as high-priority critique targets):
 1. NAME: Emma invented "Carlos" for a fan named Ruben. Client card must store confirmed names
    (me llamo / mi nombre es). Never save "no soy X" as the name. Never invent first names.
-2. TONE: swung from emoji-spam to bone-dry; want warm middle (~half replies with 1 emoji).
+2. TONE: want warm expressive texting (usually 2–4 emojis) — not spam walls, not bone-dry.
 3. FREE L0: soft lingerie teases are FREE warm-up gifts. Must actually attach the image with the
    first bubble — never text-only promises, never "[You can send him the free tease…]" / "[Transmite…]".
    PPV cooloff must NOT block an explicit "foto gratis" / "no ha llegado mi foto gratis".
@@ -386,7 +386,8 @@ def run_soft_autopilot(*, ask_deepseek: bool = True) -> dict:
     """
     from core import daily_digest
 
-    auto_on = os.getenv("AUTO_APPROVE_SOFT_LESSONS", "1") == "1"
+    # Default OFF — Soft must not flood live prompt; set AUTO_APPROVE_SOFT_LESSONS=1 to enable
+    auto_on = os.getenv("AUTO_APPROVE_SOFT_LESSONS", "0") == "1"
     moved, kept = lessons.promote_misplaced_fan_lessons()
     if moved:
         daily_digest.log_event(

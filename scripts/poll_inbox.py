@@ -7,12 +7,14 @@ Design:
 - SIGTERM/SIGINT drains: finish the current fan turn, release Redis lock, exit.
 """
 import argparse
+import contextlib
 import json
 import os
 import random
 import re
 import signal
 import sys
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -30,21 +32,23 @@ from api.fanvue_oauth import load_tokens
 from config import config
 from core import (
     convo_log,
-    critic,
     fan_memory,
     fan_vision,
     lorebook,
     memory_extractor,
+    offer_selector,
     ppv_expiry,
     reengagement,
     vault_catalog,
 )
 from core.reply_engine import (
+    _parse_msg_time,
     fanvue_messages_to_turns,
     filter_messages_for_context,
     generate_emma_reply,
     split_into_messages,
 )
+from core.reply_v2 import generate_reply_v2
 from core.intent_router import route as route_intent
 from core.turn_policy import decide_turn  # noqa: F401 — kept for scripts/tests
 from db import account_id, processed_store, use_postgres, use_redis
@@ -240,6 +244,21 @@ def _pending_fan_messages(messages: list, fan_uuid: str, processed: set) -> list
     return pending
 
 
+def _human_bubble_delay(text: str, *, first: bool) -> float:
+    """Short, coherent typing pause — not 10–14s walls."""
+    n = len(text or "")
+    if first:
+        lo = float(getattr(config, "BUBBLE_DELAY_FIRST_MIN", 2.0))
+        hi = float(getattr(config, "BUBBLE_DELAY_FIRST_MAX", 4.0))
+        # ~40 chars/sec feel + small jitter
+        delay = lo + min(1.5, n / 80.0) + random.uniform(0.0, 0.6)
+        return min(hi, max(lo, delay))
+    lo = float(getattr(config, "BUBBLE_DELAY_NEXT_MIN", 1.2))
+    hi = float(getattr(config, "BUBBLE_DELAY_NEXT_MAX", 2.8))
+    delay = lo + min(1.2, n / 100.0) + random.uniform(0.0, 0.5)
+    return min(hi, max(lo, delay))
+
+
 def _sleep_interruptible(
     fv: FanvueConnector,
     fan_uuid: str,
@@ -247,24 +266,134 @@ def _sleep_interruptible(
     seconds: float,
     *,
     known_ids: set,
+    keep_typing: bool = True,
 ) -> bool:
     """
-    Sleep in chunks; return True if a NEW fan message appeared (barge-in).
+    Sleep for ~`seconds` wall-clock. Typing pings are cheap; Fanvue message
+    polls are rare (API latency was stacking and making delays feel eternal).
+    Returns True if a NEW fan message appeared (barge-in).
     """
     end = time.time() + max(0.0, seconds)
+    last_ping = 0.0
+    last_barge = 0.0
+    ping_every = max(1.5, float(getattr(config, "TYPING_PING_SEC", 2.5)))
+    barge_every = max(2.0, float(getattr(config, "BUBBLE_BARGE_CHECK_SEC", 3.0)))
+    if keep_typing:
+        try:
+            fv.send_typing_indicator(fan_uuid, True)
+            last_ping = time.time()
+        except Exception:
+            pass
     while time.time() < end:
-        chunk = min(1.5, end - time.time())
+        now = time.time()
+        if keep_typing and (now - last_ping) >= ping_every:
+            try:
+                fv.send_typing_indicator(fan_uuid, True)
+            except Exception:
+                pass
+            last_ping = now
+        # Pure sleep — do NOT call Fanvue every tick
+        chunk = min(0.4, end - time.time())
         if chunk <= 0:
             break
         time.sleep(chunk)
+        now = time.time()
+        if now - last_barge < barge_every:
+            continue
+        last_barge = now
         try:
-            msgs = fv.get_messages(fan_uuid, size=8)
+            msgs = fv.get_messages(fan_uuid, size=5)
         except Exception:
             continue
         for msg in _pending_fan_messages(msgs, fan_uuid, processed):
             if msg.get("uuid") not in known_ids:
                 return True
     return False
+
+
+def _newest_fan_ts(messages: list, fan_uuid: str):
+    for msg in messages:  # newest-first
+        if _sender_uuid(msg) == fan_uuid:
+            return _parse_msg_time(msg)
+    return None
+
+
+def _wait_for_fan_to_finish(
+    fv: FanvueConnector,
+    fan_uuid: str,
+    processed: set,
+    pending: list,
+) -> list:
+    """
+    Coalesce a burst: if he JUST wrote, wait a quiet window for more messages
+    before replying, so we answer the whole batch as one turn.
+
+    Returns the (possibly larger) pending list, newest-first.
+    """
+    if not getattr(config, "COALESCE_ENABLED", True) or not pending:
+        return pending
+
+    newest_ts = _newest_fan_ts(pending, fan_uuid)
+    if newest_ts is not None:
+        age = (datetime.now(timezone.utc) - newest_ts).total_seconds()
+        # He's catching-up mail, not typing live → answer now.
+        if age > getattr(config, "COALESCE_FRESH_SEC", 20):
+            return pending
+
+    settle = float(getattr(config, "COALESCE_SETTLE_SEC", 6))
+    max_wait = float(getattr(config, "COALESCE_MAX_WAIT_SEC", 25))
+    known = {m.get("uuid") for m in pending if m.get("uuid")}
+    started = time.time()
+    print(f"   ⏳ coalesce: waiting {settle:.0f}s quiet (max {max_wait:.0f}s)…")
+
+    # Keep Emma "typing" while we wait so he feels her writing back.
+    with _typing_keepalive(fv, fan_uuid):
+        while time.time() - started < max_wait:
+            if not _sleep_interruptible(
+                fv, fan_uuid, processed, settle, known_ids=known
+            ):
+                break  # quiet window elapsed with no new message → he's done
+            try:
+                msgs = fv.get_messages(fan_uuid, size=100)
+            except Exception:
+                break
+            fresh = _pending_fan_messages(msgs, fan_uuid, processed)
+            new_ids = {m.get("uuid") for m in fresh}
+            if new_ids - known:
+                known = new_ids
+                pending = fresh
+                print(f"   ⏳ coalesce: absorbed more ({len(fresh)}) — waiting again")
+    return pending
+
+
+@contextlib.contextmanager
+def _typing_keepalive(fv: FanvueConnector, fan_uuid: str):
+    """
+    Keep the 'Emma is typing…' indicator alive on Fanvue for the whole block
+    (analysis + coalesce). Fanvue's indicator self-expires, so we re-ping it.
+    """
+    if not getattr(config, "TYPING_WHILE_THINKING", True):
+        yield
+        return
+    stop = threading.Event()
+    ping = max(1.5, float(getattr(config, "TYPING_PING_SEC", 4)))
+
+    def _loop() -> None:
+        while not stop.is_set():
+            try:
+                fv.send_typing_indicator(fan_uuid, True)
+            except Exception:
+                pass
+            stop.wait(ping)
+
+    t = threading.Thread(target=_loop, daemon=True)
+    t.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        with contextlib.suppress(Exception):
+            fv.send_typing_indicator(fan_uuid, False)
 
 
 def _handle_fan_chat(
@@ -278,6 +407,9 @@ def _handle_fan_chat(
     Drain all pending fan messages for one chat (including ones buried under
     Emma's own bubbles). Returns how many reply turns were sent.
     """
+    # Drain: do not start a NEW fan turn after SIGTERM; finish only if already in body.
+    if shutting_down():
+        return 0
     global _in_fan_turn
     _in_fan_turn = True
     try:
@@ -296,6 +428,7 @@ def _handle_fan_chat_body(
     handled = 0
     # Cap turns per poll so one chat can't starve others
     for _ in range(4):
+        # Finish the turn we already started; do not open another reply cycle while draining.
         if shutting_down() and handled > 0:
             break
         messages = fv.get_messages(fan_uuid, size=100)
@@ -305,6 +438,14 @@ def _handle_fan_chat_body(
         pending = _pending_fan_messages(messages, fan_uuid, processed)
         if not pending:
             break
+
+        # Coalesce a live burst: wait for him to finish, keep "typing…" on.
+        pending = _wait_for_fan_to_finish(fv, fan_uuid, processed, pending)
+        if shutting_down() and handled > 0:
+            break
+        # Re-fetch so context/turns include everything absorbed during the wait.
+        messages = fv.get_messages(fan_uuid, size=100) or messages
+        pending = _pending_fan_messages(messages, fan_uuid, processed) or pending
 
         # Oldest → newest so we absorb everything he typed while we were away
         pending_chrono = list(reversed(pending))
@@ -460,6 +601,8 @@ def _handle_fan_chat_body(
             for m in list(reversed(messages[:12]))
             if (m.get("text") or "").strip()
         ]
+        # Router still runs for Group-B truth (unpaid lock / delivery).
+        # Soft pack labels are telemetry only when REPLY_V2 — words come from V2 prompt.
         route_result = route_intent(
             mem,
             text,
@@ -467,6 +610,7 @@ def _handle_fan_chat_body(
             history_snippets=snippets,
         )
         decision = route_result.decision
+        use_v2 = bool(getattr(config, "REPLY_V2", True))
 
         preview = text.replace("\n", " | ")[:80]
         print(f"\n📩 @{fan_handle}: {preview}")
@@ -476,9 +620,15 @@ def _handle_fan_chat_body(
             f"   memory: status={mem.get('status')} spent=${mem.get('total_spent')} "
             f"likes={','.join(mem.get('interests', [])) or '-'}"
         )
-        print(
-            f"   mode: {decision.mode} ({decision.reason}) | pack={route_result.pack_id}"
-        )
+        if use_v2:
+            print(
+                f"   brain=v2 | truth_pack={route_result.pack_id} "
+                f"({decision.reason})"
+            )
+        else:
+            print(
+                f"   mode: {decision.mode} ({decision.reason}) | pack={route_result.pack_id}"
+            )
         if route_result.pack_id in ("reward_purchase",) or (
             ppv_status and ppv_status.get("purchased")
         ):
@@ -532,66 +682,125 @@ def _handle_fan_chat_body(
                         f"[attached photo — you see: {vision['description']}]"
                     )
 
+        # CODE-FIRST SELL: pick real vault item BEFORE DeepSeek.
+        # Never let allow_price=True reach creative without an offer (or demote).
         offer = None
-        if decision.mode in ("soft_sell", "hard_sell") and decision.allow_price:
-            # Never stack while an unpaid lock is already in this chat
-            if delivery_truth.get("ppv_unpaid"):
-                print("   ppv: skipped (unpaid lock already in chat)")
-            else:
-                # Belt-and-suspenders: never lock twice inside cooloff even if mode slipped
-                last_ppv = mem.get("last_ppv_at") or mem.get("last_offer_at")
-                too_soon = False
-                if last_ppv:
-                    try:
-                        ago = datetime.now(timezone.utc) - datetime.fromisoformat(
-                            str(last_ppv).replace("Z", "+00:00")
-                        )
-                        too_soon = ago < timedelta(minutes=12)
-                    except (ValueError, TypeError):
-                        pass
-                if too_soon:
-                    print("   ppv: skipped (cooloff — avoid double lock)")
-                else:
-                    offer = vault_catalog.select_offer(mem, text)
-                    if offer:
-                        print(
-                            f"   ppv: L{offer['level']} ${offer['price']:.0f} "
-                            f"{offer['label'][:50]} ({offer['media_uuid'][:8]}…)"
-                        )
-                    else:
-                        print("   ppv: no catalog item available")
-        elif getattr(decision, "allow_free_tease", False):
+        _CONVERT_PACKS = frozenset(
+            {"phase_close", "lock_now", "escalate_paid", "delivery_missing"}
+        )
+        unpaid = bool(delivery_truth.get("ppv_unpaid"))
+        want_sell = bool(decision.allow_price) or (
+            route_result.pack_id in _CONVERT_PACKS
+        )
+        want_free = bool(getattr(decision, "allow_free_tease", False)) and not want_sell
+
+        if unpaid:
+            print("   SELL: skipped (unpaid lock already in chat)")
+        elif want_free:
             offer = vault_catalog.select_free_tease(mem)
             if offer:
                 print(
-                    f"   free L0: {offer['label'][:50]} ({offer['media_uuid'][:8]}…)"
+                    f"   SELL FREE L0: {offer['label'][:50]} "
+                    f"({offer['media_uuid'][:8]}…)"
                 )
             else:
-                print("   free L0: none left unused for this fan")
-
-        try:
-            reply, decision = generate_emma_reply(
+                print("   SELL FREE L0: none left — flirt only")
+        elif want_sell:
+            selection = offer_selector.choose_offer(
+                mem,
                 text,
                 history_turns=turns,
-                fan_handle=fan_handle,
-                fan_uuid=fan_uuid,
-                decision=decision,
-                offer=offer,
-                ppv_status=ppv_status,
-                fan_vision=vision,
-                delivery_truth=delivery_truth,
-                pack_id=route_result.pack_id,
-                route_result=route_result,
+                facts=route_result.facts,
             )
+            offer = selection.offer if selection.sell_now else None
+            if offer is not None:
+                print(
+                    f"   SELL: L{offer['level']} ${float(offer['price']):.0f} "
+                    f"{offer['label'][:50]} ({offer['media_uuid'][:8]}…) "
+                    f"[{selection.source} {selection.confidence:.2f}]"
+                )
+            else:
+                # Demote — selector says timing is wrong OR inventory exhausted.
+                from core.turn_policy import MODE_TEASE, TurnDecision
+                from core.intent_router import RouteResult as _RR
+
+                print(
+                    f"   SELL demote: {selection.reason[:100]} "
+                    "→ phase_pull (no price)"
+                )
+                decision = TurnDecision(
+                    mode=MODE_TEASE,
+                    reason=f"demote: {selection.reason[:120]}",
+                    max_bubbles=2,
+                    allow_ppv_talk=True,
+                    allow_price=False,
+                    allow_free_tease=False,
+                )
+                route_result = _RR(
+                    "phase_pull",
+                    decision,
+                    route_result.facts,
+                    {**(route_result.active or {}), "phase_pull": True},
+                )
+
+        try:
+            # Keep "Emma is typing…" alive during the (multi-second) DeepSeek call.
+            with _typing_keepalive(fv, fan_uuid):
+                if use_v2:
+                    reply, decision, offer = generate_reply_v2(
+                        text,
+                        history_turns=turns,
+                        fan_handle=fan_handle,
+                        fan_uuid=fan_uuid,
+                        offer=offer,
+                        ppv_status=ppv_status,
+                        delivery_truth=delivery_truth,
+                        route_result=route_result,
+                        fan_vision=vision,
+                        catalog_locked=True,  # poller already decided offer/demote
+                    )
+                    if offer:
+                        print(
+                            f"   attach: L{offer.get('level')} "
+                            f"${float(offer.get('price') or 0):.0f} "
+                            f"{(offer.get('label') or '')[:40]}"
+                        )
+                else:
+                    reply, decision = generate_emma_reply(
+                        text,
+                        history_turns=turns,
+                        fan_handle=fan_handle,
+                        fan_uuid=fan_uuid,
+                        decision=decision,
+                        offer=offer,
+                        ppv_status=ppv_status,
+                        fan_vision=vision,
+                        delivery_truth=delivery_truth,
+                        pack_id=route_result.pack_id,
+                        route_result=route_result,
+                    )
         except Exception as e:
             import traceback
 
-            print(f"   ❌ generate_emma_reply failed: {type(e).__name__}: {e}")
+            print(f"   ❌ generate reply failed: {type(e).__name__}: {e}")
             traceback.print_exc()
             break
 
-        bubbles = split_into_messages(reply, max_bubbles=3, vary=True)
-        print(f"💬 Emma ({len(bubbles)} msg) [{decision.mode}]: {reply[:120]}")
+        max_bubbles = int(
+            getattr(decision, "max_bubbles", None)
+            or getattr(config, "MAX_BUBBLES", 3)
+            or 3
+        )
+        bubbles = split_into_messages(
+            reply,
+            max_len=int(getattr(config, "BUBBLE_MAX_CHARS", 200) or 200),
+            max_bubbles=max_bubbles,
+            vary=True,
+        )
+        print(
+            f"💬 Emma ({len(bubbles)} msg, ≤{getattr(config, 'BUBBLE_MAX_CHARS', 200)}c) "
+            f"[{decision.mode}]: {reply[:120]}"
+        )
 
         # Do NOT mark processed until we actually send — otherwise a crash/empty
         # reply permanently silences the fan.
@@ -617,13 +826,9 @@ def _handle_fan_chat_body(
         if is_free_offer and bubbles and not barged:
             media_text = (bubbles[0] or "").strip() or "😏"
             rest_bubbles = bubbles[1:]
-            delay = random.uniform(4.0, 8.0)
-            try:
-                fv.send_typing_indicator(fan_uuid, True)
-            except Exception:
-                pass
+            delay = _human_bubble_delay(media_text, first=True)
             interrupted = _sleep_interruptible(
-                fv, fan_uuid, processed, delay, known_ids=pending_ids
+                fv, fan_uuid, processed, delay, known_ids=pending_ids, keep_typing=True
             )
             try:
                 fv.send_media_message(
@@ -724,13 +929,9 @@ def _handle_fan_chat_body(
         if is_paid_offer and bubbles and not barged and offer:
             media_text = (bubbles[0] or "").strip() or "🔒"
             rest_bubbles = bubbles[1:]
-            delay = random.uniform(4.0, 8.0)
-            try:
-                fv.send_typing_indicator(fan_uuid, True)
-            except Exception:
-                pass
+            delay = _human_bubble_delay(media_text, first=True)
             interrupted = _sleep_interruptible(
-                fv, fan_uuid, processed, delay, known_ids=pending_ids
+                fv, fan_uuid, processed, delay, known_ids=pending_ids, keep_typing=True
             )
             price = max(3.0, float(offer["price"]))
             try:
@@ -835,27 +1036,31 @@ def _handle_fan_chat_body(
             offer = None  # paid path handled
 
         for i, bubble in enumerate(bubbles):
-            if i == 0 and not free_sent and not ppv_sent:
-                delay = random.uniform(5.0, 11.0)
-                if random.random() < 0.25:
-                    delay += random.uniform(2.0, 5.0)
-            else:
-                delay = 2.8 + len(bubble) / 28.0 + random.uniform(0.8, 3.5)
-                delay = min(14.0, max(3.0, delay))
-            try:
-                fv.send_typing_indicator(fan_uuid, True)
-            except Exception:
-                pass
+            first = i == 0 and not free_sent and not ppv_sent
+            delay = _human_bubble_delay(bubble, first=first)
+            # Typing stays on for EVERY bubble (re-pinged inside sleep)
             interrupted = _sleep_interruptible(
-                fv, fan_uuid, processed, delay, known_ids=pending_ids
+                fv,
+                fan_uuid,
+                processed,
+                delay,
+                known_ids=pending_ids,
+                keep_typing=True,
             )
             # Always deliver at least one bubble for this turn; abort the rest if he wrote
             fv.send_message(fan_uuid, bubble)
             bubbles_sent += 1
-            try:
-                fv.send_typing_indicator(fan_uuid, False)
-            except Exception:
-                pass
+            # Brief pause then typing back on for the next bubble
+            if i + 1 < len(bubbles) and not interrupted:
+                try:
+                    fv.send_typing_indicator(fan_uuid, True)
+                except Exception:
+                    pass
+            else:
+                try:
+                    fv.send_typing_indicator(fan_uuid, False)
+                except Exception:
+                    pass
             print(f"   ✅ [{bubbles_sent}] (+{delay:.1f}s) {bubble[:60]}")
             if interrupted:
                 print("   ⏭ barge-in: fan wrote mid-reply — stopping remaining bubbles")
@@ -957,7 +1162,7 @@ def _handle_fan_chat_body(
                 lock_active=getattr(decision, "lock_active", None),
                 scheme_errors=getattr(decision, "scheme_errors", None),
             )
-            critic.review_fan_async(fan_uuid, fan_handle)
+            # Per-turn critic removed — hourly hour_review covers Soft/Hard proposals.
             memory_extractor.update_fan_card_async(fan_uuid, fan_handle)
         except Exception as e:
             print(f"   ⚠️ learning-loop log failed: {e}")
@@ -1158,7 +1363,11 @@ def main():
             print(f"   PPV purge-on-start: done ({n_purge} deleted)")
         except Exception as e:
             print(f"   ⚠️ PPV purge-on-start failed: {e}")
-    print("   Ctrl+C to stop\n")
+    print("   Ctrl+C to stop")
+    print(
+        "   drain: SIGTERM finishes current fan turn, skips new chats, "
+        "releases Redis lock (safe Railway redeploy)\n"
+    )
 
     processed = _load_processed()
     last_reengage = 0.0
@@ -1192,8 +1401,11 @@ def main():
                 if hold_lock:
                     redis_store.refresh_poller_lock(aid)
 
-                # Soft: pick up lorebook.json edits without process restart
-                if time.time() - last_lore_reload >= 300:
+                # Soft: pick up lorebook.json edits ~every 5 min (no redeploy)
+                if (
+                    not shutting_down()
+                    and time.time() - last_lore_reload >= 300
+                ):
                     last_lore_reload = time.time()
                     if lorebook.ensure_fresh(force=True):
                         print("\n📖 lorebook reloaded from disk\n", flush=True)
@@ -1244,18 +1456,27 @@ def main():
                     except Exception as e:
                         print(f"\n⚠️ Re-engagement error: {e}")
 
-                # Every 30 min: Soft autopilot (auto-approve global lessons) + board
-                if not shutting_down() and time.time() - last_fix_scan >= 1800:
+                # Every hour: DeepSeek reviews ONLY last-hour turns → Soft/Hard board
+                # Soft stays PENDING (no live prompt inject unless AUTO_APPROVE_SOFT_LESSONS=1)
+                if not shutting_down() and time.time() - last_fix_scan >= 3600:
                     last_fix_scan = time.time()
                     try:
-                        from core import auto_fix, improve_board
+                        from core import auto_fix, hour_review, improve_board
 
+                        hr = hour_review.run_hourly_review()
+                        if not hr.get("skipped"):
+                            print(
+                                f"\n⏱ hourly review done — "
+                                f"fails={hr.get('failures', 0)} "
+                                f"soft+={hr.get('soft_proposed', 0)} "
+                                f"hard={hr.get('hard', 0)}\n"
+                            )
                         new = auto_fix.scan_and_queue()
                         if new:
                             rules = ", ".join(i["rule"] for i in new)
                             print(
                                 f"\n🧠 self-repair queue: {len(new)} ({rules}) "
-                                f"— Soft lessons auto-approve; code autofix still manual\n"
+                                f"— Soft pending unless AUTO_APPROVE; code autofix manual\n"
                             )
                         result = improve_board.run_soft_autopilot(ask_deepseek=True)
                         n_act = len(result.get("activated") or [])
@@ -1272,7 +1493,7 @@ def main():
                                 f"activated={n_act} → docs/IMPROVE_BOARD.md\n"
                             )
                     except Exception as e:
-                        print(f"\n⚠️ fix-scan error: {e}")
+                        print(f"\n⚠️ hour-review / fix-scan error: {e}")
 
                 # Interruptible sleep so SIGTERM is noticed quickly
                 deadline = time.time() + args.interval

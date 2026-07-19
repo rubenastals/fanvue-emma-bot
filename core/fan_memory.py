@@ -30,9 +30,8 @@ _INTEREST_KEYWORDS = {
     "dirty talk": ("dirty", "nasty", "guarra", "talk dirty"),
     "domination": ("dominate", "domina", "boss", "obey", "sumiso", "submissive"),
     "roleplay": ("roleplay", "pretend", "fantasy", "fantasía"),
-    "videos": ("video", "vid", "clip"),
+    # No videos/custom tags — vault is photos only; lorebook redirects those asks
     "photos": ("photo", "foto", "pic", "pics", "picture"),
-    "custom": ("custom", "personalizado", "just for me", "para mi"),
 }
 
 
@@ -123,6 +122,7 @@ def _blank(fan_handle: str) -> dict:
         "last_nudge_at": None,
         "last_nudge_style": None,
         "last_victim_nudge_at": None,
+        "last_seen_by_fan_at": None,  # when we first saw isRead on Emma's last msg
         "last_goodmorning_day": None,
         "note": "",
         "status": "new",
@@ -451,6 +451,7 @@ def observe_message(fan_uuid: str, fan_handle: str, text: str) -> dict:
         # Fan spoke → new silence episode may start later
         mem["nudge_sent_episode"] = False
         mem["nudge_episode_count"] = 0
+        mem["last_seen_by_fan_at"] = None
 
         # Corrections first — "no soy Carlos" / "me llamaste Carlos" must NEVER save Carlos
         for m in _NAME_NEGATE.finditer(raw_text):
@@ -486,9 +487,7 @@ def record_purchase(fan_uuid: str, amount: float, fan_handle: str = "") -> dict:
         mem["purchases"] = int(mem.get("purchases", 0)) + 1
         mem["total_spent"] = round(float(mem.get("total_spent", 0)) + float(amount), 2)
         mem["last_purchase_at"] = _now()
-        mem["chill_until"] = (
-            datetime.now(timezone.utc).replace(microsecond=0) + timedelta(minutes=45)
-        ).isoformat()
+        mem["chill_until"] = None  # no post-purchase sell ban
         if mem["total_spent"] >= 200:
             mem["status"] = "whale"
         elif mem["total_spent"] > 0:
@@ -790,15 +789,13 @@ def clear_ghost_free(
 
 
 def record_reject(fan_uuid: str, fan_handle: str = "", minutes: int = 120) -> dict:
-    """Fan pushed back on price / said later — open a chill window."""
+    """Fan pushed back on price / said later — log only (no chill sell-ban)."""
+    del minutes  # legacy arg; cooloff window removed
     with _LOCK:
         mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
         _ensure_card_fields(mem)
         mem["last_reject_at"] = _now()
-        mem["chill_until"] = (
-            datetime.now(timezone.utc).replace(microsecond=0)
-            + timedelta(minutes=minutes)
-        ).isoformat()
+        mem["chill_until"] = None  # never block sell via chill
         _put(fan_uuid, mem)
         return mem
 
@@ -809,6 +806,36 @@ def set_last_mode(fan_uuid: str, mode: str, fan_handle: str = "") -> None:
         _ensure_card_fields(mem)
         mem["last_mode"] = mode
         _put(fan_uuid, mem)
+
+
+def record_technique(
+    fan_uuid: str,
+    technique: str,
+    *,
+    fan_handle: str = "",
+    used_rival_fan: bool = False,
+) -> None:
+    """Track recent manipulation techniques + rival-fan bit for anti-repeat."""
+    if not fan_uuid or not technique:
+        return
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        recent = list(mem.get("recent_techniques") or [])
+        recent.append(str(technique)[:80])
+        mem["recent_techniques"] = recent[-8:]
+        if used_rival_fan:
+            mem["rival_fan_used"] = True
+            mem["rival_fan_last_msgs"] = int(mem.get("messages") or 0)
+        _put(fan_uuid, mem)
+
+
+def recent_techniques(fan_uuid: str, *, n: int = 4) -> List[str]:
+    if not fan_uuid:
+        return []
+    mem = get(fan_uuid) or {}
+    recent = list(mem.get("recent_techniques") or [])
+    return [str(x) for x in recent[-n:] if x]
 
 
 def set_prefer_spanish(fan_uuid: str, prefer: bool, fan_handle: str = "") -> None:
@@ -826,7 +853,7 @@ def mark_nudge(
     *,
     style: str = "",
 ) -> None:
-    """kind: 'nudge' (15/30m ladder) or 'goodmorning' (next-day)."""
+    """kind: 'nudge' (hot/cold ladder) or 'goodmorning' (next-day)."""
     with _LOCK:
         mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
         _ensure_card_fields(mem)
@@ -850,6 +877,24 @@ def mark_nudge(
             if style:
                 mem["last_nudge_style"] = style
         _put(fan_uuid, mem)
+
+
+def mark_seen_by_fan(fan_uuid: str, fan_handle: str = "") -> Optional[str]:
+    """
+    First time Fanvue shows Emma's last message as isRead — stamp visto clock.
+    Returns ISO timestamp (existing or new). None if fan_uuid missing.
+    """
+    if not fan_uuid:
+        return None
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        if mem.get("last_seen_by_fan_at"):
+            return str(mem["last_seen_by_fan_at"])
+        stamp = _now()
+        mem["last_seen_by_fan_at"] = stamp
+        _put(fan_uuid, mem)
+        return stamp
 
 
 def set_note(fan_uuid: str, note: str, fan_handle: str = "") -> None:
@@ -938,7 +983,15 @@ def render_block(fan_uuid: str) -> str:
         f"spent: ${mem.get('total_spent') or 0} | purchases: {mem.get('purchases') or 0}"
     )
     if mem.get("interests"):
-        lines.append(f"- Into: {', '.join(mem['interests'])}")
+        # Never surface video/custom as sellable — vault is photos only
+        _skip = {"videos", "video", "custom", "customs", "clips", "clip", "4k"}
+        into = [
+            i for i in mem["interests"]
+            if str(i).strip().lower() not in _skip
+        ]
+        if into:
+            lines.append(f"- Into: {', '.join(into)}")
+        lines.append("- Vault: PHOTOS only (never promise video/custom)")
     if mem.get("last_offer"):
         lines.append(f"- Last offer: ${mem['last_offer']}")
 

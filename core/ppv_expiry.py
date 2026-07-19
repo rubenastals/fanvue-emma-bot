@@ -238,9 +238,11 @@ def lock_status_prompt_block(status: Dict[str, Any]) -> str:
         return (
             "LOCK STATUS — VERIFIED THIS TURN:\n"
             "- NO unpaid timed lock is waiting in this chat right now.\n"
-            "- Do NOT invent a candado / 'unlock waiting' / 'check the lock above'.\n"
-            "- When your pack allows selling: you may fire a NEW timed lock "
-            f"(~{expire_minutes()} min scarcity). Persist toward that — don't stall forever."
+            "- HARD BAN: do NOT invent a candado, unlock-above, price ($XX), "
+            "or countdown (20 min / 15 minutitos / 'vence en…').\n"
+            "- Text-only urgency is a lie. Only mention a timed lock if THIS turn "
+            f"actually attaches a NEW paid lock (~{expire_minutes()} min). "
+            "If no photo attaches this turn → flirt/comfort only, zero invent."
         )
 
     label = status.get("label") or "your locked photo"

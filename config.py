@@ -39,38 +39,50 @@ class Config:
     CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
     CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", REDIS_URL)
 
-    # Re-engagement (ladder; see core/reengagement.py)
+    # Re-engagement (hot/cold ladder; see core/reengagement.py)
     REENGAGEMENT_INTERVAL_SECONDS = int(os.getenv("REENGAGEMENT_INTERVAL_SECONDS", "1800"))
     INACTIVE_HOURS = int(os.getenv("INACTIVE_HOURS", "12"))
-    NUDGE_FIRST_MINUTES = int(os.getenv("NUDGE_FIRST_MINUTES", "15"))
-    NUDGE_SECOND_MINUTES = int(os.getenv("NUDGE_SECOND_MINUTES", "30"))
+    NUDGE_HOT_MINUTES = int(os.getenv("NUDGE_HOT_MINUTES", "2"))
+    NUDGE_COLD_MINUTES = int(os.getenv("NUDGE_COLD_MINUTES", "5"))
+    NUDGE_FIRST_MINUTES = int(os.getenv("NUDGE_FIRST_MINUTES", str(NUDGE_COLD_MINUTES)))
+    NUDGE_SECOND_MINUTES = int(os.getenv("NUDGE_SECOND_MINUTES", "8"))
     MAX_NUDGES_PER_EPISODE = int(os.getenv("MAX_NUDGES_PER_EPISODE", "2"))
+    VICTIM_AFTER_SEEN_MINUTES = int(os.getenv("VICTIM_AFTER_SEEN_MINUTES", "60"))
     VICTIM_COOLDOWN_HOURS = int(os.getenv("VICTIM_COOLDOWN_HOURS", "12"))
 
     # Embeddings
     EMBEDDING_DIM = 1536
 
-    # AI Params (DeepSeek roleplay best-practice: tune temperature, leave top_p=1,
-    # penalties have no effect on DeepSeek so keep them at 0).
+    # AI Params — V2 creative defaults (human-like, less repetitive)
     DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro")
-    TEMPERATURE = float(os.getenv("DEEPSEEK_TEMPERATURE", "0.9"))
-    TOP_P = float(os.getenv("DEEPSEEK_TOP_P", "1.0"))
-    FREQUENCY_PENALTY = 0.0
-    PRESENCE_PENALTY = 0.0
-    # Generous cap — only prevents runaway output, never truncates normal texting
-    MAX_RESPONSE_TOKENS = int(os.getenv("MAX_RESPONSE_TOKENS", "400"))
-    # v4 models "think" and can burn the whole token budget → empty reply.
-    # Disable thinking for fast, natural roleplay (recommended for NSFW chat).
+    TEMPERATURE = float(os.getenv("DEEPSEEK_TEMPERATURE", "1.0"))
+    TOP_P = float(os.getenv("DEEPSEEK_TOP_P", "0.95"))
+    FREQUENCY_PENALTY = float(os.getenv("DEEPSEEK_FREQUENCY_PENALTY", "0.4"))
+    PRESENCE_PENALTY = float(os.getenv("DEEPSEEK_PRESENCE_PENALTY", "0.5"))
+    # Keep replies punchy; splitter + prompt enforce short chat bubbles.
+    MAX_RESPONSE_TOKENS = int(os.getenv("MAX_RESPONSE_TOKENS", "350"))
     DEEPSEEK_DISABLE_THINKING = os.getenv("DEEPSEEK_DISABLE_THINKING", "1") == "1"
+    # Per Fanvue bubble (hard split if the model writes a wall of text)
+    BUBBLE_MAX_CHARS = int(os.getenv("BUBBLE_MAX_CHARS", "200"))
+    MAX_BUBBLES = int(os.getenv("MAX_BUBBLES", "3"))
 
-    # Lean creative: CLIENT CARD + history first. Soft lessons/catalog spam OFF by default.
+    # V2 brain: one English psychology prompt + recent history (default ON).
+    # Old pack/analyst/manipulation path only if REPLY_V2=0.
+    # Catalog-only sell rails live in reply_engine; V2 off by default.
+    REPLY_V2 = os.getenv("REPLY_V2", "0") == "1"
+    # Shorter history = less imitation of burned bland turns from old brain
+    V2_MAX_HISTORY_TURNS = int(os.getenv("V2_MAX_HISTORY_TURNS", "24"))
     LEAN_CREATIVE = os.getenv("LEAN_CREATIVE", "1") == "1"
     INJECT_LESSONS = os.getenv("INJECT_LESSONS", "0") == "1"
-    PHASE_ANALYST = os.getenv("PHASE_ANALYST", "1") == "1"
+    PHASE_ANALYST = os.getenv("PHASE_ANALYST", "0") == "1"
+    SIMPLE_PROMPT = os.getenv("SIMPLE_PROMPT", "1") == "1"
     PHASE_ANALYST_MODEL = os.getenv("PHASE_ANALYST_MODEL", "") or None
     # Ambiguous-turn JSON intent classifier (extra DeepSeek call)
     SOFT_CLASSIFY = os.getenv("SOFT_CLASSIFY", "0") == "1"
     SOFT_CLASSIFY_MODEL = os.getenv("SOFT_CLASSIFY_MODEL", "") or None
+    # Closed JSON PPV selector: chooses sell/no-sell + one whitelisted vault UUID.
+    OFFER_SELECTOR_AI = os.getenv("OFFER_SELECTOR_AI", "1") == "1"
+    OFFER_SELECTOR_MODEL = os.getenv("OFFER_SELECTOR_MODEL", "") or None
 
     # xAI Grok Vision — vault photo captioning (same key as emma_chatter)
     XAI_API_KEY = os.getenv("XAI_API_KEY", "")
@@ -87,6 +99,29 @@ class Config:
 
     # Soft autopilot OFF by default — Soft lesson flood broke chat quality
     AUTO_APPROVE_SOFT_LESSONS = os.getenv("AUTO_APPROVE_SOFT_LESSONS", "0") == "1"
+    # Hourly DeepSeek review of last-hour turns only (does not inject into live prompt)
+    HOUR_REVIEW_ENABLED = os.getenv("HOUR_REVIEW_ENABLED", "1") == "1"
+    HOUR_REVIEW_MINUTES = int(os.getenv("HOUR_REVIEW_MINUTES", "60"))
+    # Coalesce a burst of fan messages: wait for him to finish typing, then
+    # answer the whole batch as ONE turn (better analysis, one reply).
+    COALESCE_ENABLED = os.getenv("COALESCE_ENABLED", "1") == "1"
+    # Quiet window: if no new fan message arrives for this long, he's done.
+    COALESCE_SETTLE_SEC = float(os.getenv("COALESCE_SETTLE_SEC", "4"))
+    # Hard cap so we never wait forever on a non-stop typer.
+    COALESCE_MAX_WAIT_SEC = float(os.getenv("COALESCE_MAX_WAIT_SEC", "12"))
+    # Only wait if his newest message is fresher than this (else we're catching up).
+    COALESCE_FRESH_SEC = float(os.getenv("COALESCE_FRESH_SEC", "20"))
+    # Show the "Emma is typing…" bubbles the whole time she's thinking/analyzing.
+    TYPING_WHILE_THINKING = os.getenv("TYPING_WHILE_THINKING", "1") == "1"
+    TYPING_PING_SEC = float(os.getenv("TYPING_PING_SEC", "2.5"))
+    # Human-like pause before each bubble (wall-clock; no Fanvue poll stacking)
+    BUBBLE_DELAY_FIRST_MIN = float(os.getenv("BUBBLE_DELAY_FIRST_MIN", "2.0"))
+    BUBBLE_DELAY_FIRST_MAX = float(os.getenv("BUBBLE_DELAY_FIRST_MAX", "4.0"))
+    BUBBLE_DELAY_NEXT_MIN = float(os.getenv("BUBBLE_DELAY_NEXT_MIN", "1.2"))
+    BUBBLE_DELAY_NEXT_MAX = float(os.getenv("BUBBLE_DELAY_NEXT_MAX", "2.8"))
+    # How often to check barge-in during a bubble delay (API is slow — keep rare)
+    BUBBLE_BARGE_CHECK_SEC = float(os.getenv("BUBBLE_BARGE_CHECK_SEC", "3.0"))
+
     # Unpaid PPV auto-unsend (creates scarcity; keeps chat + bot state clean)
     PPV_EXPIRE_ENABLED = os.getenv("PPV_EXPIRE_ENABLED", "1") == "1"
     PPV_EXPIRE_MINUTES = int(os.getenv("PPV_EXPIRE_MINUTES", "30"))

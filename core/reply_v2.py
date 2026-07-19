@@ -1,0 +1,278 @@
+"""
+Emma reply V2 — full history + one system prompt + creative sampling.
+
+No phase analyst, no manipulation banners, no pack essays.
+Code still decides TURN FACTS (lock / offer attach). DeepSeek owns the words.
+"""
+from __future__ import annotations
+
+import re
+from typing import Dict, List, Optional, Tuple
+
+from openai import OpenAI
+
+from config import config
+from core import emma_prompt_v2, fan_memory, language, scheme_guard
+from core.intent_router import RouteResult, route as route_intent
+from core.turn_policy import TurnDecision
+
+_CLIENT: Optional[OpenAI] = None
+
+# After Emma speaks, detect sell language so we can attach if code didn't pre-pick
+_SELL_SIGNAL = re.compile(
+    r"(?i)(\$\s*\d+|€\s*\d+|\d+\s*(?:\$|€|usd|eur|euros?)|"
+    r"\b(?:ppv|unlock|desbloque|candado|exclusive|exclusiv)\b)"
+)
+
+
+def _client() -> OpenAI:
+    global _CLIENT
+    if _CLIENT is None:
+        _CLIENT = OpenAI(
+            api_key=config.DEEPSEEK_API_KEY,
+            base_url=config.DEEPSEEK_BASE_URL,
+        )
+    return _CLIENT
+
+
+def wants_media_pitch(reply: str) -> bool:
+    return bool(_SELL_SIGNAL.search(reply or ""))
+
+
+def generate_reply_v2(
+    fan_message: str,
+    *,
+    history_turns: Optional[List[Dict[str, str]]] = None,
+    fan_handle: str = "baby",
+    fan_uuid: Optional[str] = None,
+    offer: Optional[dict] = None,
+    want_spanish: Optional[bool] = None,
+    ppv_status: Optional[dict] = None,
+    delivery_truth: Optional[dict] = None,
+    route_result: Optional[RouteResult] = None,
+    fan_vision: Optional[dict] = None,
+    catalog_locked: bool = False,
+) -> Tuple[str, TurnDecision, Optional[dict]]:
+    """
+    Hybrid brain: DeepSeek owns creative words (V2 prompt + full history).
+    Code owns truth rails (lock / vault attach / Grok vision / delivery).
+    When catalog_locked=True, poller already chose offer/demote — do not re-pick.
+    Returns (reply, decision, offer).
+    """
+    history_turns = list(history_turns or [])
+    mem = fan_memory.get(fan_uuid) if fan_uuid else {}
+
+    if route_result is None:
+        route_result = route_intent(
+            mem,
+            fan_message,
+            delivery_truth=delivery_truth,
+            history_snippets=[t.get("content") or "" for t in history_turns[-6:]],
+        )
+    decision = route_result.decision
+
+    if want_spanish is None:
+        pref = language.update_language_pref(mem, fan_message)
+        if pref is not None and fan_uuid:
+            fan_memory.set_prefer_spanish(fan_uuid, pref, fan_handle=fan_handle)
+            mem = fan_memory.get(fan_uuid) or mem
+        want_spanish = language.fan_wants_spanish(fan_message, mem)
+
+    turns = list(history_turns)
+    if not (
+        turns
+        and turns[-1].get("role") == "user"
+        and (turns[-1].get("content") or "").strip() == fan_message.strip()
+    ):
+        turns.append({"role": "user", "content": fan_message})
+
+    # Cap history (keep recent thread intact)
+    max_turns = int(getattr(config, "V2_MAX_HISTORY_TURNS", 40))
+    if len(turns) > max_turns:
+        turns = turns[-max_turns:]
+
+    lock_active = None
+    lock_price = None
+    if ppv_status is not None:
+        if ppv_status.get("purchased"):
+            lock_active = False
+        else:
+            lock_active = bool(ppv_status.get("active"))
+            if ppv_status.get("price") is not None:
+                try:
+                    lock_price = float(ppv_status["price"])
+                except (TypeError, ValueError):
+                    lock_price = None
+    elif delivery_truth is not None:
+        lock_active = bool(delivery_truth.get("ppv_unpaid"))
+
+    # Catalog pick belongs to the poller (code-first). Only self-select if
+    # catalog_locked=False (standalone callers / tests).
+    from core import vault_catalog
+
+    unpaid = bool((delivery_truth or {}).get("ppv_unpaid")) or lock_active is True
+    pack = route_result.pack_id or ""
+    if offer is None and not unpaid and not catalog_locked:
+        free_only = (
+            getattr(decision, "allow_free_tease", False)
+            and not decision.allow_price
+            and pack in ("ask_free_first", "delivery_missing")
+        )
+        sell_now = decision.allow_price or pack in (
+            "phase_close",
+            "lock_now",
+            "escalate_paid",
+            "delivery_missing",
+        )
+        if free_only:
+            offer = vault_catalog.select_free_tease(mem)
+        elif sell_now:
+            offer = vault_catalog.select_offer(mem, fan_message)
+            if offer is None and getattr(decision, "allow_free_tease", False):
+                offer = vault_catalog.select_free_tease(mem)
+
+    card = fan_memory.render_block(fan_uuid) if fan_uuid else ""
+    catalog = emma_prompt_v2.vault_catalog_for_prompt()
+    free_in_chat = None
+    if delivery_truth is not None and "free_in_chat" in delivery_truth:
+        free_in_chat = delivery_truth.get("free_in_chat")
+    facts = emma_prompt_v2.turn_facts_block(
+        lock_active=lock_active,
+        lock_price=lock_price,
+        offer=offer,
+        want_spanish=bool(want_spanish),
+        free_in_chat=free_in_chat,
+    )
+    vision_block = ""
+    if fan_vision and (fan_vision.get("description") or "").strip():
+        from core.fan_vision import vision_system_block
+
+        vision_block = vision_system_block(fan_vision["description"])
+    system = emma_prompt_v2.build_system_prompt(
+        catalog_block=catalog,
+        card_block=card or "",
+        turn_facts=facts,
+        vision_block=vision_block,
+    )
+
+    messages: List[Dict[str, str]] = [{"role": "system", "content": system}]
+    for t in turns:
+        role = t.get("role") or "user"
+        content = (t.get("content") or "").strip()
+        if not content:
+            continue
+        if role not in ("user", "assistant", "system"):
+            role = "user"
+        messages.append({"role": role, "content": content})
+
+    kwargs = dict(
+        model=config.DEEPSEEK_MODEL,
+        messages=messages,
+        temperature=float(getattr(config, "TEMPERATURE", 1.0)),
+        top_p=float(getattr(config, "TOP_P", 0.95)),
+        frequency_penalty=float(getattr(config, "FREQUENCY_PENALTY", 0.4)),
+        presence_penalty=float(getattr(config, "PRESENCE_PENALTY", 0.5)),
+        max_tokens=int(getattr(config, "MAX_RESPONSE_TOKENS", 400)),
+    )
+    if getattr(config, "DEEPSEEK_DISABLE_THINKING", False):
+        kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+
+    resp = _client().chat.completions.create(**kwargs)
+    reply = (resp.choices[0].message.content or "").strip()
+
+    # Language cleanup
+    if language.is_mixed_or_wrong(reply, want_spanish=bool(want_spanish)):
+        fix = messages + [
+            {"role": "assistant", "content": reply},
+            {"role": "user", "content": language.rewrite_instruction(bool(want_spanish))},
+        ]
+        kwargs["messages"] = fix
+        reply = (_client().chat.completions.create(**kwargs).choices[0].message.content or "").strip()
+
+    # Late attach only if poller did NOT already demote (catalog_locked + no offer
+    # means SELL STATUS=NONE — do not invent a new sell after the fact).
+    if (
+        offer is None
+        and not catalog_locked
+        and wants_media_pitch(reply)
+        and not (delivery_truth or {}).get("ppv_unpaid")
+        and lock_active is not True
+    ):
+        late = vault_catalog.select_offer(mem, fan_message)
+        if late:
+            offer = late
+            print(
+                f"   v2 late-offer: L{offer.get('level')} ${float(offer.get('price') or 0):.0f}"
+            )
+
+    # Honesty rails only (no style rewrites)
+    if scheme_guard.invented_video_claim(reply):
+        reply = (
+            "Mmm… de vídeo ahora no, pillín 🔥 Pero sí fotos bien ricas del vault… "
+            "¿abre el candado cuando te lo deje?"
+            if want_spanish
+            else "Mmm… no video right now, baby 🔥 But vault photos that hit harder… "
+            "you unlocking when I drop it?"
+        )
+    if scheme_guard.ghost_media_promise(reply, media_attached=bool(offer)):
+        reply = (
+            "Tienes razón en quererlo ya… cuando te lo deje bloqueado, ábrelo y me cuentas 🔥"
+            if want_spanish
+            else "You're right to want it now… when I lock it for you, open it and tell me 🔥"
+        )
+    if lock_active is False and not offer and scheme_guard.invented_lock_claim(
+        reply, lock_active=False
+    ):
+        reply = (
+            "Ahora mismo no tengo un candado esperándote… pero sí ganas de volver loco 🔥 "
+            "Dime qué te pone más."
+            if want_spanish
+            else "I don't have a lock waiting for you right now… but I do have filthy ideas 🔥 "
+            "Tell me what gets you."
+        )
+
+    # Price truth: only real offer/lock price; strip invents when SELL=NONE
+    real = None
+    if offer and float(offer.get("price") or 0) > 0:
+        real = float(offer["price"])
+    elif lock_active is True and lock_price is not None:
+        real = float(lock_price)
+    if real is not None:
+        for m in re.finditer(
+            r"(?:\$|€)\s*(\d{1,4})|(\d{1,4})\s*(?:€|\$|eur|euros?)", reply
+        ):
+            raw = m.group(1) or m.group(2)
+            try:
+                stated = float(raw)
+            except (TypeError, ValueError):
+                continue
+            if abs(stated - real) > 0.5:
+                reply = re.sub(
+                    r"(?:\$|€)\s*\d{1,4}|\d{1,4}\s*(?:€|\$|eur|euros?)",
+                    f"${real:.0f}",
+                    reply,
+                    count=1,
+                )
+                break
+    elif re.search(r"(?:\$|€)\s*\d{1,4}|\d{1,4}\s*(?:€|\$|eur|euros?)", reply or ""):
+        reply = re.sub(
+            r"(?:\$|€)\s*\d{1,4}|\d{1,4}\s*(?:€|\$|eur|euros?)", "", reply or ""
+        ).strip()
+        print("   💵 v2 price-truth: stripped invent (SELL=NONE)")
+
+    decision.pack_id = route_result.pack_id or ""
+    decision.technique = "v2"
+    decision.lock_active = lock_active
+    decision.scheme_errors = scheme_guard.check_reply(
+        reply,
+        pack_id=decision.pack_id,
+        lock_active=lock_active,
+        media_attached=bool(offer),
+        technique="v2",
+    )
+    print(
+        f"   v2: pack={decision.pack_id} mode={decision.mode} "
+        f"price={decision.allow_price} offer={'yes' if offer else 'no'} "
+        f"hist={len(turns)} chars_sys={len(system)}"
+    )
+    return reply, decision, offer

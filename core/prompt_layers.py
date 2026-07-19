@@ -17,7 +17,8 @@ from typing import Dict, List, Optional, Tuple
 from core.prompt_core import EMMA_CORE_PROMPT
 
 # Hard ceilings (chars). If exceeded, truncate with a marker — never silently grow.
-BUDGET_CORE = 2800
+# Simple mode folds tactics + sell priority into CORE — needs more room.
+BUDGET_CORE = 5600
 BUDGET_CARD = 2500
 BUDGET_TURN_SYSTEM = 4200  # pack + manipulation banner need room
 BUDGET_AUTHOR = 400
@@ -37,12 +38,14 @@ def build_system_layers(
     time_block: str = "",
     name_block: str = "",
     turn_blocks: Optional[List[str]] = None,
+    core_prompt: Optional[str] = None,
 ) -> Tuple[List[Dict[str, str]], Dict[str, int]]:
     """
     Returns (messages, sizes) for the system prefix before history.
+    `core_prompt` overrides the default CORE (e.g. the self-contained SIMPLE core).
     """
     turn_blocks = [b for b in (turn_blocks or []) if (b or "").strip()]
-    core = _clip(EMMA_CORE_PROMPT, BUDGET_CORE, "CORE")
+    core = _clip(core_prompt or EMMA_CORE_PROMPT, BUDGET_CORE, "CORE")
     card = _clip(card_block, BUDGET_CARD, "CARD") if card_block else ""
 
     ephemeral_parts: List[str] = []

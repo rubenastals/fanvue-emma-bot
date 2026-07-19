@@ -13,24 +13,23 @@ from typing import Dict, List, Optional
 from core import packs
 from core.turn_facts import TurnFacts
 from core.turn_policy import (
-    MODE_CHILL,
     MODE_HARD_SELL,
-    MODE_RAPPORT,
     MODE_SOFT_SELL,
     MODE_TEASE,
     TurnDecision,
     _ACCEPT,
     _ASK_FREE,
+    _BROKE_SOFT,
     _BUYING,
     _CHILL_ASK,
     _FAN_PUSHBACK,
     _FAN_SENT_MEDIA,
+    _HEAVY_VENT,
     _HORNY,
     _MISSING_DELIVERY,
     _PRICE_ISSUE,
     _WANT_ANOTHER,
     _free_tease_ok,
-    status_warm,
 )
 
 
@@ -89,6 +88,8 @@ def build_facts(
         re.search(_FAN_PUSHBACK, low)
         or (re.search(_PRICE_ISSUE, low) and not re.search(_ACCEPT, low))
     )
+    broke_soft = bool(re.search(_BROKE_SOFT, low))
+    heavy_vent = bool(re.search(_HEAVY_VENT, low))
     heated = status in ("warm", "spender", "whale") or msgs >= 6
 
     chill_until = _parse_iso(mem.get("chill_until"))
@@ -101,16 +102,12 @@ def build_facts(
     return TurnFacts(
         free_in_chat=truth.get("free_in_chat"),
         ppv_unpaid=bool(truth.get("ppv_unpaid")),
-        cooloff_active=bool(
-            last_ppv and now - last_ppv < timedelta(minutes=12) and not want_another
-        ),
-        chill_window=bool(chill_until and chill_until > now),
+        cooloff_active=False,  # PPV cooloff removed (Group A)
+        chill_window=False,
         recent_purchase=bool(
             last_purchase and now - last_purchase < timedelta(minutes=45)
         ),
-        recent_reject=bool(
-            last_reject and now - last_reject < timedelta(hours=2)
-        ),
+        recent_reject=False,
         fan_sent_media=fan_sent_media,
         ask_free=ask_free,
         missing_delivery=missing,
@@ -120,6 +117,8 @@ def build_facts(
         horny=horny,
         smalltalk=smalltalk,
         pushback_billing=pushback,
+        broke_soft=broke_soft,
+        heavy_vent=heavy_vent,
         heated=heated,
         msgs=msgs,
         frees_done=frees_done,
@@ -149,62 +148,15 @@ def _decision(
 
 
 def _hard_route(facts: TurnFacts, mem: dict) -> Optional[RouteResult]:
-    """Return RouteResult if a hard gate wins; else None."""
+    """
+    Only Group-B truth gates. No creativity/sell bans (chill, cooloff, broke,
+    billing, react-no-pitch, daily cap) — DeepSeek + SIMPLE core own tone.
+    """
     now = _now()
 
-    if facts.chill_window:
-        facts.hard_pack = "chill"
-        d = _decision(
-            MODE_CHILL,
-            "inside chill window",
-            allow_ppv_talk=False,
-            allow_price=False,
-            max_bubbles=3,
-        )
-        return RouteResult("chill", d, facts, {"chill": True})
-
-    if facts.recent_purchase:
-        # Extreme affection, then later turns can soft-withdraw
-        last_purchase = _parse_iso(mem.get("last_purchase_at"))
-        mins = 0
-        if last_purchase:
-            mins = int((_now() - last_purchase).total_seconds() // 60)
-        if mins < 15:
-            facts.hard_pack = "reward_purchase"
-            d = _decision(
-                MODE_CHILL,
-                "recent purchase — reward affection, no upsell",
-                allow_ppv_talk=False,
-                allow_price=False,
-            )
-            return RouteResult(
-                "reward_purchase", d, facts, {"reward_purchase": True}
-            )
-        facts.hard_pack = "post_sale_withdrawal"
-        d = _decision(
-            MODE_CHILL,
-            "post-sale withdrawal — create obsession, no upsell",
-            allow_ppv_talk=False,
-            allow_price=False,
-        )
-        return RouteResult(
-            "post_sale_withdrawal", d, facts, {"post_sale_withdrawal": True}
-        )
-
-    if facts.recent_reject:
-        facts.hard_pack = "price_objection"
-        d = _decision(
-            MODE_CHILL,
-            "price reject — objection script, no new lock",
-            allow_ppv_talk=False,
-            allow_price=False,
-        )
-        return RouteResult(
-            "price_objection", d, facts, {"price_objection": True}
-        )
-
-    # Unpaid lock (unless clear buy/another)
-    if facts.ppv_unpaid and not facts.want_another and not facts.buying:
+    # Unpaid lock — ALWAYS push that unlock. Never stack a second (even if
+    # he says "manda/buy/video" — that means open the waiting lock, not invent).
+    if facts.ppv_unpaid:
         facts.hard_pack = "ppv_unpaid"
         d = _decision(
             MODE_TEASE,
@@ -245,8 +197,7 @@ def _hard_route(facts: TurnFacts, mem: dict) -> Optional[RouteResult]:
     # Ghost free / missing delivery while API says no free
     if facts.missing_delivery and facts.free_in_chat is False:
         facts.hard_pack = "delivery_missing"
-        # Prefer paid lock if free already used; else free recover if eligible
-        if facts.frees_done >= 1 and not facts.cooloff_active:
+        if facts.frees_done >= 1:
             d = _decision(
                 MODE_SOFT_SELL,
                 "fan expects delivery — attach real PPV",
@@ -274,58 +225,19 @@ def _hard_route(facts: TurnFacts, mem: dict) -> Optional[RouteResult]:
             "delivery_missing", d, facts, {"delivery_missing": True}
         )
 
-    if facts.fan_sent_media and not facts.want_another:
-        facts.hard_pack = "react_fan_media"
-        d = _decision(
-            MODE_TEASE,
-            "fan sent media — react to HIS photo, don't pitch",
-            allow_ppv_talk=False,
-            allow_price=False,
-        )
-        return RouteResult(
-            "react_fan_media", d, facts, {"react_fan_media": True}
-        )
-
-    if facts.pushback_billing:
-        facts.hard_pack = "billing_clarify"
-        d = _decision(
-            MODE_CHILL,
-            "fan pushback or billing confusion — clarify, don't sell",
-            allow_ppv_talk=False,
-            allow_price=False,
-        )
-        return RouteResult(
-            "billing_clarify", d, facts, {"billing_clarify": True}
-        )
-
-    if facts.cooloff_active:
-        facts.hard_pack = "phase_pull"
-        free_ok = _free_tease_ok(mem, msgs=facts.msgs, now=now)
-        d = _decision(
-            MODE_TEASE,
-            "PPV cooloff — pull/desire, no second lock yet",
-            allow_price=False,
-            allow_free_tease=free_ok,
-        )
-        return RouteResult("phase_pull", d, facts, {"phase_pull": True})
-
     return None
 
 
 def _soft_active(facts: TurnFacts, mem: dict) -> Dict[str, bool]:
     """
-    Map soft booleans → pack flags.
-    Phases: greeting→hook | engacho→spiral | pull→close | objection/reward separate.
+    Light intent → pack. No rigid msg ladder / daily sell cap.
+    Prefer packs that CAN attach so DeepSeek isn't stuck in flirt-only.
     """
     now = _now()
     active: Dict[str, bool] = {pid: False for pid in packs.priority_order()}
+    free_ok = _free_tease_ok(mem, msgs=facts.msgs, now=now)
+    never_gifted = facts.frees_done <= 0
 
-    greeting = facts.smalltalk or (
-        facts.msgs <= 3 and not facts.horny and not facts.buying and not facts.ask_free
-    )
-    engacho = facts.horny  # dirty / sensory ask (from _HORNY in build_facts)
-
-    # --- Free ladder ---
     if facts.ask_free and facts.frees_done >= 1:
         active["escalate_paid"] = True
         active["phase_close"] = True
@@ -334,77 +246,27 @@ def _soft_active(facts: TurnFacts, mem: dict) -> Dict[str, bool]:
     ):
         active["ask_free_first"] = True
     elif facts.ask_free:
-        active["phase_pull"] = True  # guilt / scarcity toward paid
+        active["phase_close"] = True
 
     if facts.missing_delivery and not facts.ppv_unpaid:
         active["delivery_missing"] = True
 
-    # --- CLEAR BUY → CLOSE ---
     if facts.buying and not facts.ask_free:
+        # Includes "manda video/custom" — still close a PHOTO (vault has no film)
         active["phase_close"] = True
         active["lock_now"] = True
-
-    # --- Post-free heat → CLOSE ---
-    elif (
-        facts.frees_done >= 1
-        and facts.heated
-        and facts.msgs >= 6
-        and not facts.cooloff_active
-        and not facts.ppv_unpaid
-    ):
-        active["phase_close"] = True
-
-    # --- ENGACHO (dirty) → SPIRAL then PULL, close only when ready ---
-    elif engacho:
-        if facts.msgs < 5 and facts.frees_done <= 0:
-            active["phase_spiral"] = True  # Phase 2 sensory escalate
-        elif facts.msgs < 8:
-            active["phase_pull"] = True  # Phase 3 one technique
-        else:
-            active["phase_close"] = True  # Phase 4 convert
-
-    # --- GREETING / early rapport → HOOK ---
-    elif greeting or facts.msgs < 4:
+    elif facts.msgs < 3 and not facts.horny and not facts.buying:
         active["phase_hook"] = True
-
-    # --- Mid chat warming ---
-    elif facts.msgs < 8:
-        active["phase_spiral"] = True
+        if free_ok:
+            active["ask_free_first"] = True
     else:
-        active["phase_pull"] = True
-
-    # Free L0 while warming — not during engacho pull/close (guilt→paid instead)
-    free_ok = _free_tease_ok(mem, msgs=facts.msgs, now=now)
-    if (
-        free_ok
-        and (facts.heated or facts.msgs >= 5)
-        and not active.get("phase_close")
-        and not active.get("phase_pull")
-        and not engacho
-    ):
-        active["ask_free_first"] = True
-
-    # Daily offer soft-cap → stay in pull, no close
-    offers_today = int(mem.get("offers_today") or 0)
-    offers_day = mem.get("offers_day")
-    today = now.strftime("%Y-%m-%d")
-    if offers_day != today:
-        offers_today = 0
-    if offers_today >= 5 and not facts.buying and not (
-        facts.frees_done >= 1 and facts.heated
-    ):
-        active["phase_close"] = False
-        active["lock_now"] = False
-        active["escalate_paid"] = False
-        active["phase_pull"] = True
+        # Mid/hot chat → convertible pack (DeepSeek owns the words)
+        active["phase_close"] = True
+        if never_gifted and free_ok and not facts.buying:
+            active["ask_free_first"] = True
 
     if not any(active.values()):
-        if facts.msgs < 4:
-            active["phase_hook"] = True
-        elif status_warm(mem) or facts.msgs >= 8:
-            active["phase_pull"] = True
-        else:
-            active["phase_spiral"] = True
+        active["phase_close"] = True
 
     return active
 
@@ -413,31 +275,16 @@ def _decision_for_pack(
     pack_id: str, facts: TurnFacts, mem: dict, reason: str
 ) -> TurnDecision:
     now = _now()
-    if pack_id in ("chill", "reward_purchase", "post_sale_withdrawal"):
-        return _decision(MODE_CHILL, reason, allow_ppv_talk=False, allow_price=False)
-    if pack_id in ("billing_clarify", "price_objection"):
-        return _decision(MODE_CHILL, reason, allow_ppv_talk=False, allow_price=False)
-    if pack_id in ("rapport", "phase_hook"):
-        return _decision(MODE_RAPPORT, reason, allow_ppv_talk=False, allow_price=False)
-    if pack_id == "phase_spiral":
-        return _decision(MODE_TEASE, reason, allow_price=False)
-    if pack_id in ("phase_pull", "tease_heat", "phase_reengage"):
-        free_ok = _free_tease_ok(mem, msgs=facts.msgs, now=now)
-        return _decision(
-            MODE_TEASE, reason, allow_price=False, allow_free_tease=free_ok
-        )
-    if pack_id == "react_fan_media":
-        return _decision(MODE_TEASE, reason, allow_ppv_talk=False, allow_price=False)
+    free_ok = _free_tease_ok(mem, msgs=facts.msgs, now=now)
+
+    # Truth-only packs (no new paid lock)
     if pack_id == "ppv_unpaid":
         return _decision(MODE_TEASE, reason, allow_price=False)
     if pack_id == "delivery_scroll":
         return _decision(MODE_TEASE, reason, allow_price=False)
     if pack_id == "ask_free_first":
         return _decision(
-            MODE_TEASE,
-            reason,
-            allow_price=False,
-            allow_free_tease=True,
+            MODE_TEASE, reason, allow_price=False, allow_free_tease=True
         )
     if pack_id == "delivery_missing":
         if facts.frees_done >= 1:
@@ -447,14 +294,46 @@ def _decision_for_pack(
                 MODE_TEASE, reason, allow_free_tease=True, allow_price=False
             )
         return _decision(MODE_SOFT_SELL, reason, allow_price=True)
-    if pack_id in ("escalate_paid", "phase_close", "lock_now"):
-        mode = (
-            MODE_HARD_SELL
-            if facts.buying and (facts.status in ("spender", "whale") or facts.spent > 0)
-            else MODE_SOFT_SELL
+
+    # Creative packs — CAN sell (Group A pack→price ban removed)
+    if pack_id in (
+        "escalate_paid",
+        "phase_close",
+        "lock_now",
+        "phase_pull",
+        "phase_spiral",
+        "tease_heat",
+        "phase_reengage",
+        "react_fan_media",
+        "phase_hook",
+        "rapport",
+        "price_objection",
+        "billing_clarify",
+        "chill",
+        "reward_purchase",
+        "post_sale_withdrawal",
+    ):
+        mode = MODE_SOFT_SELL
+        if facts.buying and (
+            facts.status in ("spender", "whale") or facts.spent > 0
+        ):
+            mode = MODE_HARD_SELL
+        elif pack_id in ("phase_hook", "rapport") and facts.msgs < 4 and not facts.buying:
+            return _decision(
+                MODE_TEASE,
+                reason,
+                allow_price=False,
+                allow_free_tease=free_ok,
+            )
+        return _decision(
+            mode,
+            reason,
+            allow_price=True,
+            allow_free_tease=free_ok and not facts.buying,
         )
-        return _decision(mode, reason, allow_price=True)
-    return _decision(MODE_RAPPORT, reason, allow_ppv_talk=False, allow_price=False)
+    return _decision(
+        MODE_SOFT_SELL, reason, allow_price=True, allow_free_tease=free_ok
+    )
 
 
 def decision_for_pack(

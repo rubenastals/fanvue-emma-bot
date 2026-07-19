@@ -6,7 +6,7 @@ Returns structured JSON:
   - what to remember about him (name, likes, avoid)
   - short situation summary
 
-Hard API gates (unpaid PPV, delivery truth) still win over the analyst.
+Hard API gates (unpaid PPV, delivery truth, buy/close) still win over the analyst.
 """
 from __future__ import annotations
 
@@ -44,7 +44,31 @@ _HARD_LOCK_PACKS = frozenset(
         "ppv_unpaid",
         "delivery_scroll",
         "delivery_missing",
-        "chill",  # chill window / reject cooloff from code
+        "chill",
+        "billing_clarify",
+        "react_fan_media",
+        "reward_purchase",
+    }
+)
+
+# Code already converting — analyst must not downgrade to tease/pull
+_CONVERT_PACKS = frozenset(
+    {
+        "phase_close",
+        "lock_now",
+        "escalate_paid",
+    }
+)
+
+_DOWNGRADE_TARGETS = frozenset(
+    {
+        "phase_hook",
+        "phase_spiral",
+        "phase_pull",
+        "tease_heat",
+        "rapport",
+        "chill",
+        "phase_reengage",
     }
 )
 
@@ -85,6 +109,9 @@ def analyze(
     card_text: str,
     hard_pack: Optional[str] = None,
     code_pack: Optional[str] = None,
+    facts_line: str = "",
+    lock_active: Optional[bool] = None,
+    allow_price: bool = False,
 ) -> Optional[PhaseAnalysis]:
     """
     DeepSeek analyst call. Returns None if disabled / failed.
@@ -104,7 +131,6 @@ def analyze(
         content = (t.get("content") or "").strip()
         if not content:
             continue
-        # Strip author notes from last user turn for cleaner read
         content = re.sub(r"\n\n\[Emma texting\.[\s\S]*$", "", content)
         lines.append(f"{role}: {content[:400]}")
     transcript = "\n".join(lines) if lines else f"FAN: {(fan_message or '')[:400]}"
@@ -117,20 +143,45 @@ def analyze(
             "Still fill name/likes/summary from card+chat."
         )
 
+    lock_line = "unknown"
+    if lock_active is True:
+        lock_line = "ACTIVE unpaid candado in chat — persist on THAT unlock (ppv_unpaid)"
+    elif lock_active is False:
+        lock_line = "NONE — do NOT invent candado / price countdown / unlock-above"
+
     sys = (
         "You are the PHASE ANALYST for Emma's Fanvue DM bot. "
         "You do NOT write Emma's reply. "
-        "Read the FULL conversation and CLIENT CARD, then output ONLY compact JSON."
+        "Read the FULL conversation, CLIENT CARD, and HARD FACTS, then output ONLY compact JSON. "
+        "Obey the sales scheme: hook→spiral→pull→close. "
+        "HARD FACTS beat your gut. Never invent a waiting lock when LOCK=none. "
+        "If he is buying / horny / converting and code suggests close — stay on close."
     )
     user = (
         f"CLIENT CARD:\n{(card_text or '(empty)')[:2000]}\n\n"
-        f"FULL RECENT CONVERSATION:\n{transcript[-6000:]}\n\n"
-        f"LATEST FAN MESSAGE:\n{(fan_message or '')[:500]}\n"
+        f"HARD FACTS (code — trust these):\n"
+        f"- LOCK STATUS: {lock_line}\n"
+        f"- code_pack={code_pack or 'none'} allow_price={allow_price}\n"
+        f"- turn_facts: {facts_line or 'none'}\n"
         f"{hard_note}\n\n"
-        "Decide which sales PHASE we are in:\n"
-        "1 hook | 2 spiral | 3 pull | 4 close | 5 price_objection | "
-        "6 reward_purchase | 7 post_sale_withdrawal | 8 reengage | "
-        "or special: ask_free / escalate / react_media / billing\n\n"
+        f"FULL RECENT CONVERSATION:\n{transcript[-6000:]}\n\n"
+        f"LATEST FAN MESSAGE:\n{(fan_message or '')[:500]}\n\n"
+        "SCHEME (pick pack that matches):\n"
+        "1 hook — early rapport / greeting (phase_hook)\n"
+        "2 spiral — sensory / dirty warming (phase_spiral)\n"
+        "3 pull — desire / one manip technique, NO attach unless close (phase_pull)\n"
+        "4 close — fire paid lock NOW when he's converting (phase_close / escalate_paid)\n"
+        "5 price_objection — after reject / expensive (price_objection)\n"
+        "6 reward — just purchased (reward_purchase)\n"
+        "7 withdrawal — post-sale soft pullaway (post_sale_withdrawal)\n"
+        "8 special: ask_free_first | billing_clarify | react_fan_media | rapport if broke/vent\n\n"
+        "RULES:\n"
+        "- If LOCK=ACTIVE → pack_id must be ppv_unpaid (or hard lock already set).\n"
+        "- If LOCK=none → never imply a waiting candado in summary.\n"
+        "- If allow_price=true / code_pack is phase_close|lock_now|escalate_paid → keep converting "
+        "(do not downgrade to phase_pull/spiral).\n"
+        "- Broke / heavy emotional vent → rapport (comfort, no hard sell).\n"
+        "- One technique_hint only when it fits the pack.\n\n"
         "Return JSON keys:\n"
         "{\n"
         '  "phase": "hook|spiral|pull|close|price_objection|reward|withdrawal|reengage|...",\n'
@@ -141,7 +192,8 @@ def analyze(
         '  "summary": "1-2 sentences of where the chat is emotionally/sales-wise",\n'
         '  "technique_hint": "optional: love_bombing|guilt|fomo|ego|withdrawal|future_fake|..."\n'
         "}\n"
-        f"Code router suggested pack={code_pack or 'none'} — override only if conversation clearly disagrees."
+        f"Code router suggested pack={code_pack or 'none'} — override only if conversation "
+        "clearly disagrees AND you are not downgrading a convert pack."
     )
 
     client = OpenAI(
@@ -178,6 +230,8 @@ def analyze(
         pack_id = hard_pack
     elif pack_id not in _ANALYST_PACKS:
         pack_id = code_pack or packs.fallback_pack()
+    else:
+        pack_id = _respect_code_pack(code_pack, pack_id, allow_price=allow_price)
 
     likes = data.get("likes") or []
     avoid = data.get("avoid") or []
@@ -196,6 +250,24 @@ def analyze(
         technique_hint=str(data.get("technique_hint") or "").strip()[:60],
         raw=data,
     )
+
+
+def _respect_code_pack(
+    code_pack: Optional[str],
+    analyst_pack: str,
+    *,
+    allow_price: bool,
+) -> str:
+    """Keep convert packs; block Soft downgrades."""
+    code = (code_pack or "").strip()
+    if not code:
+        return analyst_pack
+    if code in _HARD_LOCK_PACKS:
+        return code
+    if code in _CONVERT_PACKS or allow_price:
+        if analyst_pack in _DOWNGRADE_TARGETS:
+            return code
+    return analyst_pack
 
 
 def _parse_json(raw: str) -> Optional[Dict[str, Any]]:
@@ -238,7 +310,6 @@ def apply_technique_hint(pack_id: str, hint: str) -> Optional[str]:
         "future_fake": "FUTURE FAKING",
         "future_faking": "FUTURE FAKING",
     }
-    # For pull pack, match catalog names
     if pack_id == "phase_pull":
         for key, name in table.items():
             if key in h or h in key:

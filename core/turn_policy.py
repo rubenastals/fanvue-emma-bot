@@ -22,13 +22,19 @@ MODE_SOFT_SELL = "soft_sell"
 MODE_HARD_SELL = "hard_sell"
 
 # Intent to BUY / receive Emma's content — not "I sent YOU a photo"
+# Buy / receive content — vault is PHOTOS only. "video/custom" still counts as
+# buying intent (he wants media) but creative must redirect to a PHOTO offer.
 _BUYING = (
     r"\b(unlock|buy|pay|price|how much|cu[aá]nto|precio|quiero ver|"
-    r"show me|vid|video|content|custom|locked|ppv|"
+    r"show me|content|locked|ppv|"
+    r"v[ií]deo|video|clip|custom|"  # intent only → close a PHOTO, never promise film
     r"env[ií]a(me|la|lo)?|m[aá]nda(me|la|mela)?|"
-    r"(p[aá]sa(me|la|mela)?|quiero|m[aá]ndame).{0,12}(foto|pic|pics|photo)|"
-    r"(foto|pic|pics|photo).{0,12}(por ?favor|ya|ahora))\b|"
-    r"s[ií]+\s*quiero|lo quiero|dale\b"
+    r"(p[aá]sa(me|la|mela)?|quiero|m[aá]ndame|env[ií]ame).{0,20}"
+    r"(foto|pic|pics|photo|teta|tetas|culo|ass|boob|v[ií]deo|video|clip)|"
+    r"(foto|pic|pics|photo).{0,12}(por ?favor|ya|ahora)|"
+    r"tic\s*tac|ya\s*est[aá]|d[oó]nde\s+est[aá]\s+(la\s+)?foto)\b|"
+    r"s[ií]+\s*quiero|lo quiero|dale\b|"
+    r"venga\s*va|vamos\s*ya|te lo demuestro|hazlo|m[aá]ndala|env[ií]ala"
 )
 # Fan is talking about media HE sent (react, don't pitch)
 _FAN_SENT_MEDIA = (
@@ -53,11 +59,26 @@ _WANT_ANOTHER = (
 )
 _HORNY = (
     r"\b(hard|horny|wet|cock|dick|pussy|fuck|cum|stroke|jerk|"
-    r"duro|caliente|mojada|polla|follar|correr)\b"
+    r"duro|caliente|mojada|polla|follar|correr|"
+    r"tetas?|tetasa|boobs?|culo|ass|senos?|pechos?|lamerlas)\b"
 )
 _REJECT = (
     r"\b(too expensive|caro|expensive|can'?t|no money|later|maybe later|"
-    r"not now|nah|pass|otro d[ií]a|despu[eé]s)\b"
+    r"not now|nah|pass|otro d[ií]a|despu[eé]s|pelado|pelá|"
+    r"sin (plata|dinero|pasta)|no tengo (plata|dinero|pasta))\b"
+)
+# Broke / heavy emotional vent — pause hard sell (not the guilt objection script)
+_BROKE_SOFT = (
+    r"\b(pelado|pelá|broke|can'?t afford|no money|"
+    r"sin (plata|dinero|pasta|un duro)|"
+    r"no tengo (plata|dinero|pasta|nada)|"
+    r"estoy (sin plata|pelado|pelao))\b"
+)
+_HEAVY_VENT = (
+    r"\b(me quit[oó] todo|me dej[oó]|"
+    r"quiero morir|suicid|deprimid|ansiedad|"
+    r"ataque de p[aá]nico|estoy (muy )?mal|"
+    r"quiero llorar|me duele (mucho )?el coraz)\b"
 )
 # Billing confusion / checkout friction — empathize, don't re-pitch
 _PRICE_ISSUE = (
@@ -81,7 +102,8 @@ _FAN_PUSHBACK = (
 # ...but an ACCEPTANCE mentioning the price is a buy signal, not friction
 _ACCEPT = (
     r"\b(i'?ll (pay|take|buy)|take it|unlock(ing)? it|"
-    r"lo quiero|vale|dale|te (pago|compro)|deal)\b|"
+    r"lo quiero|vale|dale|te (pago|compro)|deal|"
+    r"venga\s*va|vamos\s*ya|te lo demuestro|hazlo)\b|"
     r"s[ií]+\s*(quiero|dale|p[aá]galo)"
 )
 # Fan says the promised photo never arrived — must actually send, not invent glitches
@@ -168,9 +190,6 @@ def _free_tease_ok(
         return False
     if msgs < 6:
         return False
-    last_ppv = _parse_iso(mem.get("last_ppv_at"))
-    if last_ppv and now - last_ppv < timedelta(minutes=12):
-        return False
     # First free after rapport; second only later when heat is high
     if frees <= 0:
         return msgs >= 6 and (status_warm(mem) or msgs >= 8)
@@ -204,41 +223,7 @@ def decide_turn(
     truth = delivery_truth or {}
     free_in_chat = truth.get("free_in_chat")  # True / False / None
 
-    chill_until = _parse_iso(mem.get("chill_until"))
-    if chill_until and chill_until > now:
-        return TurnDecision(
-            mode=MODE_CHILL,
-            reason="inside chill window",
-            max_bubbles=3,
-            allow_ppv_talk=False,
-            allow_price=False,
-        )
-
-    last_purchase = _parse_iso(mem.get("last_purchase_at"))
-    if last_purchase and now - last_purchase < timedelta(minutes=45):
-        return TurnDecision(
-            mode=MODE_CHILL,
-            reason="recent purchase — reward, don't upsell yet",
-            max_bubbles=2,
-            allow_ppv_talk=False,
-            allow_price=False,
-        )
-
-    last_reject = _parse_iso(mem.get("last_reject_at"))
-    if last_reject and now - last_reject < timedelta(hours=2):
-        return TurnDecision(
-            mode=MODE_CHILL,
-            reason="recent price reject — cool off",
-            max_bubbles=2,
-            allow_ppv_talk=False,
-            allow_price=False,
-        )
-
-    offers_today = int(mem.get("offers_today") or 0)
-    offers_day = mem.get("offers_day")  # YYYY-MM-DD UTC
-    today = now.strftime("%Y-%m-%d")
-    if offers_day != today:
-        offers_today = 0
+    # Group A sell bans removed. Truth gates + creative sell default.
 
     fan_sent_media = bool(re.search(_FAN_SENT_MEDIA, low))
     ask_free = bool(re.search(_ASK_FREE, low)) and not fan_sent_media
@@ -255,8 +240,9 @@ def decide_turn(
     )
     want_another = bool(re.search(_WANT_ANOTHER, low))
     pending_unpaid = bool(truth.get("ppv_unpaid"))
+    heated = status in ("warm", "spender", "whale") or msgs >= 6
+    free_ok = _free_tease_ok(mem, msgs=msgs, now=now)
 
-    # One unpaid lock at a time (early gate — before free-escalation soft sells)
     if pending_unpaid and not want_another and not buying:
         return TurnDecision(
             mode=MODE_TEASE,
@@ -267,7 +253,6 @@ def decide_turn(
             allow_free_tease=False,
         )
 
-    # API says free photo IS already in this chat — guide him, don't re-gift
     if (missing_free or ask_free) and free_in_chat is True:
         return TurnDecision(
             mode=MODE_TEASE,
@@ -278,7 +263,6 @@ def decide_turn(
             allow_free_tease=False,
         )
 
-    # Missing free + API says NOT in chat → recovery gift (unused L0 only)
     if missing_free and free_in_chat is False:
         if _free_tease_ok(mem, msgs=msgs, now=now, missing_unverified=True):
             return TurnDecision(
@@ -290,18 +274,16 @@ def decide_turn(
                 allow_free_tease=True,
             )
 
-    # Asks for free again after already gifted → warm tease + soft paid ladder
     if ask_free and frees_done >= 1:
         return TurnDecision(
             mode=MODE_SOFT_SELL,
-            reason="already gifted free — escalate to paid, don't spam L0",
+            reason="already gifted free — escalate to paid",
             max_bubbles=2,
             allow_ppv_talk=True,
             allow_price=True,
             allow_free_tease=False,
         )
 
-    # First free ask only — smart warm gift, not on demand forever
     if ask_free and _free_tease_ok(mem, msgs=msgs, now=now, force_ask=True):
         return TurnDecision(
             mode=MODE_TEASE,
@@ -312,54 +294,6 @@ def decide_turn(
             allow_free_tease=True,
         )
 
-    # Ask free but not eligible (too soon / no rapport) — flirt, don't gift
-    if ask_free:
-        return TurnDecision(
-            mode=MODE_TEASE,
-            reason="free ask but not eligible yet — tease, don't spam gift",
-            max_bubbles=2,
-            allow_ppv_talk=True,
-            allow_price=False,
-            allow_free_tease=False,
-        )
-
-    # Cooling / confusion — answer plainly before delivery or buy paths mis-fire
-    if re.search(_FAN_PUSHBACK, low) or (
-        re.search(_PRICE_ISSUE, low) and not re.search(_ACCEPT, low)
-    ):
-        return TurnDecision(
-            mode=MODE_CHILL,
-            reason="fan pushback or billing confusion — clarify, don't sell",
-            max_bubbles=2,
-            allow_ppv_talk=False,
-            allow_price=False,
-        )
-
-    # He sent US a photo — react like a person, never auto-pitch PPV
-    if fan_sent_media and not want_another:
-        return TurnDecision(
-            mode=MODE_TEASE,
-            reason="fan sent media — react to HIS photo, don't pitch",
-            max_bubbles=2,
-            allow_ppv_talk=False,
-            allow_price=False,
-            allow_free_tease=False,
-        )
-
-    # Hard stop: never stack two locked PPVs within 12 min unless he asks for another
-    last_ppv_at = _parse_iso(mem.get("last_ppv_at")) or _parse_iso(mem.get("last_offer_at"))
-    if last_ppv_at and now - last_ppv_at < timedelta(minutes=12) and not want_another:
-        free_ok = _free_tease_ok(mem, msgs=msgs, now=now)
-        return TurnDecision(
-            mode=MODE_TEASE,
-            reason="PPV cooloff — no second lock yet",
-            max_bubbles=2,
-            allow_ppv_talk=True,
-            allow_price=False,
-            allow_free_tease=free_ok,
-        )
-
-    # He says nothing arrived / asks where content is → send a REAL locked photo now
     if missing or re.search(
         r"\b(d[oó]nde|where).{0,30}\b(foto|photo|pic|inbox|bandeja|unlock|ppv|media|it)\b|"
         r"\b(bandeja|inbox)\b",
@@ -373,162 +307,40 @@ def decide_turn(
             allow_price=True,
         )
 
-    last_offer_at = _parse_iso(mem.get("last_offer_at"))
-    if last_offer_at and now - last_offer_at < timedelta(minutes=25):
-        # Only a clear "another / sí quiero" during cooloff re-opens sell
-        clear_ask = want_another or bool(
-            re.search(r"s[ií]+\s*(quiero|dale|p[aá]galo)|lo quiero|te (pago|compro)", low)
+    if buying or want_another or re.search(_HORNY, low) or heated:
+        mode = (
+            MODE_HARD_SELL
+            if buying and (status in ("spender", "whale") or spent > 0)
+            else MODE_SOFT_SELL
         )
-        if clear_ask:
-            return TurnDecision(
-                mode=MODE_SOFT_SELL,
-                reason="accepted during cooloff — send real PPV",
-                max_bubbles=2,
-                allow_ppv_talk=True,
-                allow_price=True,
-            )
-        # Flirt only — but FREE L0 can still land (not a paid re-pitch)
-        free_ok = _free_tease_ok(mem, msgs=msgs, now=now)
+        return TurnDecision(
+            mode=mode,
+            reason="creative sell path (no Group-A bans)",
+            max_bubbles=2,
+            allow_ppv_talk=True,
+            allow_price=True,
+            allow_free_tease=free_ok and not buying and frees_done <= 0,
+        )
+
+    if msgs < 4:
         return TurnDecision(
             mode=MODE_TEASE,
-            reason="offered recently — flirt, don't re-pitch yet",
+            reason="early chat — heat / optional L0",
             max_bubbles=2,
             allow_ppv_talk=True,
             allow_price=False,
             allow_free_tease=free_ok,
         )
 
-    if re.search(_REJECT, low):
-        return TurnDecision(
-            mode=MODE_CHILL,
-            reason="price/delay objection in this message",
-            max_bubbles=2,
-            allow_ppv_talk=False,
-            allow_price=False,
-        )
-
-    # Brand-new fans: bond first
-    if status == "new" or msgs < 4:
-        if re.search(_BUYING, low) or re.search(_HORNY, low):
-            return TurnDecision(
-                mode=MODE_TEASE,
-                reason="new fan but already horny/asking — tease only",
-                max_bubbles=2,
-                allow_ppv_talk=True,
-                allow_price=False,
-                allow_free_tease=False,
-            )
-        return TurnDecision(
-            mode=MODE_RAPPORT,
-            reason="new/early conversation — be a person first",
-            max_bubbles=2,
-            allow_ppv_talk=False,
-            allow_price=False,
-        )
-
-    if re.search(_CHILL_ASK, low) and not re.search(_BUYING, low):
-        return TurnDecision(
-            mode=MODE_RAPPORT,
-            reason="small-talk message — match his energy",
-            max_bubbles=2,
-            allow_ppv_talk=False,
-            allow_price=False,
-        )
-
-    horny = bool(re.search(_HORNY, low))
-    heated = status in ("warm", "spender", "whale") or msgs >= 6
-
-    # Cap soft pitches per day — but after a free gift / heat, keep locking PPV
-    if offers_today >= 5 and not buying and not (frees_done >= 1 and heated):
-        return TurnDecision(
-            mode=MODE_TEASE,
-            reason="daily offer cap — keep heat without pitching",
-            max_bubbles=2,
-            allow_ppv_talk=True,
-            allow_price=False,
-            allow_free_tease=_free_tease_ok(mem, msgs=msgs, now=now),
-        )
-
-    # After free warm-up: escalate to paid lock without waiting for him to beg
-    if frees_done >= 1 and heated and msgs >= 6:
-        last_ppv = _parse_iso(mem.get("last_ppv_at")) or _parse_iso(mem.get("last_offer_at"))
-        if not (last_ppv and now - last_ppv < timedelta(minutes=12)):
-            return TurnDecision(
-                mode=MODE_SOFT_SELL,
-                reason="post-free heat — lock PPV without asking",
-                max_bubbles=2,
-                allow_ppv_talk=True,
-                allow_price=True,
-                allow_free_tease=False,
-            )
-
-    if buying and (status in ("spender", "whale") or spent > 0):
-        return TurnDecision(
-            mode=MODE_HARD_SELL,
-            reason="buyer + clear ask",
-            max_bubbles=2,
-            allow_ppv_talk=True,
-            allow_price=True,
-        )
-
-    if buying:
-        return TurnDecision(
-            mode=MODE_SOFT_SELL,
-            reason="clear content/price ask",
-            max_bubbles=2,
-            allow_ppv_talk=True,
-            allow_price=True,
-        )
-
-    # Free L0 hooks BEFORE soft-close — warm with lingerie 1→2, then sell L1+
-    free_ok = _free_tease_ok(mem, msgs=msgs, now=now)
-    if free_ok and (horny or heated or msgs >= 5):
-        return TurnDecision(
-            mode=MODE_TEASE,
-            reason="warming — free L0 tease before paid ladder",
-            max_bubbles=2,
-            allow_ppv_talk=True,
-            allow_price=False,
-            allow_free_tease=True,
-        )
-
-    # Soft close after heat — don't stall in endless flirt
-    # (cooloffs / reject windows / daily cap already handled above)
-    if horny and msgs >= 4:
-        return TurnDecision(
-            mode=MODE_SOFT_SELL,
-            reason="horny + enough rapport — soft close with one real lock",
-            max_bubbles=2,
-            allow_ppv_talk=True,
-            allow_price=True,
-        )
-
-    if heated and msgs >= 7:
-        return TurnDecision(
-            mode=MODE_SOFT_SELL,
-            reason="long warm chat — soft close so it doesn't stall forever",
-            max_bubbles=2,
-            allow_ppv_talk=True,
-            allow_price=True,
-        )
-
-    if horny or msgs >= 5:
-        return TurnDecision(
-            mode=MODE_TEASE,
-            reason="warming up — build heat before the close",
-            max_bubbles=2,
-            allow_ppv_talk=True,
-            allow_price=False,
-            allow_free_tease=False,
-        )
-
     return TurnDecision(
-        mode=MODE_RAPPORT,
-        reason="default — connect first",
+        mode=MODE_SOFT_SELL,
+        reason="default sell-capable",
         max_bubbles=2,
-        allow_ppv_talk=False,
-        allow_price=False,
+        allow_ppv_talk=True,
+        allow_price=True,
+        allow_free_tease=free_ok,
     )
+
 
 
 def author_note_for(
@@ -580,8 +392,8 @@ def author_note_for(
         "[Stay in character as Emma. Reply like real texting — natural, not scripted. "
         "STRUCTURE: randomly prefer 1 line OR 2 lines OR (rarely) 3 — uneven lengths are good. "
         "Do NOT always send two similar-length lines. "
-        "EMOJIS: natural middle — ~half of replies get 1 emoji, some get 0, rarely 2; "
-        "never stamp 2–3 every line, but don't go bone-dry / zero forever. "
+        "EMOJIS: warm & expressive — usually 2–4 in the whole reply; most lines can have one. "
+        "Rotate 😏🥵💕😈🔥🥺👀💋 — not the same stamp every bubble, never bone-dry. "
         "Warm short lines > cold clipped ones. "
         "Don't repeat your previous openings. React to what he MEANT in his LAST message — "
         "never quote him back with 'corrected' spelling or play grammar police. "
