@@ -35,7 +35,7 @@ pairs = {
     "XAI_BASE_URL": env.get("XAI_BASE_URL") or "https://api.x.ai/v1",
     "XAI_VISION_MODEL": env.get("XAI_VISION_MODEL") or "grok-4.3",
     "ELEVENLABS_API_KEY": env.get("ELEVENLABS_API_KEY") or "",
-    "ELEVENLABS_VOICE_ID": env.get("ELEVENLABS_VOICE_ID") or "d3MFdIuCfbAIwiu7jC4a",
+    "ELEVENLABS_VOICE_ID": env.get("ELEVENLABS_VOICE_ID") or "oYoxu0RJZLh7yD78dUU7",
     "VOICE_NOTES_ENABLED": env.get("VOICE_NOTES_ENABLED") or "1",
 }
 

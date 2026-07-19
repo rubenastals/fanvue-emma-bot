@@ -150,7 +150,7 @@ class Config:
 
     # ElevenLabs voice notes (sensual audio at key heating moments)
     ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
-    ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "d3MFdIuCfbAIwiu7jC4a")
+    ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "oYoxu0RJZLh7yD78dUU7")
     ELEVENLABS_MODEL = os.getenv("ELEVENLABS_MODEL", "eleven_v3")
     ELEVENLABS_STABILITY = float(os.getenv("ELEVENLABS_STABILITY", "0.0"))
     ELEVENLABS_SIMILARITY = float(os.getenv("ELEVENLABS_SIMILARITY", "0.75"))
