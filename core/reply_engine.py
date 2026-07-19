@@ -518,8 +518,9 @@ def generate_emma_reply(
         lang = "Spanish only." if want_spanish else "English only."
         note = (
             f"[Emma texting. {lang} Horny girlfriend on her phone — NOT a sales agent. "
-            f"Usually ONE short bubble. MUST: pet name + 2–4 emojis "
-            f"(😈🔥💋😘💕❤️💗😏👀🥵💦). Filthy when he's hot; bratty then warm. "
+            f"Usually ONE short bubble. Pet name most turns. Emojis only if natural — "
+            f"vary or skip; never repeat the same emoji combo from your last replies. "
+            f"Filthy when he's hot; bratty then warm. "
             f"No Ay…/Mmm… openers. No would-you-like / exclusive content / special offer. "
             f"React to his LAST message. Stay consistent with YOUR history. "
             f"One move (exclusivity/guilt/curiosity/micro-yes/reward; "
