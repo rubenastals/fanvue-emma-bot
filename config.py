@@ -148,5 +148,22 @@ class Config:
     SMTP_PASS = os.getenv("SMTP_PASS", "")
     SMTP_FROM = os.getenv("SMTP_FROM", "")
 
+    # ElevenLabs voice notes (sensual audio at key heating moments)
+    ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
+    ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "oT3gWOb7OWvnTuvXL9wH")
+    ELEVENLABS_MODEL = os.getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2")
+    ELEVENLABS_STABILITY = float(os.getenv("ELEVENLABS_STABILITY", "0.38"))
+    ELEVENLABS_SIMILARITY = float(os.getenv("ELEVENLABS_SIMILARITY", "0.82"))
+    ELEVENLABS_STYLE = float(os.getenv("ELEVENLABS_STYLE", "0.42"))
+    ELEVENLABS_TIMEOUT_SEC = int(os.getenv("ELEVENLABS_TIMEOUT_SEC", "45"))
+    VOICE_NOTES_ENABLED = os.getenv("VOICE_NOTES_ENABLED", "1") == "1"
+    VOICE_NOTES_MIN_MESSAGES = int(os.getenv("VOICE_NOTES_MIN_MESSAGES", "8"))
+    VOICE_NOTES_MAX_PER_DAY = int(os.getenv("VOICE_NOTES_MAX_PER_DAY", "2"))
+    VOICE_NOTES_COOLDOWN_HOURS = float(os.getenv("VOICE_NOTES_COOLDOWN_HOURS", "6"))
+    VOICE_NOTES_CHANCE = float(os.getenv("VOICE_NOTES_CHANCE", "0.55"))
+    VOICE_NOTE_MAX_CHARS = int(os.getenv("VOICE_NOTE_MAX_CHARS", "80"))
+    VOICE_NOTE_SEND_DELAY_SEC = float(os.getenv("VOICE_NOTE_SEND_DELAY_SEC", "2.5"))
+    VOICE_NOTES_VAULT_FOLDER = os.getenv("VOICE_NOTES_VAULT_FOLDER", "voice_notes")
+
 
 config = Config()

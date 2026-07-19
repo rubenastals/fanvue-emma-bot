@@ -124,6 +124,10 @@ def _blank(fan_handle: str) -> dict:
         "last_victim_nudge_at": None,
         "last_seen_by_fan_at": None,  # when we first saw isRead on Emma's last msg
         "last_goodmorning_day": None,
+        "voice_notes_sent": 0,
+        "voice_notes_today": 0,
+        "voice_notes_day": None,
+        "last_voice_at": None,
         "note": "",
         "status": "new",
         # Permanent client card (hybrid memory)
@@ -876,6 +880,27 @@ def mark_nudge(
             mem["nudge_episode_count"] = int(mem.get("nudge_episode_count") or 0) + 1
             if style:
                 mem["last_nudge_style"] = style
+        _put(fan_uuid, mem)
+
+
+def record_voice_note(
+    fan_uuid: str,
+    fan_handle: str = "",
+    *,
+    script: str = "",
+) -> None:
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if mem.get("voice_notes_day") != today:
+            mem["voice_notes_day"] = today
+            mem["voice_notes_today"] = 0
+        mem["voice_notes_today"] = int(mem.get("voice_notes_today") or 0) + 1
+        mem["voice_notes_sent"] = int(mem.get("voice_notes_sent") or 0) + 1
+        mem["last_voice_at"] = _now()
+        if script:
+            mem["last_voice_script"] = script[:200]
         _put(fan_uuid, mem)
 
 

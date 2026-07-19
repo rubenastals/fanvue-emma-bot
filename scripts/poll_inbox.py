@@ -1190,8 +1190,31 @@ def _handle_fan_chat_body(
                 barged = True
                 break
 
+        # Sensual voice note — key heating moments only (after text, never with photo turn)
+        voice_sent = False
+        if bubbles_sent > 0 and not barged:
+            try:
+                from core import voice_notes
+
+                voice_sent = voice_notes.maybe_send(
+                    fv,
+                    fan_uuid,
+                    fan_handle,
+                    creator_uuid,
+                    fan_message=text,
+                    reply=reply,
+                    mem=mem,
+                    decision=decision,
+                    pack_id=route_result.pack_id,
+                    unpaid=unpaid,
+                    media_sent_this_turn=bool(free_sent or ppv_sent),
+                    barged=barged,
+                )
+            except Exception as e:
+                print(f"   ⚠️ voice note error: {type(e).__name__}: {e}")
+
         # Mark processed only after at least one bubble / media actually went out
-        if bubbles_sent > 0 or free_sent or ppv_sent:
+        if bubbles_sent > 0 or free_sent or ppv_sent or voice_sent:
             for uid in pending_ids:
                 _mark_processed(processed, uid)
         else:
@@ -1407,6 +1430,11 @@ def main():
         f"2nd={_re.NUDGE_SECOND_MINUTES}m "
         f"(hot={_re.NUDGE_HOT_MINUTES} cold={_re.NUDGE_COLD_MINUTES})"
     )
+    from utils.elevenlabs_client import is_configured as _voice_ok
+
+    _vn = "ON" if _cfg.VOICE_NOTES_ENABLED and _voice_ok() else "OFF"
+    _vid = (_cfg.ELEVENLABS_VOICE_ID or "")[:8]
+    print(f"   voice notes: {_vn} voice={_vid}…" if _vid else f"   voice notes: {_vn}")
     if _cfg.SIMPLE_PROMPT and _cfg.REPLY_V2:
         print(
             "   ⚠️ REPLY_V2=1 ignored while SIMPLE_PROMPT=1 "
