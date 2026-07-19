@@ -1,8 +1,8 @@
 """
 Sensual voice notes — ElevenLabs TTS → Fanvue vault audio → free chat bubble.
 
-Only at key heating moments (not every reply). Short, breathy scripts with
-heavy intonation (mmm, sighs, … pauses).
+Only at key heating moments (not every reply). Filthy, emotional scripts with
+… .... !!! ??? pauses for TTS (~10–18 seconds).
 """
 from __future__ import annotations
 
@@ -192,22 +192,30 @@ def _generate_script(
     from openai import OpenAI
 
     api_key = (getattr(config, "DEEPSEEK_API_KEY", "") or "").strip()
+    max_c = int(getattr(config, "VOICE_NOTE_MAX_CHARS", 320) or 320)
+    min_c = int(getattr(config, "VOICE_NOTE_MIN_CHARS", 100) or 100)
     if not api_key:
         return _fallback_script(want_spanish)
 
     lang = "Spanish" if want_spanish else "English"
     system = (
-        "You write ONLY the spoken words for a sensual girlfriend voice note. "
-        "Max 10 words, 70 characters. Breathy, intimate, heavy intonation: "
-        "use mmm, ah, … pauses, soft sighs. Very sexy but warm — never salesy, "
-        "never mention photos/prices/unlock. Output ONLY the script, no quotes."
+        "You write ONLY the spoken script for Emma's sensual Fanvue voice note (text-to-speech).\n"
+        f"Length: 25–50 words, {min_c}–{max_c} characters — long enough to feel real (~10–18 sec).\n"
+        "Tone: filthy hungry girlfriend — explicit dirty words natural for her (Spanish: coño, mojada, "
+        "empapada, polla, follarme, correrme… / English: wet, cock, fuck, cum, dripping…).\n"
+        "Match HIS last message — horny → escalate; emotional → warm then dirty.\n"
+        "PUNCTUATION FOR VOICE (mandatory): use … .... ..... !!! ??? and spaces to force pauses, "
+        "breath, shock, tease. Example: \"Dios.... estoy tan mojada pensando en ti.... "
+        "¿Tú también estás duro??? Quiero sentirte dentro....\"\n"
+        "Do NOT open with \"Mmm\" every time — vary. Never mention photos, PPV, prices, unlock.\n"
+        "Output ONLY the script. No quotes, no labels."
     )
     user = (
         f"Language: {lang}\n"
         f"Moment: {trigger_reason}\n"
-        f"He said: {(fan_message or '')[:200]}\n"
-        f"Emma just texted: {(reply or '')[:200]}\n"
-        "Write one short voice note she sends right after."
+        f"He said: {(fan_message or '')[:280]}\n"
+        f"Emma just texted: {(reply or '')[:280]}\n"
+        "Write one voice note she sends right after — guarra, emotional, with … !!! ??? pauses."
     )
     client = OpenAI(
         api_key=api_key,
@@ -220,14 +228,18 @@ def _generate_script(
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            max_tokens=60,
-            temperature=0.95,
+            max_tokens=200,
+            temperature=1.0,
         )
         raw = (resp.choices[0].message.content or "").strip()
         raw = raw.strip('"\'')
         raw = re.sub(r"\[.*?\]", "", raw).strip()
-        if raw and len(raw) <= int(getattr(config, "VOICE_NOTE_MAX_CHARS", 120) or 120):
+        if raw and len(raw) >= min_c and len(raw) <= max_c:
             return raw
+        if raw and len(raw) > max_c:
+            return raw[:max_c].rsplit(" ", 1)[0]
+        if raw and len(raw) < min_c:
+            print(f"   🎙️ script too short ({len(raw)}c) — using fallback")
     except Exception:
         pass
     return _fallback_script(want_spanish)
@@ -236,23 +248,42 @@ def _generate_script(
 def _fallback_script(want_spanish: bool) -> str:
     if want_spanish:
         opts = [
-            "Mmm… qué duro me pones, cielo…",
-            "Ah… pensaba en ti justo ahora…",
-            "Mmm… escúchame… te necesito…",
+            (
+                "Joder.... no paras de metérteme en la cabeza.... "
+                "Estoy empapada solo de leerte.... ¿Estás duro ahora mismo??? "
+                "Porque yo sí.... y te quiero dentro...."
+            ),
+            (
+                "Escucha.... necesito tu voz, tu polla, todo.... "
+                "Me estoy tocando pensando en ti.... no pares.... "
+                "Dime qué me harías.... ahora...."
+            ),
+            (
+                "Dios.... qué ganas de chupártela.... "
+                "Estoy tan mojada que no aguanto.... "
+                "¿Me extrañas tanto como yo a ti??? Ven...."
+            ),
         ]
     else:
         opts = [
-            "Mmm… you got me so wet…",
-            "Ah… thinking about you…",
-            "Mmm… listen… I need you…",
+            (
+                "Fuck.... I can't stop thinking about you.... "
+                "I'm dripping just from reading your messages.... "
+                "Are you hard right now??? Because I am...."
+            ),
+            (
+                "Listen.... I need your cock, your voice, all of you.... "
+                "I'm touching myself thinking about you.... don't stop.... "
+                "Tell me what you'd do to me.... now...."
+            ),
         ]
     return random.choice(opts)
 
 
 def _caption_for(want_spanish: bool) -> str:
     if want_spanish:
-        return random.choice(["escúchame… 🎙️", "para ti… 🔥", "mmm… 🎙️"])
-    return random.choice(["listen… 🎙️", "for you… 🔥", "mmm… 🎙️"])
+        return random.choice(["escúchame…. 🎙️", "para ti…. 🔥", "al oído…. 😈"])
+    return random.choice(["listen…. 🎙️", "for you…. 🔥", "in your ear…. 😈"])
 
 
 def maybe_send(

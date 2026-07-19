@@ -44,8 +44,8 @@ def synthesize_to_file(
     script = (text or "").strip()
     if not script:
         raise ValueError("empty voice script")
-    if len(script) > int(getattr(config, "VOICE_NOTE_MAX_CHARS", 120) or 120):
-        script = script[: int(getattr(config, "VOICE_NOTE_MAX_CHARS", 120))].rsplit(" ", 1)[0]
+    if len(script) > int(getattr(config, "VOICE_NOTE_MAX_CHARS", 320) or 320):
+        script = script[: int(getattr(config, "VOICE_NOTE_MAX_CHARS", 320))].rsplit(" ", 1)[0]
 
     model = getattr(config, "ELEVENLABS_MODEL", "eleven_multilingual_v2") or "eleven_multilingual_v2"
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{vid}"
@@ -53,9 +53,10 @@ def synthesize_to_file(
         "text": script,
         "model_id": model,
         "voice_settings": {
-            "stability": float(getattr(config, "ELEVENLABS_STABILITY", 0.38)),
-            "similarity_boost": float(getattr(config, "ELEVENLABS_SIMILARITY", 0.82)),
-            "style": float(getattr(config, "ELEVENLABS_STYLE", 0.42)),
+            "stability": float(getattr(config, "ELEVENLABS_STABILITY", 0.28)),
+            "similarity_boost": float(getattr(config, "ELEVENLABS_SIMILARITY", 0.80)),
+            "style": float(getattr(config, "ELEVENLABS_STYLE", 0.58)),
+            "speed": float(getattr(config, "ELEVENLABS_SPEED", 0.92)),
             "use_speaker_boost": True,
         },
     }
