@@ -30,6 +30,15 @@ def _enabled() -> bool:
     return bool(getattr(config, "VOICE_NOTES_ENABLED", True)) and is_configured()
 
 
+def _deepseek_create(client, **kwargs):
+    """DeepSeek v4 returns empty content if thinking mode is left on."""
+    if getattr(config, "DEEPSEEK_DISABLE_THINKING", False):
+        extra = dict(kwargs.get("extra_body") or {})
+        extra["thinking"] = {"type": "disabled"}
+        kwargs["extra_body"] = extra
+    return client.chat.completions.create(**kwargs)
+
+
 def _parse_iso(s: Optional[str]) -> Optional[datetime]:
     if not s:
         return None
@@ -192,7 +201,8 @@ def _ai_should_send_voice(
         base_url=getattr(config, "DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
     )
     try:
-        resp = client.chat.completions.create(
+        resp = _deepseek_create(
+            client,
             model=getattr(config, "DEEPSEEK_MODEL", "deepseek-v4-pro"),
             messages=[
                 {"role": "system", "content": system},
@@ -360,6 +370,15 @@ def _generate_script(
         "  Joder.... no paras de metérteme en la cabeza.... Estoy MOJADA.... ¿Vas a contestarme???\n"
         "Never mention photos, PPV, prices. No emojis. Output ONLY the script."
     )
+    whisper_moment = any(
+        p in ((fan_message or "") + " " + trigger_reason).lower()
+        for p in ("susurr", "whisper", "escúch", "escuch", "oído", "oido", "guarrad")
+    )
+    if whisper_moment:
+        system += (
+            "\n\nThis moment needs intimate WHISPER delivery — start with [whispers] "
+            "and keep it filthy, close, al oído."
+        )
     user = (
         f"Moment: {trigger_reason}\n"
         f"He said: {(fan_message or '')[:280]}\n"
@@ -371,7 +390,8 @@ def _generate_script(
         base_url=getattr(config, "DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
     )
     try:
-        resp = client.chat.completions.create(
+        resp = _deepseek_create(
+            client,
             model=getattr(config, "DEEPSEEK_MODEL", "deepseek-v4-pro"),
             messages=[
                 {"role": "system", "content": system},
@@ -381,9 +401,13 @@ def _generate_script(
             temperature=1.0,
         )
         raw = (resp.choices[0].message.content or "").strip()
+        if not raw:
+            print("   🎙️ script: DeepSeek returned empty — using fallback")
+            return _fallback_script(want_spanish, whisper=whisper_moment)
         script = _finalize_script(raw)
         if not script:
-            return _fallback_script(want_spanish)
+            print("   🎙️ script: empty after finalize — using fallback")
+            return _fallback_script(want_spanish, whisper=whisper_moment)
         n_tags = len(_V3_TAG.findall(script))
         if n_tags > 2:
             print(f"   🎙️ script has {n_tags} tags (prefer ≤2)")
@@ -393,27 +417,40 @@ def _generate_script(
             return script[:max_c].rsplit(" ", 1)[0]
         if script and len(script) < min_c:
             print(f"   🎙️ script too short ({len(script)}c) — using fallback")
-    except Exception:
-        pass
-    return _fallback_script(want_spanish)
+    except Exception as e:
+        print(f"   🎙️ script generation failed: {type(e).__name__}: {e}")
+    return _fallback_script(want_spanish, whisper=whisper_moment)
 
 
-def _fallback_script(want_spanish: bool) -> str:
+def _fallback_script(want_spanish: bool, *, whisper: bool = False) -> str:
     if want_spanish:
-        opts = [
-            (
-                "[chuckles] ¿Sigues ahí, travieso?.... [sighs] Me dejaste toda mojada "
-                "y desapareciste.... ¿Vas a contestarme o qué???"
-            ),
-            (
-                "Joder.... no paras de metérteme en la cabeza.... "
-                "[sighs] Me estoy tocando sola.... ¿Estás duro ahora mismo???"
-            ),
-            (
-                "[whispers] Escucha.... Estoy tan mojada que no aguanto.... "
-                "Dime qué me harías.... ahora...."
-            ),
-        ]
+        if whisper:
+            opts = [
+                (
+                    "[whispers] Escucha, travieso.... Estoy empapada pensando en tu polla.... "
+                    "Quiero sentirte dentro.... ¿Estás duro ahora mismo??? "
+                    "[sighs] No me dejes sola así...."
+                ),
+                (
+                    "[whispers] ¿Sigues ahí, baby?.... Me prometiste que ibas a escucharme.... "
+                    "Estoy tan mojada.... Dime qué me harías.... ahora...."
+                ),
+            ]
+        else:
+            opts = [
+                (
+                    "[chuckles] ¿Sigues ahí, travieso?.... [sighs] Me dejaste toda mojada "
+                    "y desapareciste.... ¿Vas a contestarme o qué???"
+                ),
+                (
+                    "Joder.... no paras de metérteme en la cabeza.... "
+                    "[sighs] Me estoy tocando sola.... ¿Estás duro ahora mismo???"
+                ),
+                (
+                    "[whispers] Escucha.... Estoy tan mojada que no aguanto.... "
+                    "Dime qué me harías.... ahora...."
+                ),
+            ]
     else:
         opts = [
             (
@@ -482,7 +519,7 @@ def maybe_send(
         want_spanish=want_spanish,
         trigger_reason=why,
     )
-    print(f"   🎙️ script: {script[:80]}")
+    print(f"   🎙️ script ({len(script)}c): {script}")
 
     audio_path = None
     try:

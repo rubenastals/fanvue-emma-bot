@@ -64,18 +64,23 @@ def synthesize_to_file(
 
     model = getattr(config, "ELEVENLABS_MODEL", "eleven_v3") or "eleven_v3"
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{vid}"
+    stability = float(getattr(config, "ELEVENLABS_STABILITY", 0.0))
     payload: dict = {
         "text": script,
         "model_id": model,
         "voice_settings": {
-            "stability": float(getattr(config, "ELEVENLABS_STABILITY", 0.35)),
-            "similarity_boost": float(getattr(config, "ELEVENLABS_SIMILARITY", 0.78)),
-            "style": float(getattr(config, "ELEVENLABS_STYLE", 0.50)),
-            "speed": float(getattr(config, "ELEVENLABS_SPEED", 0.93)),
+            "stability": stability,
+            "similarity_boost": float(getattr(config, "ELEVENLABS_SIMILARITY", 0.75)),
+            "style": float(getattr(config, "ELEVENLABS_STYLE", 0.58)),
+            "speed": float(getattr(config, "ELEVENLABS_SPEED", 0.88)),
             "use_speaker_boost": True,
         },
         "apply_text_normalization": "off",
     }
+    print(
+        f"   🎙️ elevenlabs: model={model} stability={stability} "
+        f"style={payload['voice_settings']['style']} lang={language_code or '-'}"
+    )
     lang = (language_code or "").strip().lower()
     if lang and model.startswith("eleven_v3"):
         payload["language_code"] = lang
