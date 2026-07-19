@@ -60,7 +60,7 @@ def synthesize_to_file(
         raise ValueError("empty voice script")
     max_c = int(getattr(config, "VOICE_NOTE_MAX_CHARS", 320) or 320)
     if len(script) > max_c:
-        script = script[:max_c].rsplit(" ", 1)[0].rstrip(".,…") + "...."
+        script = script[:max_c].rsplit(" ", 1)[0]
 
     model = getattr(config, "ELEVENLABS_MODEL", "eleven_v3") or "eleven_v3"
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{vid}"

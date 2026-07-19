@@ -176,12 +176,9 @@ def fanvue_messages_to_turns(
 def _thread_mentions_voice(
     turns: List[Dict[str, str]], fan_message: str, *, lookback: int = 10
 ) -> bool:
-    """Recent thread is about audio/voice — only check FAN messages, not Emma's."""
+    """Recent thread is about audio/voice (for turn blocks, not hard gates)."""
     blob = (fan_message or "").lower()
     for t in (turns or [])[-lookback:]:
-        # Only scan fan turns — Emma's own captions/teases must not retrigger
-        if (t.get("role") or "").lower() != "user":
-            continue
         blob += " " + (t.get("content") or "").lower()
     return any(
         k in blob
@@ -470,17 +467,15 @@ def generate_emma_reply(
         if status_active or unpaid_gate:
             turn_blocks.append(
                 "FAN ASKED ABOUT VIDEO — CRITICAL:\n"
-                "- PPV vault = PHOTOS only (no filmed clips/custom video).\n"
-                "- Voice notes (free sensual audio) ARE real — never say 'solo fotos' or 'no grabo'.\n"
+                "- You have NO videos. Catalog = PHOTOS only.\n"
                 "- ONE unpaid PHOTO lock is already waiting (see LOCK STATUS above).\n"
-                "- Redirect: no video clip — push THAT photo lock at the REAL price.\n"
-                "- Never promise video, clip, bundle, or 'both for $X'."
+                "- Say clearly: no video — only THAT photo at the REAL price in LOCK STATUS.\n"
+                "- Never promise video, clip, bundle, or 'both for $X'. Push the waiting photo lock."
             )
         else:
             turn_blocks.append(
-                "FAN ASKED ABOUT VIDEO: PPV vault = photos only — no clips/custom film. "
-                "Voice notes (free audio) ARE available when the system sends them. "
-                "Never blanket-deny audio with 'solo fotos'. Tease a vault PHOTO only if STATUS attaches."
+                "FAN ASKED ABOUT VIDEO: You have NO videos — photos only. "
+                "Never promise to record or send a clip. Tease a vault PHOTO only if STATUS attaches."
             )
 
     if delivery_truth and delivery_truth.get("free_in_chat") is True:
@@ -509,18 +504,9 @@ def generate_emma_reply(
         turn_blocks.append(vision_system_block(vision_desc))
 
     if voice_will_send:
-        recent_caps = (mem.get("recent_voice_captions") or [])[-4:]
-        cap_hint = (
-            f" Avoid repeating these voice teases: {recent_caps}."
-            if recent_caps
-            else ""
-        )
         turn_blocks.append(
             "VOICE NOTE THIS TURN: Free sensual audio attaches AFTER your text. "
-            "Seduce — tease that you're leaving something intimate for him (whisper, "
-            "confession, al oído). You DO send voice notes — never say solo fotos or no grabar. "
-            "Vary your line every time: do NOT default to 'escúchame' or 🎙️."
-            + cap_hint
+            "Tease escúchame briefly. You DO send voice notes — never say solo fotos or no grabar."
         )
     elif _thread_mentions_voice(turns, fan_message):
         turn_blocks.append(
@@ -799,17 +785,13 @@ def generate_emma_reply(
                 "role": "user",
                 "content": (
                     "REWRITE HARD: You promised a VIDEO/custom/recording. "
-                    "PPV vault is PHOTOS only — but voice notes (free audio) exist. "
-                    "Remove every video/clip/custom promise. "
-                    "Do NOT say 'solo fotos' or deny audio. "
-                    "Offer a vault PHOTO tease only, or flirt — never film."
+                    "Catalog is PHOTOS only. Remove every video/grabar/clip/custom "
+                    "promise. Offer a vault PHOTO tease only, or flirt — never film."
                     if not want_spanish
                     else (
                         "REESCRIBE DURO: Prometiste un VÍDEO/custom/grabar. "
-                        "El vault PPV es FOTOS — pero notas de voz (audio gratis) sí existen. "
-                        "Quita video/grabar/clip/custom. "
-                        "NO digas 'solo fotos' ni niegues audio. "
-                        "Solo teaser una FOTO del vault, o flirtear — nunca grabar vídeo."
+                        "El catálogo es SOLO FOTOS. Quita video/grabar/clip/custom. "
+                        "Solo puedes teaser una FOTO del vault, o flirtear — nunca grabar."
                     )
                 ),
             },
@@ -826,19 +808,19 @@ def generate_emma_reply(
                     rp = None
             if rp is not None:
                 reply = (
-                    f"Clip de vídeo no en el vault 😏 Candado de FOTO — "
-                    f"${rp:.0f} y la abres… o te susurro algo al oído si prefieres 😈"
+                    f"De vídeo no… solo fotos 😏 Tienes UNA candada esperando — "
+                    f"${rp:.0f} y la abres, guapo."
                     if want_spanish
-                    else f"No video clips in the vault 😏 PHOTO lock — "
-                    f"${rp:.0f} to unlock… or I whisper something dirty in your ear 😈"
+                    else f"No video… photos only 😏 You have ONE lock waiting — "
+                    f"${rp:.0f} and unlock it, babe."
                 )
             else:
                 reply = (
-                    "Mmm… clip de vídeo no 😏 Fotos candado sí — "
-                    "y si me calientas te grabo algo al oído, guapo 😏"
+                    "Mmm… vídeo no tengo 😏 Solo fotos en el vault — "
+                    "dime qué te pone y te cierro una de verdad."
                     if want_spanish
-                    else "Mmm… no video clips 😏 Locked photos yes — "
-                    "heat me up and I'll leave you a whisper, babe 😏"
+                    else "Mmm… no video 😏 Photos only in the vault — "
+                    "tell me what you want and I'll lock a real one."
                 )
             print("   📷 invented-video rewrite → photos-only fallback")
 

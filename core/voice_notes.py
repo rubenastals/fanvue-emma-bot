@@ -97,15 +97,13 @@ def _voice_thread_active(
         )
     )
     # Emma offered voice in last 2 assistant turns + fan replied
-    # Only count explicit tease lines in Emma's chat bubbles, NOT captions
     emma_offered = False
     for t in reversed((history_turns or [])[-6:]):
         if t.get("role") == "assistant":
             c = (t.get("content") or "").lower()
-            # Captions are short (≤60c) — skip them to avoid false loop
-            if len(c) > 60 and any(
+            if any(
                 p in c
-                for p in ("escúchame", "escuchame", "susurr", "🎙", "voice note", "al oído", "oído")
+                for p in ("escúchame", "escuchame", "susurr", "🎙", "voice note", "al oído")
             ):
                 emma_offered = True
             break
@@ -327,13 +325,10 @@ def _v3_tags_for_prompt() -> str:
 
 
 def _finalize_script(raw: str) -> str:
-    """Keep v3 audio tags; strip emojis; ensure natural closing pause."""
+    """Keep v3 audio tags; strip emojis; never force extra tags."""
     s = (raw or "").strip().strip('"\'')
     s = _EMOJI.sub("", s).strip()
     s = re.sub(r"\s{2,}", " ", s)
-    # If the script has no closing pause, ElevenLabs stops abruptly — add one.
-    if s and not s.endswith(("....", "…", ".", "?", "!", "???")):
-        s = s.rstrip() + "...."
     return s
 
 
@@ -419,7 +414,7 @@ def _generate_script(
         if script and min_c <= len(script) <= max_c:
             return script
         if script and len(script) > max_c:
-            return script[:max_c].rsplit(" ", 1)[0].rstrip(".,…") + "...."
+            return script[:max_c].rsplit(" ", 1)[0]
         if script and len(script) < min_c:
             print(f"   🎙️ script too short ({len(script)}c) — using fallback")
     except Exception as e:
@@ -470,41 +465,10 @@ def _fallback_script(want_spanish: bool, *, whisper: bool = False) -> str:
     return random.choice(opts)
 
 
-_VOICE_CAPTIONS_ES = (
-    "cierra los ojos…. 😈",
-    "solo para ti…. 🔥",
-    "shhh…. 🤫",
-    "no se lo cuentes a nadie…. 😏",
-    "pensé en ti…. 💦",
-    "para cuando estés duro…. 🫦",
-    "dime si te pones…. 💋",
-    "una confesión…. 🔥",
-    "ponme en altavoz…. 😏",
-    "esto no es para todos…. 🤫",
-    "solo tuyo…. 😈",
-    "escucha bien…. 💋",
-)
-_VOICE_CAPTIONS_EN = (
-    "close your eyes…. 😈",
-    "just for you…. 🔥",
-    "shhh…. 🤫",
-    "don't share this…. 😏",
-    "made this thinking of you…. 💦",
-    "for when you're hard…. 🫦",
-    "tell me if it gets you…. 💋",
-    "a confession…. 🔥",
-    "put me on speaker…. 😏",
-    "not for everyone…. 🤫",
-    "only yours…. 😈",
-    "listen close…. 💋",
-)
-
-
-def _pick_caption(want_spanish: bool, mem: dict) -> str:
-    pool = _VOICE_CAPTIONS_ES if want_spanish else _VOICE_CAPTIONS_EN
-    recent = set((mem.get("recent_voice_captions") or [])[-6:])
-    choices = [c for c in pool if c not in recent] or list(pool)
-    return random.choice(choices)
+def _caption_for(want_spanish: bool) -> str:
+    if want_spanish:
+        return random.choice(["escúchame…. 🎙️", "para ti…. 🔥", "al oído…. 😈"])
+    return random.choice(["listen…. 🎙️", "for you…. 🔥", "in your ear…. 😈"])
 
 
 def maybe_send(
@@ -580,7 +544,7 @@ def maybe_send(
             raise RuntimeError(f"upload missing mediaUuid: {upload!r}")
 
         time.sleep(float(getattr(config, "VOICE_NOTE_SEND_DELAY_SEC", 2.5) or 2.5))
-        caption = _pick_caption(want_spanish, mem)
+        caption = _caption_for(want_spanish)
         fv.send_media_message(
             fan_uuid,
             media_uuids=[media_uuid],
@@ -594,9 +558,7 @@ def maybe_send(
         )
         if not verified:
             print("   ⚠️ voice note sent but not verified in chat")
-        fan_memory.record_voice_note(
-            fan_uuid, fan_handle=fan_handle, script=script, caption=caption
-        )
+        fan_memory.record_voice_note(fan_uuid, fan_handle=fan_handle, script=script)
         print(f"   🎙️ voice note sent to @{fan_handle}")
         return True
     except Exception as e:
