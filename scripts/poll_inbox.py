@@ -1400,6 +1400,13 @@ def main():
         f"PHASE_ANALYST={int(bool(_cfg.PHASE_ANALYST))} "
         f"| prompt={PROMPT_VERSION} core_chars={len(EMMA_CORE_PROMPT_SIMPLE)}"
     )
+    from core import reengagement as _re
+
+    print(
+        f"   reengage: 1st={_re.NUDGE_FIRST_MINUTES}m "
+        f"2nd={_re.NUDGE_SECOND_MINUTES}m "
+        f"(hot={_re.NUDGE_HOT_MINUTES} cold={_re.NUDGE_COLD_MINUTES})"
+    )
     if _cfg.SIMPLE_PROMPT and _cfg.REPLY_V2:
         print(
             "   ⚠️ REPLY_V2=1 ignored while SIMPLE_PROMPT=1 "

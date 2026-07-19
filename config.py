@@ -44,7 +44,9 @@ class Config:
     INACTIVE_HOURS = int(os.getenv("INACTIVE_HOURS", "12"))
     NUDGE_HOT_MINUTES = int(os.getenv("NUDGE_HOT_MINUTES", "7"))
     NUDGE_COLD_MINUTES = int(os.getenv("NUDGE_COLD_MINUTES", "7"))
-    NUDGE_FIRST_MINUTES = int(os.getenv("NUDGE_FIRST_MINUTES", str(NUDGE_COLD_MINUTES)))
+    NUDGE_FIRST_MINUTES = int(
+        os.getenv("NUDGE_FIRST_MINUTES", str(max(NUDGE_HOT_MINUTES, NUDGE_COLD_MINUTES)))
+    )
     NUDGE_SECOND_MINUTES = int(os.getenv("NUDGE_SECOND_MINUTES", "36"))
     MAX_NUDGES_PER_EPISODE = int(os.getenv("MAX_NUDGES_PER_EPISODE", "2"))
     VICTIM_AFTER_SEEN_MINUTES = int(os.getenv("VICTIM_AFTER_SEEN_MINUTES", "60"))

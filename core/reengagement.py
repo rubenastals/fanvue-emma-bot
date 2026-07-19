@@ -2,8 +2,7 @@
 Automatic re-engagement — hot/cold ladder + visto-gated victim.
 
 TIMING (no farewell / conversation left open):
-  HOT chat  → 1st nudge ≥ NUDGE_HOT_MINUTES  (default 7)
-  COLD chat → 1st nudge ≥ NUDGE_COLD_MINUTES (default 7)
+  1st nudge ≥ NUDGE_FIRST_MINUTES (default 7, hot and cold same gate)
   2nd nudge ≥ NUDGE_SECOND_MINUTES (default 36), only if still silent
   Max 2 mid-flow nudges per silence episode.
 
@@ -32,6 +31,10 @@ from core.turn_policy import TurnDecision
 
 NUDGE_HOT_MINUTES = int(os.getenv("NUDGE_HOT_MINUTES", "7"))
 NUDGE_COLD_MINUTES = int(os.getenv("NUDGE_COLD_MINUTES", "7"))
+# 1st touch — same gate for hot and cold (user ladder: 7m then 36m)
+NUDGE_FIRST_MINUTES = int(
+    os.getenv("NUDGE_FIRST_MINUTES", str(max(NUDGE_HOT_MINUTES, NUDGE_COLD_MINUTES)))
+)
 # 2nd touch after first (absolute silence minutes from Emma's last msg)
 NUDGE_SECOND_MINUTES = int(os.getenv("NUDGE_SECOND_MINUTES", "36"))
 # Back-compat: old NUDGE_FIRST_MINUTES alone → cold first gate
@@ -278,14 +281,14 @@ def _nudge_step_for_silence(
     silence: timedelta, mem: dict, *, hot: bool
 ) -> Optional[int]:
     """
-    step 1 at ≥7m (hot or cold)
+    step 1 at ≥ NUDGE_FIRST_MINUTES
     step 2 at ≥ NUDGE_SECOND_MINUTES if episode count 1
     """
     count = int(mem.get("nudge_episode_count") or 0)
     if count >= MAX_NUDGES_PER_EPISODE:
         return None
     mins = silence.total_seconds() / 60.0
-    first_gate = NUDGE_HOT_MINUTES if hot else NUDGE_COLD_MINUTES
+    first_gate = NUDGE_FIRST_MINUTES
     if count == 0 and mins >= first_gate:
         return 1
     if count == 1 and mins >= NUDGE_SECOND_MINUTES:
@@ -486,9 +489,9 @@ def run_pass(fv, chats: List[dict], creator_uuid: str) -> int:
         if not step:
             continue
 
-        # Don't fire a second nudge before the 2nd-step clock
+        # Don't fire a second nudge too soon after the first (step 2 still needs NUDGE_SECOND_MINUTES silence)
         last_nudge = _parse_iso(mem.get("last_nudge_at"))
-        min_gap = 2 if hot else 3
+        min_gap = max(5, NUDGE_FIRST_MINUTES // 2)
         if last_nudge and now - last_nudge < timedelta(minutes=min_gap):
             continue
 
