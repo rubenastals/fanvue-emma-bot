@@ -255,6 +255,11 @@ def _fan_message_text(msg: dict) -> str:
         return text
     has_media = bool(msg.get("hasMedia") or msg.get("mediaUuids"))
     if not has_media:
+        # Log unknown non-text non-media fan messages (gifts, tips, reactions, etc.)
+        all_keys = {k: v for k, v in msg.items()
+                    if k not in ("uuid", "sender", "createdAt", "updatedAt", "isRead")}
+        if any(v for v in all_keys.values()):
+            print(f"   [debug:gift?] unknown msg struct: {str(all_keys)[:300]}")
         return ""
     # Priced media from fan is rare; treat as photo/video share
     mtype = (msg.get("mediaType") or "").lower()
