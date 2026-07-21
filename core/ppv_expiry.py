@@ -323,9 +323,9 @@ def lock_status_prompt_block(status: Dict[str, Any]) -> str:
     elif mins <= 0:
         time_txt = "about to disappear / already expired — urgency NOW"
     elif mins <= 5:
-        time_txt = f"~{mins} min left — almost gone"
+        time_txt = f"~{mins} min LEFT until it vanishes — almost gone"
     else:
-        time_txt = f"~{mins} min left before it disappears"
+        time_txt = f"~{mins} min LEFT until it vanishes"
     ago = status.get("ago") or "recently"
     extra = ""
     if int(status.get("count") or 1) > 1:
@@ -335,8 +335,12 @@ def lock_status_prompt_block(status: Dict[str, Any]) -> str:
         )
     return (
         "LOCK STATUS — VERIFIED THIS TURN (ACTIVE UNPAID CANDADO):\n"
-        f"- ONE timed lock is waiting — \"{label}\" (sent {ago}).\n"
-        f"- Clock: {time_txt}.\n"
+        f"- ONE timed lock is waiting — \"{label}\".\n"
+        f"- How long it's BEEN in chat: {ago}. That is the ONLY wait time you may use.\n"
+        f"- Clock (time LEFT before unsend): {time_txt}.\n"
+        "- HARD BAN: do NOT invent wait times (e.g. '27 minutes waiting') that contradict "
+        f"'sent {ago}'. minutes_left is NOT how long you've been waiting — it's time until it disappears.\n"
+        "- If he corrects the timing, agree with LOCK STATUS (the 'sent … ago' line), don't shrug it off.\n"
         "- SYSTEM TRUTH: He has NOT paid yet. Fan saying 'sí', 'dale', 'lo abro', 'ya' "
         "or any affirmative word is NOT a purchase — only the system confirms that.\n"
         "- Do NOT act as if he bought it. Do NOT say 'gracias', 'ya la ves', or 'qué te parece'.\n"

@@ -285,6 +285,41 @@ _SELLS_HER_LOCK = re.compile(
 )
 
 
+_CLAIM_WAIT_MINUTES = re.compile(
+    r"(?i)\b("
+    r"(?:llevo|lleva|llevas|esperando|waiting|for)\s+(\d{1,3})\s*min|"
+    r"(\d{1,3})\s*minut(?:os|itos|es)?\s+(?:esperando|waiting|ya|ahi|aquí|here)|"
+    r"(?:hace|for)\s+(\d{1,3})\s*min"
+    r")\b"
+)
+
+
+def invented_lock_wait_minutes(
+    reply: str, *, minutes_ago: Optional[int] = None
+) -> bool:
+    """
+    True if reply claims the lock has been waiting much longer than reality.
+    minutes_ago = how long the CURRENT lock has actually been in chat.
+    """
+    if minutes_ago is None:
+        return False
+    text = (reply or "").strip()
+    if not text:
+        return False
+    for m in _CLAIM_WAIT_MINUTES.finditer(text):
+        raw = next((g for g in m.groups() if g), None)
+        if raw is None:
+            continue
+        try:
+            claimed = int(raw)
+        except ValueError:
+            continue
+        # Allow ±2 min slack; flag wild inventions (e.g. 27 vs 4)
+        if claimed > minutes_ago + 2:
+            return True
+    return False
+
+
 def paid_offer_reply_aligned(reply: str) -> bool:
     """
     True if the creative reply matches attaching Emma's paid lock this turn.

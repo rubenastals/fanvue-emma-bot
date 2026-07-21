@@ -550,6 +550,34 @@ def generate_emma_reply(
                 "Never promise to record or send a clip. Tease a vault PHOTO only if STATUS attaches."
             )
 
+    # Fan calling out fake wait-time — obey LOCK STATUS "sent X min ago"
+    if (
+        (status_active or unpaid_gate)
+        and ppv_status
+        and re.search(
+            r"(?i)\b("
+            r"\d+\s*minut|"
+            r"lleva\w*\s+\d+|"
+            r"llevas\s+\d+|"
+            r"como\s+que\s+llev|"
+            r"que\s+dices|"
+            r"no\s+me\s+he\s+ido|"
+            r"just\s+(sent|dropped)|only\s+\d+\s*min"
+            r")\b",
+            fan_message or "",
+        )
+    ):
+        ago = ppv_status.get("ago") or "recently"
+        left = ppv_status.get("minutes_left")
+        left_bit = f" ~{left} min left on the clock." if left is not None else ""
+        turn_blocks.append(
+            "TIMING CORRECTION — CRITICAL:\n"
+            f"- LOCK STATUS says this photo was sent {ago}.{left_bit}\n"
+            "- You previously invented a wrong wait time. Own it briefly / soft laugh, "
+            "then use ONLY that real 'sent … ago' number — never 'da igual' with both numbers.\n"
+            "- Do NOT claim you've been waiting longer than LOCK STATUS."
+        )
+
     if delivery_truth and delivery_truth.get("free_in_chat") is True:
         turn_blocks.append(
             "DELIVERY TRUTH: your FREE photo IS already in this chat. "
@@ -858,6 +886,41 @@ def generate_emma_reply(
                 )
             except Exception:
                 pass
+
+    # Invented wait time (e.g. "27 min waiting" when lock is 4 min old)
+    if ppv_status and ppv_status.get("active"):
+        ago_m = None
+        ago_raw = str(ppv_status.get("ago") or "")
+        m_ago = re.search(r"(\d+)\s*min", ago_raw)
+        if m_ago:
+            try:
+                ago_m = int(m_ago.group(1))
+            except ValueError:
+                ago_m = None
+        if ago_m is not None and scheme_guard.invented_lock_wait_minutes(
+            reply, minutes_ago=ago_m
+        ):
+            print(
+                f"   timing sync: invented wait vs real {ago_m}m ago — rewriting"
+            )
+            fix_msgs = messages + [
+                {"role": "assistant", "content": reply},
+                {
+                    "role": "user",
+                    "content": (
+                        f"REWRITE: You invented a wrong wait time. LOCK STATUS says "
+                        f"this photo was sent {ago_raw}. Use ONLY that. "
+                        "Do not claim you've been waiting longer. Soft own the slip, then tease the unlock."
+                        if not want_spanish
+                        else (
+                            f"REESCRIBE: Inventaste un tiempo de espera falso. LOCK STATUS dice "
+                            f"que esta foto se envió {ago_raw}. Usa SOLO eso. "
+                            "No digas que llevas más tiempo esperando. Reconoce el fallo con gracia y tienta el unlock."
+                        )
+                    ),
+                },
+            ]
+            reply = _call(fix_msgs)
 
     # Invented candado when LOCK STATUS=none → forced rewrite (same rail as delivery)
     if no_lock and not offer and scheme_guard.invented_lock_claim(
