@@ -12,6 +12,9 @@ def test_fan_claims_liked_last_photo():
     assert sg.fan_claims_saw_ppv("me gustó esa foto")
     assert sg.fan_claims_saw_ppv("liked the last photo a lot")
     assert sg.fan_claims_saw_ppv("ya la abrí")
+    assert sg.fan_claims_saw_ppv("ahora si que la veo")
+    assert sg.fan_claims_saw_ppv("se te ve muy buenorra")
+    assert sg.fan_claims_saw_ppv("las tetas")
     assert not sg.fan_claims_saw_ppv("hola baby como estas")
 
 
@@ -20,7 +23,12 @@ def test_validates_unseen():
         "me alegro que te gustara, baby... pero esa era solo un poquito"
     )
     assert sg.validates_unseen_ppv("glad you liked it — that was just a tease")
+    assert sg.validates_unseen_ppv("¿ves? te dije que valía la pena, bebé")
+    assert sg.validates_unseen_ppv("ahora dime… ¿qué parte de mí te gustó más?")
     assert not sg.validates_unseen_ppv("mmm mentiroso, nunca la abriste 😏")
+    assert sg.calls_out_purchase_bluff(
+        "Mmm… mentiroso 😏 esa foto sigue cerrada — no la has abierto."
+    )
 
 
 def test_never_bought_active_unpaid():

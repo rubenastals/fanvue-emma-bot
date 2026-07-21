@@ -1015,33 +1015,41 @@ def generate_emma_reply(
             ]
             reply = _call(fix_msgs)
 
-    # Fan never bought last PPV but reply validates he saw/liked it
-    if never_bought and scheme_guard.validates_unseen_ppv(reply):
-        print("   purchase bluff: reply validated unseen PPV — rewriting")
+    # Fan never bought last PPV — must NOT validate "I opened/liked it".
+    # If he bluffed, reply MUST call it out (not just avoid a few phrases).
+    bluff_needs_fix = never_bought and (
+        scheme_guard.validates_unseen_ppv(reply)
+        or (
+            fan_saw_bluff
+            and not scheme_guard.calls_out_purchase_bluff(reply)
+        )
+    )
+    if bluff_needs_fix:
+        print("   purchase bluff: reply failed unpaid-open logic — rewriting")
         if status_active or unpaid_gate:
             rewrite_bluff = (
                 "REWRITE HARD: He has NOT purchased the waiting lock. He cannot have "
-                "liked/seen it. Remove every 'glad you liked' / 'esa era solo' validation. "
-                "Call the bluff playfully and push THIS unlock."
+                "liked/seen it (blur preview ≠ unlocked). Remove every validation "
+                "('valía la pena', 'qué parte te gustó', 'glad you liked'). "
+                "Call the bluff playfully (mentiroso / never opened) and push THIS unlock."
                 if not want_spanish
                 else (
                     "REESCRIBE DURO: NO ha comprado el candado que espera. No puede haber "
-                    "visto/gustado esa foto. Quita 'me alegro que te gustara' / 'esa era solo'. "
-                    "Llama el farol con picardía y empuja ESTE unlock."
+                    "visto/gustado esa foto (el preview borroso NO es unlock). Quita "
+                    "'valía la pena' / 'qué parte te gustó' / 'me alegro que te gustara'. "
+                    "Llama el farol con picardía (mentiroso / no la abriste) y empuja ESTE unlock."
                 )
             )
         else:
             rewrite_bluff = (
                 "REWRITE HARD: Last PPV expired WITHOUT purchase — he never unlocked it. "
-                "Remove every validation that he liked/saw it ('glad you liked', "
-                "'esa era solo un poquito'). Call the bluff playfully. Do not apologize "
-                "or gift a replacement. Flirt/reconnect only unless a NEW lock attaches."
+                "Remove every validation that he liked/saw it. Call the bluff playfully. "
+                "Do not apologize or gift a replacement. Flirt/reconnect only unless a NEW lock attaches."
                 if not want_spanish
                 else (
                     "REESCRIBE DURO: El último PPV caducó SIN compra — nunca lo desbloqueó. "
-                    "Quita toda validación de que le gustó/vio ('me alegro que te gustara', "
-                    "'esa era solo un poquito'). Llama el farol con picardía. No pidas perdón "
-                    "ni regales reemplazo. Solo flirteo/reconexión salvo que se adjunte un candado NUEVO."
+                    "Quita toda validación de que le gustó/vio. Llama el farol con picardía. "
+                    "No pidas perdón ni regales reemplazo. Solo flirteo/reconexión salvo candado NUEVO."
                 )
             )
         fix_msgs = messages + [
@@ -1049,16 +1057,30 @@ def generate_emma_reply(
             {"role": "user", "content": rewrite_bluff},
         ]
         reply = _call(fix_msgs)
-        if scheme_guard.validates_unseen_ppv(reply):
-            reply = (
-                "Mmm… mentiroso 😏 esa foto se fue sin que la abrieras. "
-                "No puedes saber lo guarra que era… todavía."
-                if want_spanish
-                else (
-                    "Mmm… liar 😏 that photo left without you unlocking it. "
-                    "You can't know how filthy it was… yet."
+        still_bad = scheme_guard.validates_unseen_ppv(reply) or (
+            fan_saw_bluff and not scheme_guard.calls_out_purchase_bluff(reply)
+        )
+        if still_bad:
+            if status_active or unpaid_gate:
+                reply = (
+                    "Mmm… mentiroso 😏 esa foto sigue cerrada — no la has abierto. "
+                    "No puedes saber lo guarra que es… todavía. Ábrela."
+                    if want_spanish
+                    else (
+                        "Mmm… liar 😏 that photo is still locked — you haven't opened it. "
+                        "You can't know how filthy it is… yet. Unlock it."
+                    )
                 )
-            )
+            else:
+                reply = (
+                    "Mmm… mentiroso 😏 esa foto se fue sin que la abrieras. "
+                    "No puedes saber lo guarra que era… todavía."
+                    if want_spanish
+                    else (
+                        "Mmm… liar 😏 that photo left without you unlocking it. "
+                        "You can't know how filthy it was… yet."
+                    )
+                )
             print("   🔒 unseen-ppv rewrite → bluff fallback")
 
     # Invented candado/$ when no real unpaid lock and nothing attaching

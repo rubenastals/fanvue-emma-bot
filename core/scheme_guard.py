@@ -323,8 +323,15 @@ _FAN_CLAIMS_SAW_PPV = re.compile(
     r"(?i)\b("
     r"ya\s+la\s+(vi|abr[ií]|desbloque\w*|compr[eé]|pagu[eé])|"
     r"la\s+(vi|abr[ií]|desbloque[eé]|compr[eé])|"
+    # "ahora si que la veo" / "ya la veo" (common bluff after lock appears)
+    r"(ahora\s+)?(s[ií]\s+)?que\s+la\s+veo|"
+    r"ya\s+la\s+veo|ahora\s+la\s+veo|"
+    r"se\s+te\s+ve|"
+    r"te\s+veo\s+(muy\s+)?(buena|buenorra|rica|guarra|hot)|"
+    r"buenorra|buenísima|buenisima|"
     r"(i\s+)?(already\s+)?(opened|unlocked|bought|paid\s+for)\s+(it|the\s+photo)|"
     r"(i\s+)?(saw|seen)\s+(it|the\s+photo|that\s+photo)|"
+    r"i\s+can\s+see\s+(it|you|her)|"
     r"qu[eé]\s+rica\s+(la|esa|esta)\s+foto|"
     r"(la|esa|esta)\s+(última|ultima)?\s*foto\s+"
     r"(está|esta|estaba|era|fue)\s+(muy\s+)?"
@@ -338,29 +345,60 @@ _FAN_LIKED_LAST_PHOTO = re.compile(
     r"(me\s+ha\s+gustado|me\s+gust[oó]|me\s+encant[oó]|liked|loved).{0,40}"
     r"(última|ultima|last|esa|esta|la)\s+(foto|photo|pic|imagen)|"
     r"(última|ultima|last)\s+(foto|photo|pic).{0,20}"
-    r"(gust|like|encant|buena|guarra|hot|rica)"
+    r"(gust|like|encant|buena|guarra|hot|rica)|"
+    # Body-part praise as if viewing the unpaid lock
+    r"(me\s+)?(gustan|encantan)\s+(tus\s+)?(tetas|culo|piernas|pechos)|"
+    r"qu[eé]\s+ricas?\s+(tetas|piernas|culo|pechos)|"
+    r"^las\s+tetas\b|^el\s+culo\b|^tus\s+tetas\b"
     r")\b"
 )
 
 # Emma validates that he saw / liked content he never unlocked
+# (no trailing \b — accents like gustó break word-boundary ends)
 _VALIDATES_UNSEEN_PPV = re.compile(
-    r"(?i)\b("
-    r"me\s+alegro\s+que\s+te\s+gust|"
-    r"qu[eé]\s+bien\s+que\s+te\s+gust|"
-    r"glad\s+you\s+(liked|enjoyed)|"
-    r"happy\s+you\s+(liked|enjoyed)|"
-    r"since\s+you\s+(liked|enjoyed)|"
-    r"ya\s+que\s+te\s+gust|"
-    r"esa\s+era\s+solo|"
-    r"esa\s+era\s+un\s+poquit|"
-    r"that\s+was\s+just\s+a\s+(little|taste|tease)|"
-    r"that\s+was\s+only\s+a\s+(little|taste|tease)|"
-    r"qu[eé]\s+te\s+pareci[oó]|"
-    r"how\s+did\s+you\s+like|"
-    r"ya\s+la\s+viste|"
-    r"you\s+(already\s+)?(saw|opened|unlocked)\s+it|"
-    r"sab[ií]a\s+que\s+te\s+(iba\s+a\s+)?gust"
-    r")\b"
+    r"(?i)("
+    r"\bme\s+alegro\s+que\s+te\s+gust|"
+    r"\bqu[eé]\s+bien\s+que\s+te\s+gust|"
+    r"\bglad\s+you\s+(liked|enjoyed)|"
+    r"\bhappy\s+you\s+(liked|enjoyed)|"
+    r"\bsince\s+you\s+(liked|enjoyed)|"
+    r"\bya\s+que\s+te\s+gust|"
+    r"\besa\s+era\s+solo|"
+    r"\besa\s+era\s+un\s+poquit|"
+    r"\bthat\s+was\s+just\s+a\s+(little|taste|tease)|"
+    r"\bthat\s+was\s+only\s+a\s+(little|taste|tease)|"
+    r"\bqu[eé]\s+te\s+pareci[oó]|"
+    r"\bhow\s+did\s+you\s+like|"
+    r"\bya\s+la\s+viste|"
+    r"\byou\s+(already\s+)?(saw|opened|unlocked)\s+it|"
+    r"\bsab[ií]a\s+que\s+te\s+(iba\s+a\s+)?gust|"
+    r"\bval[ií]a\s+la\s+pena|"
+    r"\bworth\s+it\b|"
+    r"\bqu[eé]\s+parte.{0,40}gust|"
+    r"\bwhat\s+part.{0,40}(like|love)|"
+    r"\bte\s+fijes\s+en\s+mis|"
+    r"\bme\s+encanta\s+que\s+te\s+fij|"
+    r"\bves\??\s*te\s+dije|"
+    r"\bte\s+dije\s+que\s+val[ií]a"
+    r")"
+)
+
+# Emma actually calling the bluff (required when fan_saw_bluff)
+_CALLS_OUT_BLUFF = re.compile(
+    r"(?i)("
+    r"\bmentiros|"
+    r"\bfarol\b|"
+    r"\bliar\b|"
+    r"\bnunca\s+(la\s+|lo\s+)?(abr|desbloque|viste)|"
+    r"\bno\s+(la\s+|lo\s+)?abriste|"
+    r"\bno\s+has\s+(abierto|desbloqueado|pagado)|"
+    r"\bsin\s+que\s+la\s+abrier|"
+    r"\bcan'?t\s+(have\s+)?(seen|know)|"
+    r"\bnever\s+(opened|unlocked|paid)|"
+    r"\bstill\s+locked\b|"
+    r"\bsigue\s+(cerrad|bloquead|sin\s+abrir)|"
+    r"\bno\s+puedes\s+saber"
+    r")"
 )
 
 _PURCHASE_CLEAR_REASONS = frozenset(
@@ -384,6 +422,14 @@ def validates_unseen_ppv(reply: str) -> bool:
     if not text:
         return False
     return bool(_VALIDATES_UNSEEN_PPV.search(text))
+
+
+def calls_out_purchase_bluff(reply: str) -> bool:
+    """True if Emma playfully calls the unpaid-open bluff."""
+    text = (reply or "").strip()
+    if not text:
+        return False
+    return bool(_CALLS_OUT_BLUFF.search(text))
 
 
 def last_ppv_never_bought(
