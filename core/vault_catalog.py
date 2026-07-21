@@ -227,6 +227,7 @@ def offer_prompt_block(offer: Dict[str, Any]) -> str:
         "- Tease briefly then LOCK. Do NOT invent videos, customs, or other shots.\n"
         "- FORBIDDEN: asking permission ('quieres?', 'te la mando?', 'otra gratis?').\n"
         "- FORBIDDEN: offering free/gratis this turn — this is a PAID lock.\n"
+        "- FORBIDDEN: asking HIM for his face/pic/selfie this turn — YOU are locking YOUR photo.\n"
         "- FORBIDDEN: dumping a pose/lingerie caption paragraph into chat.\n"
         "- Do NOT say you already sent it / check your inbox / I left it for you.\n"
         "- Say you're locking it now / about to lock it — then the system does.\n"

@@ -999,6 +999,20 @@ def _handle_fan_chat_body(
             offer = None
         is_paid_offer = bool(offer and not is_free_offer)
 
+        # Sync: DeepSeek text and PPV attach must match. If she asked for HIS
+        # face / never sold the lock, do not drop a random candado on top.
+        if is_paid_offer:
+            from core import scheme_guard as _sg
+
+            if not _sg.paid_offer_reply_aligned(reply):
+                print(
+                    "   SELL sync: reply still ≠ lock direction — "
+                    "dropping PPV attach (keeping text)"
+                )
+                offer = None
+                is_paid_offer = False
+                is_free_offer = False
+
         # FREE L0: attach image WITH the first bubble so barge-in can't skip the gift
         # after Emma already teased it in text.
         if is_free_offer and bubbles and not barged:

@@ -681,17 +681,27 @@ def generate_emma_reply(
                 "No other photo, no video, no bundle, no 'the one I mentioned'. "
                 "Gratis ask → deny, push unlock."
             )
+    paid_offer_now = bool(
+        offer
+        and float(offer.get("price") or 0) > 0
+        and int(offer.get("level") or 0) > 0
+    )
     if offer:
-        is_free = float(offer.get("price") or 0) <= 0 or int(offer.get("level") or 0) == 0
+        is_free = not paid_offer_now
         if is_free:
             note += " FREE photo attached — one short flirty line."
         else:
             note += (
                 f" PAID lock ${offer.get('price'):.0f} attaches WITH your first bubble. "
-                "Do NOT ask if he wants it. Do NOT offer free/gratis. Do NOT claim older gifts. "
-                "Tease once then lock."
+                "Tease THAT photo and lock it. "
+                "Do NOT ask if he wants it. Do NOT offer free/gratis. "
+                "Do NOT ask him for his face/pic/selfie — wrong direction."
             )
-    if fan_vision and (fan_vision.get("description") or "").strip():
+    if (
+        fan_vision
+        and (fan_vision.get("description") or "").strip()
+        and not paid_offer_now
+    ):
         note += (
             " FAN PHOTO attached — obey vision block: react to what's IN the pic. "
             "If it's not HIS body / it's your own content / wrong pic: call it out, "
@@ -797,6 +807,38 @@ def generate_emma_reply(
         reply = _enforce_delivery_truth(
             _call(fix_msgs),
             media_attached=False,
+            want_spanish=want_spanish,
+        )
+
+    # Sync gate: if code will attach a paid lock, reply must sell THAT — not ask for his face
+    if (
+        offer
+        and float(offer.get("price") or 0) > 0
+        and int(offer.get("level") or 0) > 0
+        and not scheme_guard.paid_offer_reply_aligned(reply)
+    ):
+        price = float(offer.get("price") or 0)
+        print("   SELL sync: reply ≠ paid lock — rewriting to sell the attach")
+        fix_msgs = messages + [
+            {"role": "assistant", "content": reply},
+            {
+                "role": "user",
+                "content": (
+                    f"REWRITE: Your draft went the wrong direction (e.g. asking for HIS pic/face). "
+                    f"This turn the SYSTEM attaches YOUR paid photo lock (${price:.0f}). "
+                    "Tease that photo briefly and lock it. Never ask him for his face, selfie, or pic."
+                    if not want_spanish
+                    else (
+                        f"REESCRIBE: Tu borrador fue en otra dirección (p.ej. pedirle SU foto/cara). "
+                        f"Este turno el SISTEMA adjunta TU candado de foto de pago (${price:.0f}). "
+                        "Provoca esa foto en breve y bloquéala. Nunca le pidas su cara, selfie o foto."
+                    )
+                ),
+            },
+        ]
+        reply = _enforce_delivery_truth(
+            _call(fix_msgs),
+            media_attached=True,
             want_spanish=want_spanish,
         )
 

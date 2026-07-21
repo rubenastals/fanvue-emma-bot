@@ -255,6 +255,49 @@ def ghost_media_promise(reply: str, *, media_attached: bool) -> bool:
     return bool(_GHOST_PROMISE.search(text))
 
 
+# Reply asks HIM to send his face/body pic (wrong direction for a PPV attach turn)
+_ASK_HIS_MEDIA = re.compile(
+    r"(?i)\b("
+    r"(m[aá]nda|env[ií]a|pasa|show|send)\w*\s+"
+    r"(me\s+)?(una\s+|tu\s+|your\s+)?"
+    r"(foto|pic|photo|selfie|carita|cara|face|cuerpo|body)\s*"
+    r"(tuya|tuyo|your|de\s+ti|of\s+you)?|"
+    r"quiero\s+ver(te)?\s+(la\s+)?(carita|cara|face|tu\s+foto)|"
+    r"foto\s+tuya|your\s+(pic|photo|face|selfie)|"
+    r"m[aá]ndame\s+una\s+foto\s+tuya|"
+    r"send\s+me\s+(a\s+)?(pic|photo|selfie)"
+    r")\b"
+)
+
+# Reply actually sells / locks HER paid photo this turn
+_SELLS_HER_LOCK = re.compile(
+    r"(?i)\b("
+    r"candado|unlock|desbloque|lock(ing|ed)?|"
+    r"bloque(o|ando|ada)|te\s+(lo|la)\s+bloqueo|"
+    r"\$\s*\d+|€\s*\d+|precio|"
+    r"abre(lo|la)?|"
+    r"(esta|esta)\s+foto|"
+    r"mir(a|alo|ala)\s+(esto|esta)|"
+    r"te\s+(la|lo)\s+(dejo|mando|env[ií]o)\s+(aqu[ií]|locked|bloquead)"
+    r")\b"
+)
+
+
+def paid_offer_reply_aligned(reply: str) -> bool:
+    """
+    True if the creative reply matches attaching Emma's paid lock this turn.
+
+    False when DeepSeek went another direction (e.g. asked for HIS face) —
+    code must not attach a PPV that contradicts the text.
+    """
+    text = (reply or "").strip()
+    if not text:
+        return False
+    if _ASK_HIS_MEDIA.search(text):
+        return False
+    return bool(_SELLS_HER_LOCK.search(text))
+
+
 def history_has_rival_fan(history_turns: Optional[List[Dict[str, Any]]]) -> bool:
     """True if any recent Emma (assistant) turn already used the rival-fan bit."""
     if not history_turns:
