@@ -257,6 +257,12 @@ def should_send(
         return True, thread_why
 
     mode = (getattr(decision, "mode", "") or "").lower()
+
+    # Random gate before the AI call — respects VOICE_NOTES_CHANCE (default 0.55).
+    chance = float(getattr(config, "VOICE_NOTES_CHANCE", 0.55) or 0.55)
+    if random.random() > chance:
+        return False, "random gate"
+
     ok, reason = _ai_should_send_voice(
         fan_message,
         history_turns,

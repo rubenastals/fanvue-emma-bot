@@ -135,7 +135,13 @@ class Config:
     # How often to check barge-in during a bubble delay (API is slow — keep rare)
     BUBBLE_BARGE_CHECK_SEC = float(os.getenv("BUBBLE_BARGE_CHECK_SEC", "3.0"))
 
-    # Unpaid PPV auto-unsend (creates scarcity; keeps chat + bot state clean)
+    # Comma-separated fan handles to ignore completely (spam bots, test accounts).
+    # Example: "creator-coach,some-bot,test-handle"
+    BLOCKED_HANDLES = [
+        h.strip().lower().lstrip("@")
+        for h in os.getenv("BLOCKED_HANDLES", "creator-coach").split(",")
+        if h.strip()
+    ]
     PPV_EXPIRE_ENABLED = os.getenv("PPV_EXPIRE_ENABLED", "1") == "1"
     PPV_EXPIRE_MINUTES = int(os.getenv("PPV_EXPIRE_MINUTES", "30"))
     # On poller boot: wipe every unpaid lock in recent chats (clean slate), then new ones time out

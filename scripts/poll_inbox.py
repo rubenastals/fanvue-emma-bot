@@ -1435,6 +1435,10 @@ def poll_once(fv: FanvueConnector, processed: set, creator_uuid: str) -> int:
         fan_handle = user.get("handle", "fan")
         if not fan_uuid:
             continue
+        # Skip blocked/spam handles
+        blocked_handles = getattr(config, "BLOCKED_HANDLES", []) or []
+        if fan_handle.lower().lstrip("@") in blocked_handles:
+            continue
         try:
             handled += _handle_fan_chat(
                 fv, processed, creator_uuid, fan_uuid, fan_handle

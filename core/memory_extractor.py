@@ -18,6 +18,9 @@ from core import convo_log, fan_memory
 
 _CLIENT: Optional[OpenAI] = None
 _client_lock = threading.Lock()
+# Per-fan running guard: prevents concurrent extractor threads for the same fan.
+_running: dict[str, bool] = {}
+_running_lock = threading.Lock()
 
 EXTRACT_PROMPT = """You maintain a CLIENT CARD for a Fanvue fan chatting with Emma.
 
@@ -159,9 +162,17 @@ def update_fan_card(fan_uuid: str, fan_handle: str = "") -> Optional[Dict[str, A
 
 
 def update_fan_card_async(fan_uuid: str, fan_handle: str = "") -> None:
-    t = threading.Thread(
-        target=update_fan_card,
-        args=(fan_uuid, fan_handle),
-        daemon=True,
-    )
+    with _running_lock:
+        if _running.get(fan_uuid):
+            return  # already running for this fan — skip duplicate
+        _running[fan_uuid] = True
+
+    def _run():
+        try:
+            update_fan_card(fan_uuid, fan_handle)
+        finally:
+            with _running_lock:
+                _running.pop(fan_uuid, None)
+
+    t = threading.Thread(target=_run, daemon=True)
     t.start()
