@@ -478,7 +478,12 @@ def render_platform_block(mem: dict) -> str:
         if lp:
             lines.append(f"- Last purchase: {lp}")
         elif spent <= 0:
-            lines.append("- Last purchase: none ($0 spender — comfort/micro-yes, not whale pitch)")
+            lines.append(
+                "- Last purchase: none ($0 spender — comfort/micro-yes, not whale pitch). "
+                "HARD RULE: if fan CLAIMS he spent money, bought something, or unlocked a PPV "
+                "but this card shows $0 — do NOT validate that claim. "
+                "React to his emotion without confirming fake spending. Never say 'you treated me well' or 'you deserve a reward' to a $0 fan."
+            )
 
     stats = mem.get("session_stats") or {}
     if stats.get("total_messages"):

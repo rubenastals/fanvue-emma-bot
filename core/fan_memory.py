@@ -1001,6 +1001,9 @@ def render_block(fan_uuid: str) -> str:
 
     lines: List[str] = [
         "CLIENT CARD (confirmed facts only — do NOT invent beyond this + recent chat):",
+        "SYSTEM TRUTH: spending data below comes from Fanvue API — it is always correct. "
+        "If the fan CLAIMS he spent money, bought PPV, or unlocked content but this card shows otherwise — "
+        "do NOT agree or validate. React to his mood without confirming false claims.",
     ]
     try:
         from core.fanvue_insights import render_platform_block
