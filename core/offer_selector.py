@@ -73,15 +73,90 @@ _MAX_DIRTY = re.compile(
     r"lo\s+m[aá]s\s+(guarr\w*|fuerte|picant\w*|picat\w*|expl[ií]cit\w*|sucio|duro)|"
     r"la\s+m[aá]s\s+(guarr\w*|picant\w*|picat\w*|fuerte|expl[ií]cit\w*)|"
     r"m[aá]s\s+picant\w*|m[aá]s\s+picat\w*|algo\s+muy\s+m+\w*\s+guarr|"
+    r"como\s+de\s+guarr|how\s+dirty|qué\s+tan\s+guarr|"
     r"dirtiest|nastiest|filthiest|most\s+(dirty|explicit|filthy|hardcore)|"
     r"full\s+nude|todo\s+lo\s+que\s+teng|lo\s+peor\s+que\s+teng|"
     r"abre(te)?\s+(del\s+todo|todo)|spread\s+(wide|everything)"
     r")"
 )
 
+# Emma already framed the next shot as filthiest / masturbation beat
+_EMMA_PROMISED_DIRTY = re.compile(
+    r"(?i)("
+    r"la\s+m[aá]s\s+guarr|lo\s+m[aá]s\s+guarr|"
+    r"s[uú]per\s+guarr|super\s+guarr|muy\s+muy\s+guarr|"
+    r"toc[aá]ndome|pensando\s+en\s+tu\s+polla|"
+    r"gemir\s+tu\s+nombre|hasta\s+gemir|"
+    r"touching\s+myself|dirtiest|filthiest|"
+    r"la\s+m[aá]s\s+(sucia|expl[ií]cita|fuerte)"
+    r")"
+)
+
+# She stalled with "ask nicely / I'll send it" — next comply must CLOSE
+_EMMA_OWED_SEND = re.compile(
+    r"(?i)("
+    r"p[ií]demela\s+bien|ask\s+me\s+nicely|"
+    r"te\s+la\s+(mando|env[ií]o|bloqueo|muestro)|"
+    r"i'?ll\s+(send|lock|drop)\s+it|"
+    r"quieres\s+verla|te\s+da\s+miedo"
+    r")"
+)
+
+_COMPLY_AFTER_STALL = re.compile(
+    r"(?i)\b("
+    r"por\s*favor|please|vale|ok|okay|dale|venga|"
+    r"s[ií]+|ense[nñ]|manda|env[ií]|pasa|quiero|"
+    r"ganas|gatas|hazlo|vamos"
+    r")\b"
+)
+
 
 def wants_max_dirty(fan_message: str) -> bool:
     return bool(_MAX_DIRTY.search(fan_message or ""))
+
+
+def _recent_assistant_text(
+    history_turns: Optional[List[Dict[str, str]]], *, n: int = 6
+) -> str:
+    chunks: List[str] = []
+    for turn in (history_turns or [])[-n:]:
+        if (turn.get("role") or "") != "assistant":
+            continue
+        content = (turn.get("content") or "").strip()
+        if content:
+            chunks.append(content)
+    return "\n".join(chunks)
+
+
+def context_wants_max_dirty(
+    fan_message: str,
+    history_turns: Optional[List[Dict[str, str]]] = None,
+) -> bool:
+    """
+    Max-dirty band if HE asks for it, OR Emma already promised the filthiest
+    shot in recent turns (so 'enseñamela' after 'la más guarra' cannot land L2).
+    """
+    if wants_max_dirty(fan_message):
+        return True
+    emma = _recent_assistant_text(history_turns, n=6)
+    if not emma or not _EMMA_PROMISED_DIRTY.search(emma):
+        return False
+    # She framed it filthy — any close / show / dirty follow-up keeps the band
+    if _DIRECT_BUY.search(fan_message or "") or _COMPLY_AFTER_STALL.search(
+        fan_message or ""
+    ):
+        return True
+    if re.search(r"(?i)\b(guarr|dirty|explicit|picant|esa\s+foto|la\s+foto)\b", fan_message or ""):
+        return True
+    return False
+
+
+def emma_owed_send(
+    history_turns: Optional[List[Dict[str, str]]] = None,
+) -> bool:
+    """True if Emma just promised to send / asked him to beg for it."""
+    emma = _recent_assistant_text(history_turns, n=4)
+    return bool(emma and _EMMA_OWED_SEND.search(emma))
 
 
 def _recently_expired(mem: dict, *, minutes: int = 8) -> bool:
@@ -128,6 +203,7 @@ def candidate_offers(
     mem: dict,
     fan_message: str,
     *,
+    history_turns: Optional[List[Dict[str, str]]] = None,
     limit: int = 8,
 ) -> List[Dict[str, Any]]:
     """Rank real unsent paid photos; return a diverse short whitelist."""
@@ -152,10 +228,11 @@ def candidate_offers(
             fan_message or "",
             " ".join(str(x) for x in (mem.get("interests") or [])),
             str(mem.get("summary") or ""),
+            _recent_assistant_text(history_turns, n=4),
         ]
     ).lower()
     rejected = _recent_reject(mem)
-    max_dirty = wants_max_dirty(fan_message)
+    max_dirty = context_wants_max_dirty(fan_message, history_turns)
 
     # Hard commercial band: semantics may choose freely inside the correct
     # rung, but cannot jump a brand-new buyer straight to L6/L7 —
@@ -165,7 +242,8 @@ def candidate_offers(
     elif rejected and purchases == 0:
         min_level, max_level = 1, max(2, min(3, (last_level - 1) or 2))
     elif purchases == 0 and spent <= 0:
-        min_level, max_level = (3, 5) if last_level == 0 else (2, 5)
+        # Never open a paid close on soft L1/L2 for $0 fans (bait-and-switch feel)
+        min_level, max_level = 3, 5
     elif purchases < 2:
         min_level, max_level = 3, 6
     elif spent < 50:
@@ -274,14 +352,20 @@ def choose_offer(
     Direct buying intent is guaranteed a real candidate via fallback. Ambiguous
     warm/hot turns are decided by a small JSON call. Invalid UUIDs are rejected.
     """
-    candidates = candidate_offers(mem, fan_message)
+    candidates = candidate_offers(
+        mem, fan_message, history_turns=history_turns
+    )
     if not candidates:
         return OfferChoice(False, None, "paid catalog exhausted", 1.0, "code")
 
     direct = bool(_DIRECT_BUY.search(fan_message or "")) or bool(
         getattr(facts, "buying", False)
     )
-    max_dirty = wants_max_dirty(fan_message)
+    max_dirty = context_wants_max_dirty(fan_message, history_turns)
+    owed = emma_owed_send(history_turns)
+    # She already said "pídemela / te la mando" — one comply closes. No 50 beg loop.
+    if owed and _COMPLY_AFTER_STALL.search(fan_message or ""):
+        direct = True
     if getattr(facts, "pushback_billing", False) or getattr(
         facts, "broke_soft", False
     ) or getattr(facts, "heavy_vent", False):
@@ -289,8 +373,13 @@ def choose_offer(
     if _REJECT.search(fan_message or "") and not direct:
         return OfferChoice(False, None, "current message rejects sale", 1.0, "code")
     # Right after a 30m lock vanished — don't drop a random new PPV unless
-    # he's clearly asking for content / the dirtiest shot.
-    if _recently_expired(mem, minutes=8) and not direct and not max_dirty:
+    # he's clearly asking for content / the dirtiest shot / she owes a send.
+    if (
+        _recently_expired(mem, minutes=8)
+        and not direct
+        and not max_dirty
+        and not owed
+    ):
         return OfferChoice(
             False,
             None,
@@ -334,9 +423,13 @@ def choose_offer(
         "never a soft L1/L2 lingerie tease when harder options exist. "
         "Smalltalk, emotional disclosure, price rejection, or a cold one-word reply "
         "should reconnect and not sell. "
+        "If Emma JUST promised a filthy shot ('la más guarra', touching herself) "
+        "and he asks to see it / says please — sell_now MUST be true and pick the "
+        "HIGHEST level candidate. Never bait-and-switch with a soft L1/L2. "
+        "If Emma said 'pídemela bien / te la mando' and he complied — sell NOW. "
         "Sexual momentum may sell ONLY if timing feels clearly earned — several hot "
         "exchanges AND he is leaning in hard. A single horny word is not enough. "
-        "When in doubt, do NOT sell — warming him up beats a premature pitch. "
+        "When in doubt and he is NOT asking for the photo, do NOT sell. "
         'Schema: {"sell_now":true|false,"media_uuid":"uuid or null",'
         '"reason":"short","confidence":0.0}.'
     )
@@ -349,6 +442,7 @@ def choose_offer(
         f"interests={mem.get('interests') or []}, "
         f"last_offer_level={int(mem.get('last_offer_level') or 0)}, "
         f"wants_max_dirty={max_dirty}, "
+        f"emma_owed_send={owed}, "
         f"recent_reject={_recent_reject(mem)}\n\n"
         f"CANDIDATES:\n{json.dumps(options, ensure_ascii=False)}"
     )
@@ -411,7 +505,14 @@ def choose_offer(
         reason = f"direct buy override; selector said: {reason}"
         confidence = max(confidence, 0.9)
 
-    # Max-dirty ask: never keep a soft L1/L2 if harder candidates exist
+    # She owed a send + he complied — never keep stalling
+    if owed and direct and not sell_now:
+        chosen = candidates[0]
+        sell_now = True
+        reason = f"owed-send override; selector said: {reason}"
+        confidence = max(confidence, 0.95)
+
+    # Max-dirty (fan OR Emma's recent promise): never keep a soft L1/L2
     if sell_now and max_dirty and candidates:
         best = max(
             candidates,
@@ -427,6 +528,13 @@ def choose_offer(
             chosen = best
             sell_now = True
             reason = f"max-dirty override → L{best.get('level')} {str(best.get('label') or '')[:40]}"
+            confidence = max(confidence, 0.9)
+        elif chosen is not None and int(chosen.get("level") or 0) < int(
+            best.get("level") or 0
+        ):
+            # Even L5 vs L7 — prefer the hardest when she promised "la más guarra"
+            chosen = best
+            reason = f"max-dirty escalate → L{best.get('level')} {str(best.get('label') or '')[:40]}"
             confidence = max(confidence, 0.9)
 
     elapsed = time.monotonic() - started
