@@ -49,10 +49,15 @@ def main() -> int:
     args = ap.parse_args()
 
     status = _run(["git", "status", "--porcelain"], check=False)
-    dirty = bool((status.stdout or "").strip())
-    if dirty and not args.allow_dirty:
-        print("Working tree dirty. Commit first, or pass --allow-dirty.")
-        print(status.stdout)
+    # Only block on tracked changes; untracked noise (??) is OK
+    dirty_tracked = [
+        ln
+        for ln in (status.stdout or "").splitlines()
+        if ln.strip() and not ln.startswith("??")
+    ]
+    if dirty_tracked and not args.allow_dirty:
+        print("Tracked files dirty. Commit first, or pass --allow-dirty.")
+        print("\n".join(dirty_tracked))
         return 2
 
     head = _run(["git", "rev-parse", "--short", "HEAD"]).stdout.strip()
