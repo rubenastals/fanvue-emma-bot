@@ -165,6 +165,10 @@ def fanvue_messages_to_turns(
             elif msg.get("pricing") and "[locked" not in text.lower() and "[paid" not in text.lower():
                 text = f"{text} [paid photo lock attached]"
         if not text:
+            # Log unknown message types so we can identify gifts, tips, etc.
+            msg_keys = {k: v for k, v in msg.items() if k not in ("uuid", "sender", "createdAt", "updatedAt")}
+            if role == "user" and any(msg_keys.values()):
+                print(f"   [debug] unhandled fan msg keys: {list(msg_keys.keys())} val={str(msg_keys)[:200]}")
             continue
         if turns and turns[-1]["role"] == role:
             turns[-1]["content"] = turns[-1]["content"] + "\n" + text
