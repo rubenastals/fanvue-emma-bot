@@ -286,11 +286,13 @@ _SELLS_HER_LOCK = re.compile(
 
 
 _CLAIM_WAIT_MINUTES = re.compile(
-    r"(?i)\b("
-    r"(?:llevo|lleva|llevas|esperando|waiting|for)\s+(\d{1,3})\s*min|"
-    r"(\d{1,3})\s*minut(?:os|itos|es)?\s+(?:esperando|waiting|ya|ahi|aquí|here)|"
-    r"(?:hace|for)\s+(\d{1,3})\s*min"
-    r")\b"
+    r"(?i)(?:"
+    r"(?:llevo|lleva|llevas|esperando)\s+(\d{1,3})\s*minut|"
+    r"(\d{1,3})\s*minut|"
+    r"(?:hace|for|waiting)\s+(\d{1,3})\s*min|"
+    # "6 minutos, 27…" — second number is also a wait claim
+    r"minut\w*[\s,…]+(\d{1,3})"
+    r")"
 )
 
 
@@ -306,18 +308,17 @@ def invented_lock_wait_minutes(
     text = (reply or "").strip()
     if not text:
         return False
+    claimed_vals = []
     for m in _CLAIM_WAIT_MINUTES.finditer(text):
-        raw = next((g for g in m.groups() if g), None)
-        if raw is None:
-            continue
-        try:
-            claimed = int(raw)
-        except ValueError:
-            continue
-        # Allow ±2 min slack; flag wild inventions (e.g. 27 vs 4)
-        if claimed > minutes_ago + 2:
-            return True
-    return False
+        for g in m.groups():
+            if g is None:
+                continue
+            try:
+                claimed_vals.append(int(g))
+            except ValueError:
+                pass
+    # Allow ±2 min slack; flag wild inventions (e.g. 27 vs 4)
+    return any(c > minutes_ago + 2 for c in claimed_vals)
 
 
 def paid_offer_reply_aligned(reply: str) -> bool:
