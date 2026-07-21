@@ -1,0 +1,28 @@
+---
+description: Save/restore known-good Emma bot snapshots when Ruben says it is going well or to roll back
+alwaysApply: true
+---
+
+# Good backups (Emma bot)
+
+When the user says the bot is going well — e.g. "va bien", "esto funciona", "guarda backup", "salva esto", "known good", "punto de restauración" — **immediately** save a backup before more experiments:
+
+```bash
+python scripts/save_good_backup.py "<short note of what works>"
+```
+
+- Commit any intended good code first (or use `--allow-dirty` only if they insist; warn that dirty files are NOT in the tag).
+- Push the `good-*` tag (script does this unless `--no-push`).
+- Confirm the tag name in the reply.
+
+When the user wants to roll back — e.g. "restaura", "vuelve al backup", "rollback", "como antes" —:
+
+```bash
+python scripts/restore_good_backup.py --list
+python scripts/restore_good_backup.py          # LAST_GOOD / newest
+python scripts/restore_good_backup.py <tag> --deploy
+```
+
+Default restore checks out `restore/<tag>` (safe). Only use `--hard` if they explicitly ask to reset the current branch.
+
+Do **not** keep stacking prompt experiments after a "va bien" without saving a backup first.
