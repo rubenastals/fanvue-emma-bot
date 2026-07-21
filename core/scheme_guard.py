@@ -285,17 +285,6 @@ _SELLS_HER_LOCK = re.compile(
 )
 
 
-_CLAIM_WAIT_MINUTES = re.compile(
-    r"(?i)(?:"
-    r"(?:llevo|lleva|llevas|esperando)\s+(\d{1,3})\s*minut|"
-    r"(\d{1,3})\s*minut|"
-    r"(?:hace|for|waiting)\s+(\d{1,3})\s*min|"
-    # "6 minutos, 27…" — second number is also a wait claim
-    r"minut\w*[\s,…]+(\d{1,3})"
-    r")"
-)
-
-
 def invented_lock_wait_minutes(
     reply: str, *, minutes_ago: Optional[int] = None
 ) -> bool:
@@ -308,15 +297,18 @@ def invented_lock_wait_minutes(
     text = (reply or "").strip()
     if not text:
         return False
-    claimed_vals = []
-    for m in _CLAIM_WAIT_MINUTES.finditer(text):
-        for g in m.groups():
-            if g is None:
-                continue
-            try:
-                claimed_vals.append(int(g))
-            except ValueError:
-                pass
+    claimed_vals = [
+        int(x) for x in re.findall(r"(?i)(\d{1,3})\s*minut", text)
+    ]
+    # "6 minutos, 27…" — she keeps citing the fake number next to a real one
+    claimed_vals += [
+        int(x)
+        for x in re.findall(r"(?i)minut\w*\s*[,.…]+\s*(\d{1,3})", text)
+    ]
+    claimed_vals += [
+        int(x)
+        for x in re.findall(r"(?i)(?:waiting|for)\s+(\d{1,3})\s*min\b", text)
+    ]
     # Allow ±2 min slack; flag wild inventions (e.g. 27 vs 4)
     return any(c > minutes_ago + 2 for c in claimed_vals)
 
