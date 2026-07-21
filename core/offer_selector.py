@@ -267,7 +267,10 @@ def choose_offer(
         "Never invent a UUID, product, price, video, custom, bundle, or description. "
         "Direct requests for content/price/unlock should sell now. "
         "Smalltalk, emotional disclosure, price rejection, or a cold one-word reply "
-        "should reconnect and not sell. Sexual momentum may sell if the timing feels earned. "
+        "should reconnect and not sell. "
+        "Sexual momentum may sell ONLY if timing feels clearly earned — several hot "
+        "exchanges AND he is leaning in hard. A single horny word is not enough. "
+        "When in doubt, do NOT sell — warming him up beats a premature pitch. "
         'Schema: {"sell_now":true|false,"media_uuid":"uuid or null",'
         '"reason":"short","confidence":0.0}.'
     )

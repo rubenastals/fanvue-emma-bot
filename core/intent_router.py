@@ -252,21 +252,25 @@ def _soft_active(facts: TurnFacts, mem: dict) -> Dict[str, bool]:
         active["delivery_missing"] = True
 
     if facts.buying and not facts.ask_free:
-        # Includes "manda video/custom" — still close a PHOTO (vault has no film)
         active["phase_close"] = True
         active["lock_now"] = True
     elif facts.msgs < 3 and not facts.horny and not facts.buying:
         active["phase_hook"] = True
         if free_ok:
             active["ask_free_first"] = True
-    else:
-        # Mid/hot chat → convertible pack (DeepSeek owns the words)
+    elif facts.horny or (facts.heated and facts.msgs >= 8):
+        # Genuinely hot — can close
         active["phase_close"] = True
-        if never_gifted and free_ok and not facts.buying:
+        if never_gifted and free_ok:
+            active["ask_free_first"] = True
+    else:
+        # Mid-chat without strong buy/heat signal — build desire first
+        active["phase_pull"] = True
+        if never_gifted and free_ok:
             active["ask_free_first"] = True
 
     if not any(active.values()):
-        active["phase_close"] = True
+        active["phase_pull"] = True
 
     return active
 
