@@ -1,7 +1,10 @@
-"""Fan bluffs he saw/liked a PPV he never bought."""
+"""Fan bluffs he saw/liked a PPV he never bought + sell-gate regressions."""
 from datetime import datetime, timedelta, timezone
 
 from core import scheme_guard as sg
+from core.offer_selector import _DIRECT_BUY, _REJECT, _recently_expired
+from core.turn_policy import _BUYING
+import re
 
 
 def test_fan_claims_liked_last_photo():
@@ -47,10 +50,34 @@ def test_purchased_clear_not_bluff():
     assert not sg.last_ppv_never_bought(mem, {"active": False, "purchased": False})
 
 
+def test_please_not_treated_as_reject():
+    msg = "porfavor baby, no me dejes con las ganas"
+    assert not _REJECT.search(msg), "bare 'no' must not kill begging closes"
+    assert _DIRECT_BUY.search(msg)
+    assert re.search(_BUYING, msg, re.I)
+
+
+def test_ensenamela_is_direct_buy():
+    assert _DIRECT_BUY.search("enseñamela")
+    assert _DIRECT_BUY.search("ensename")
+    assert re.search(_BUYING, "enseñamela", re.I)
+
+
+def test_expiry_cooldown_bypassed_by_direct():
+    ago = (datetime.now(timezone.utc) - timedelta(minutes=3)).isoformat()
+    mem = {"last_ppv_expired_at": ago}
+    assert _recently_expired(mem, minutes=8)
+    # direct ask must be allowed past the cooldown gate (choose_offer logic)
+    assert _DIRECT_BUY.search("enseñamela")
+
+
 if __name__ == "__main__":
     test_fan_claims_liked_last_photo()
     test_validates_unseen()
     test_never_bought_active_unpaid()
     test_never_bought_recent_expire()
     test_purchased_clear_not_bluff()
+    test_please_not_treated_as_reject()
+    test_ensenamela_is_direct_buy()
+    test_expiry_cooldown_bypassed_by_direct()
     print("ok")

@@ -595,7 +595,8 @@ def generate_emma_reply(
                     "- Call the bluff playfully and push THIS unlock — scroll up."
                 )
         else:
-            # Expired / none — always remind; louder when he claims he liked it
+            # Expired / none — only shout when he claims he saw it, or soft-note
+            # when we are NOT attaching a new lock (don't block a fresh close).
             if fan_saw_bluff:
                 turn_blocks.append(
                     "FAN BLUFF — CRITICAL:\n"
@@ -606,9 +607,14 @@ def generate_emma_reply(
                     "- Call the bluff with a smirk: he never opened it / it vanished unpaid / "
                     "he can't know how hot it was.\n"
                     "- Do NOT apologize or gift a replacement for content he never bought.\n"
-                    "- Flirt / reconnect; only sell if SELL STATUS says ATTACHING."
+                    + (
+                        "- SELL STATUS is ATTACHING a NEW lock this turn — sell THAT "
+                        "(different from the expired one). Do not validate the old photo."
+                        if offer
+                        else "- Flirt / reconnect; only sell if SELL STATUS says ATTACHING."
+                    )
                 )
-            else:
+            elif not offer:
                 turn_blocks.append(
                     "LAST PPV TRUTH:\n"
                     "- The previous timed lock left WITHOUT purchase (expired/unsent). "

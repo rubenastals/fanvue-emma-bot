@@ -49,13 +49,22 @@ _THEMES = {
 _DIRECT_BUY = re.compile(
     r"(?i)\b("
     r"unlock|buy|pay|price|how much|cu[aá]nto|precio|ppv|"
-    r"show me|quiero ver|m[aá]ndame|m[aá]ndala|env[ií]ame|p[aá]samela|"
+    r"show me|let me see|quiero ver|"
+    r"m[aá]nda(me|la|mela)|env[ií]a(me|la|mela)|p[aá]sa(me|la|mela)|"
+    r"ense[nñ][aá](me|mela|rmela)?|muestr[aá](me|mela)|"
+    r"por\s*favor|please|"
+    r"no\s+me\s+dejes(\s+con)?|"
     r"dale|venga va|hazlo|video|v[ií]deo|custom|clip"
     r")\b"
 )
+# NEVER bare \bno\b — matches "no me dejes con las ganas" and kills closes
 _REJECT = re.compile(
-    r"(?i)\b(no|nah|pass|caro|expensive|too much|later|luego|"
-    r"no tengo|sin dinero|broke|not now)\b"
+    r"(?i)\b("
+    r"nah|pass|caro|expensive|too much|later|luego|"
+    r"no\s+gracias|no\s+quiero|no\s+me\s+interesa|"
+    r"not\s+now|no\s+tengo|sin\s+dinero|broke|"
+    r"maybe\s+later|otro\s+d[ií]a|despu[eé]s"
+    r")\b"
 )
 # Fan wants the dirtiest / most explicit shot she has (typos: muuy, picate, guarr…)
 _MAX_DIRTY = re.compile(

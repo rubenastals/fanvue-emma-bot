@@ -26,9 +26,11 @@ MODE_HARD_SELL = "hard_sell"
 # buying intent (he wants media) but creative must redirect to a PHOTO offer.
 _BUYING = (
     r"\b(unlock|buy|pay|price|how much|cu[aá]nto|precio|quiero ver|"
-    r"show me|content|locked|ppv|"
+    r"show me|let me see|content|locked|ppv|"
     r"v[ií]deo|video|clip|custom|"  # intent only → close a PHOTO, never promise film
-    r"env[ií]a(me|la|lo)?|m[aá]nda(me|la|mela)?|"
+    r"env[ií]a(me|la|lo|mela)?|m[aá]nda(me|la|mela)?|"
+    r"ense[nñ][aá](me|mela|rmela)?|muestr[aá](me|mela)|"
+    r"por\s*favor|please|no\s+me\s+dejes(\s+con)?|"
     r"(p[aá]sa(me|la|mela)?|quiero|m[aá]ndame|env[ií]ame).{0,20}"
     r"(foto|pic|pics|photo|teta|tetas|culo|ass|boob|v[ií]deo|video|clip)|"
     r"(foto|pic|pics|photo).{0,12}(por ?favor|ya|ahora)|"
