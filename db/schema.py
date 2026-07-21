@@ -4,6 +4,7 @@ from __future__ import annotations
 from sqlalchemy import text
 
 from db import account_id
+import os
 from db.pg import get_engine, session_scope
 
 SCHEMA_SQL = """
@@ -92,7 +93,9 @@ def init_schema(*, seed_account: bool = True) -> None:
             if s:
                 conn.execute(text(s))
     if seed_account:
-        ensure_account(account_id(), handle="im.emmacarter", persona_key="emma")
+        handle = os.getenv("FANVUE_CREATOR_HANDLE", "im.emmacarter")
+        persona_key = os.getenv("PERSONA_KEY", account_id())
+        ensure_account(account_id(), handle=handle, persona_key=persona_key)
 
 
 def ensure_account(

@@ -526,9 +526,9 @@ def generate_emma_reply(
     if lean:
         core_prompt = None
         if simple:
-            from core.prompt_core import EMMA_CORE_PROMPT_SIMPLE, PROMPT_VERSION
+            from core.prompt_core import get_active_persona, PROMPT_VERSION
 
-            core_prompt = EMMA_CORE_PROMPT_SIMPLE
+            core_prompt = get_active_persona()
         else:
             PROMPT_VERSION = "legacy"
         messages, sizes = prompt_layers.build_system_layers(
