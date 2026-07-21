@@ -278,7 +278,9 @@ _SELLS_HER_LOCK = re.compile(
     r"abre(lo|la)?|"
     r"(esta|esta)\s+foto|"
     r"mir(a|alo|ala)\s+(esto|esta)|"
-    r"te\s+(la|lo)\s+(dejo|mando|env[ií]o)\s+(aqu[ií]|locked|bloquead)"
+    r"te\s+(la|lo)\s+(dejo|mando|env[ií]o)\s+(aqu[ií]|locked|bloquead)|"
+    r"verme\s+as[ií]|en\s+cuatro|hilito|thong|tetas?|culo|pussy|"
+    r"esta\s+foto\s+m[ií]a|foto\s+m[ií]a|m[aá]s\s+guarra"
     r")\b"
 )
 

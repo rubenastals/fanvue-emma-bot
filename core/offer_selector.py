@@ -57,6 +57,33 @@ _REJECT = re.compile(
     r"(?i)\b(no|nah|pass|caro|expensive|too much|later|luego|"
     r"no tengo|sin dinero|broke|not now)\b"
 )
+# Fan wants the dirtiest / most explicit shot she has (typos: muuy, picate, guarr…)
+_MAX_DIRTY = re.compile(
+    r"(?i)("
+    r"m[aá]s\s+guarr\w*|muy\s+(?:\w+\s+){0,3}guarr\w*|"
+    r"lo\s+m[aá]s\s+(guarr\w*|fuerte|picant\w*|picat\w*|expl[ií]cit\w*|sucio|duro)|"
+    r"la\s+m[aá]s\s+(guarr\w*|picant\w*|picat\w*|fuerte|expl[ií]cit\w*)|"
+    r"m[aá]s\s+picant\w*|m[aá]s\s+picat\w*|algo\s+muy\s+m+\w*\s+guarr|"
+    r"dirtiest|nastiest|filthiest|most\s+(dirty|explicit|filthy|hardcore)|"
+    r"full\s+nude|todo\s+lo\s+que\s+teng|lo\s+peor\s+que\s+teng|"
+    r"abre(te)?\s+(del\s+todo|todo)|spread\s+(wide|everything)"
+    r")"
+)
+
+
+def wants_max_dirty(fan_message: str) -> bool:
+    return bool(_MAX_DIRTY.search(fan_message or ""))
+
+
+def _recently_expired(mem: dict, *, minutes: int = 8) -> bool:
+    raw = mem.get("last_ppv_expired_at")
+    if not raw:
+        return False
+    try:
+        dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        return (datetime.now(timezone.utc) - dt).total_seconds() < minutes * 60
+    except (TypeError, ValueError):
+        return False
 
 
 def _blocked(mem: dict) -> set:
@@ -119,10 +146,14 @@ def candidate_offers(
         ]
     ).lower()
     rejected = _recent_reject(mem)
+    max_dirty = wants_max_dirty(fan_message)
 
     # Hard commercial band: semantics may choose freely inside the correct
-    # rung, but cannot jump a brand-new buyer straight to L6/L7.
-    if rejected and purchases == 0:
+    # rung, but cannot jump a brand-new buyer straight to L6/L7 —
+    # EXCEPT when he explicitly asks for the dirtiest she has.
+    if max_dirty:
+        min_level, max_level = 5, 7
+    elif rejected and purchases == 0:
         min_level, max_level = 1, max(2, min(3, (last_level - 1) or 2))
     elif purchases == 0 and spent <= 0:
         min_level, max_level = (3, 5) if last_level == 0 else (2, 5)
@@ -135,6 +166,11 @@ def candidate_offers(
     banded = [
         i for i in items if min_level <= int(i.get("level") or 0) <= max_level
     ]
+    if not banded and max_dirty:
+        # Vault thin at top — take the highest available paid shots
+        banded = sorted(
+            items, key=lambda i: int(i.get("level") or 0), reverse=True
+        )[:limit]
     if banded:
         items = banded
 
@@ -143,6 +179,13 @@ def candidate_offers(
         price = float(item.get("price") or 0)
         label = str(item.get("label") or "")
         value = float(_theme_hits(context, label))
+
+        if max_dirty:
+            # He asked for the filthiest — rank by explicitness hard
+            value += level * 4.0
+            value += float(item.get("score") or 0) * 1.5
+            value += min(price, 80) / 15
+            return value
 
         # Commercial ladder: premium first, soften after a recent rejection,
         # escalate after purchases.
@@ -229,12 +272,23 @@ def choose_offer(
     direct = bool(_DIRECT_BUY.search(fan_message or "")) or bool(
         getattr(facts, "buying", False)
     )
+    max_dirty = wants_max_dirty(fan_message)
     if getattr(facts, "pushback_billing", False) or getattr(
         facts, "broke_soft", False
     ) or getattr(facts, "heavy_vent", False):
         return OfferChoice(False, None, "objection/vent: reconnect first", 1.0, "code")
     if _REJECT.search(fan_message or "") and not direct:
         return OfferChoice(False, None, "current message rejects sale", 1.0, "code")
+    # Right after a 30m lock vanished — don't drop a random new PPV unless
+    # he's clearly asking for content / the dirtiest shot.
+    if _recently_expired(mem, minutes=8) and not direct and not max_dirty:
+        return OfferChoice(
+            False,
+            None,
+            "lock just expired — reconnect before a new PPV",
+            1.0,
+            "code",
+        )
 
     if not getattr(config, "OFFER_SELECTOR_AI", True) or not config.DEEPSEEK_API_KEY:
         return _fallback(
@@ -266,6 +320,9 @@ def choose_offer(
         "If selling, choose exactly one media_uuid from CANDIDATES. "
         "Never invent a UUID, product, price, video, custom, bundle, or description. "
         "Direct requests for content/price/unlock should sell now. "
+        "If he asks for the dirtiest / most explicit / 'más guarro' / 'más picante' "
+        "she has, you MUST pick the HIGHEST level (and score) among CANDIDATES — "
+        "never a soft L1/L2 lingerie tease when harder options exist. "
         "Smalltalk, emotional disclosure, price rejection, or a cold one-word reply "
         "should reconnect and not sell. "
         "Sexual momentum may sell ONLY if timing feels clearly earned — several hot "
@@ -282,6 +339,7 @@ def choose_offer(
         f"spent={float(mem.get('total_spent') or 0):.0f}, "
         f"interests={mem.get('interests') or []}, "
         f"last_offer_level={int(mem.get('last_offer_level') or 0)}, "
+        f"wants_max_dirty={max_dirty}, "
         f"recent_reject={_recent_reject(mem)}\n\n"
         f"CANDIDATES:\n{json.dumps(options, ensure_ascii=False)}"
     )
@@ -343,6 +401,24 @@ def choose_offer(
         sell_now = True
         reason = f"direct buy override; selector said: {reason}"
         confidence = max(confidence, 0.9)
+
+    # Max-dirty ask: never keep a soft L1/L2 if harder candidates exist
+    if sell_now and max_dirty and candidates:
+        best = max(
+            candidates,
+            key=lambda i: (
+                int(i.get("level") or 0),
+                float(i.get("score") or 0),
+                float(i.get("price") or 0),
+            ),
+        )
+        if chosen is None or (
+            int(chosen.get("level") or 0) < 5 and int(best.get("level") or 0) >= 5
+        ):
+            chosen = best
+            sell_now = True
+            reason = f"max-dirty override → L{best.get('level')} {str(best.get('label') or '')[:40]}"
+            confidence = max(confidence, 0.9)
 
     elapsed = time.monotonic() - started
     print(
