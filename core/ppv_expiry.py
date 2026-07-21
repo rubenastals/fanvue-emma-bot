@@ -313,7 +313,6 @@ def lock_status_prompt_block(status: Dict[str, Any]) -> str:
 
     label = status.get("label") or "your locked photo"
     price = status.get("price")
-    price_txt = f" (${price:.0f})" if isinstance(price, (int, float)) else ""
     mins = status.get("minutes_left")
     if mins is None:
         time_txt = "timed — it will disappear if he waits"
@@ -332,14 +331,15 @@ def lock_status_prompt_block(status: Dict[str, Any]) -> str:
         )
     return (
         "LOCK STATUS — VERIFIED THIS TURN (ACTIVE UNPAID CANDADO):\n"
-        f"- ONE timed lock is waiting — \"{label}\"{price_txt} (sent {ago}).\n"
+        f"- ONE timed lock is waiting — \"{label}\" (sent {ago}).\n"
         f"- Clock: {time_txt}.\n"
+        "- The price is VISIBLE in the lock itself — do NOT repeat it in text. Push desire/FOMO, not the number.\n"
         "- THIS is the ONLY product in play. Push him to UNLOCK THIS — scroll up in chat.\n"
         "- HARD BAN: do NOT tease/send/offer a DIFFERENT photo, 'another one', 'the one I "
         "mentioned', or a new lock. No second candado. No catalog menu.\n"
         "- HARD BAN: do NOT promise video, clip, bundle, or 'both for $X'. Photos only.\n"
         "- If he asks gratis/free: NO more free — he already had gifts. Push THIS unlock.\n"
-        "- If he asks video: NO video exists — ONLY this waiting photo at the price above.\n"
+        "- If he asks video: NO video exists — ONLY this waiting photo.\n"
         "- Light FOMO OK — never beg, never invent glitches."
         f"{extra}"
     )

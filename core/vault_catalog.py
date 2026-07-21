@@ -249,7 +249,7 @@ def sell_status_prompt_block(offer: Optional[Dict[str, Any]]) -> str:
             "SELL STATUS = ATTACHING THIS TURN\n"
             f"- PHOTO L{lvl} ${price:.0f} — vibe (internal): {label}\n"
             "- The SYSTEM attaches this exact IMAGE with your first bubble.\n"
-            "- Tease ONLY this photo. Name ONLY this price.\n"
+            "- Tease ONLY this photo. Mention the price at most once, naturally — don't lead with the number.\n"
             "- NEVER invent another shot, video, custom, clip, or second price."
         )
     if offer and (float(offer.get("price") or 0) <= 0 or int(offer.get("level") or 0) == 0):
