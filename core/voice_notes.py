@@ -314,11 +314,10 @@ def maybe_send(
             raise RuntimeError(f"upload missing mediaUuid: {upload!r}")
 
         time.sleep(float(getattr(config, "VOICE_NOTE_SEND_DELAY_SEC", 2.5) or 2.5))
-        caption = _caption_for(want_spanish)
         fv.send_media_message(
             fan_uuid,
             media_uuids=[media_uuid],
-            text=caption[:500],
+            text="",
         )
         time.sleep(0.8)
         verified = fv.creator_media_in_chat(
