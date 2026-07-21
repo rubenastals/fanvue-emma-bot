@@ -98,6 +98,14 @@ def build_facts(
     last_ppv = _parse_iso(mem.get("last_ppv_at")) or _parse_iso(
         mem.get("last_offer_at")
     )
+    # Fanvue tip/gift stubs injected by poller / history converter
+    tip_or_gift_now = bool(
+        re.search(
+            r"\[fan (tipped you|sent you a Fanvue chat gift)",
+            fan_message or "",
+            re.I,
+        )
+    )
 
     return TurnFacts(
         free_in_chat=truth.get("free_in_chat"),
@@ -105,7 +113,8 @@ def build_facts(
         cooloff_active=False,  # PPV cooloff removed (Group A)
         chill_window=False,
         recent_purchase=bool(
-            last_purchase and now - last_purchase < timedelta(minutes=45)
+            tip_or_gift_now
+            or (last_purchase and now - last_purchase < timedelta(minutes=45))
         ),
         recent_reject=False,
         fan_sent_media=fan_sent_media,
@@ -238,6 +247,9 @@ def _soft_active(facts: TurnFacts, mem: dict) -> Dict[str, bool]:
     free_ok = _free_tease_ok(mem, msgs=facts.msgs, now=now)
     never_gifted = facts.frees_done <= 0
 
+    if facts.recent_purchase:
+        active["reward_purchase"] = True
+
     if facts.ask_free and facts.frees_done >= 1:
         active["escalate_paid"] = True
         active["phase_close"] = True
@@ -299,6 +311,17 @@ def _decision_for_pack(
             )
         return _decision(MODE_SOFT_SELL, reason, allow_price=True)
 
+    # Post-tip / post-purchase: reward only — never attach a new lock this turn
+    if pack_id == "reward_purchase":
+        return _decision(
+            MODE_TEASE,
+            reason,
+            allow_price=False,
+            allow_ppv_talk=False,
+            allow_free_tease=False,
+            max_bubbles=2,
+        )
+
     # Creative packs — CAN sell (Group A pack→price ban removed)
     if pack_id in (
         "escalate_paid",
@@ -314,7 +337,6 @@ def _decision_for_pack(
         "price_objection",
         "billing_clarify",
         "chill",
-        "reward_purchase",
         "post_sale_withdrawal",
     ):
         mode = MODE_SOFT_SELL

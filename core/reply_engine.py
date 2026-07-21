@@ -111,6 +111,74 @@ def filter_messages_for_context(
     return list(messages[: max(min_messages, max_messages)])
 
 
+def tip_amount_usd(msg: dict) -> Optional[float]:
+    """USD tip amount from pricing.USD.price (cents), or None."""
+    usd = (msg.get("pricing") or {}).get("USD") or {}
+    raw = usd.get("price")
+    if raw is None:
+        return None
+    try:
+        cents = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return round(cents / 100.0, 2) if cents >= 0 else None
+
+
+def fan_tip_or_gift_stub(msg: dict) -> str:
+    """
+    Fanvue tips: type TIP (+ pricing / tipSource).
+    Chat gifts: empty SINGLE_RECIPIENT (no text, media, pricing, tipSource).
+    Returns a stub the model can react to, or '' if not tip/gift.
+    """
+    mtype = (msg.get("type") or "").upper()
+    if mtype.startswith("AUTOMATED") or mtype in (
+        "VOICE_CALL",
+        "BROADCAST",
+        "GHOST_PROMOTION",
+    ):
+        return ""
+    tip_source = msg.get("tipSource")
+    amount = tip_amount_usd(msg)
+    is_tip = mtype == "TIP" or tip_source in ("chat", "post", "media_link")
+    if is_tip:
+        if amount is not None and amount > 0:
+            return (
+                f"[fan tipped you ${amount:g} on Fanvue — reward him warmly; "
+                "do NOT pitch a new unlock]"
+            )
+        return (
+            "[fan tipped you on Fanvue — reward him warmly; "
+            "do NOT pitch a new unlock]"
+        )
+    text = (msg.get("text") or "").strip()
+    has_media = bool(msg.get("hasMedia") or msg.get("mediaUuids"))
+    if text or has_media or msg.get("pricing"):
+        return ""
+    # Opaque chat gift bubble (confirmed via live Fanvue API inspect)
+    if mtype in ("SINGLE_RECIPIENT", ""):
+        return (
+            "[fan sent you a Fanvue chat gift — react warmly like he spoiled you; "
+            "do NOT pitch a new unlock]"
+        )
+    return ""
+
+
+def fan_message_display_text(msg: dict) -> str:
+    """Text body, media stub, or tip/gift stub for a fan message."""
+    text = (msg.get("text") or "").strip()
+    if text:
+        return text
+    has_media = bool(msg.get("hasMedia") or msg.get("mediaUuids"))
+    if not has_media:
+        return fan_tip_or_gift_stub(msg)
+    mtype = (msg.get("mediaType") or "").lower()
+    if "audio" in mtype:
+        return "[fan sent a voice note / audio]"
+    if "video" in mtype:
+        return "[fan sent a video]"
+    return "[fan sent a photo]"
+
+
 def fanvue_messages_to_turns(
     messages: List[dict],
     fan_uuid: str,
@@ -130,34 +198,23 @@ def fanvue_messages_to_turns(
         else:
             continue
         text = (msg.get("text") or "").strip()
-        if not text and (msg.get("hasMedia") or msg.get("mediaUuids")):
+        if not text and role == "user":
+            text = fan_message_display_text(msg)
+        elif not text and (msg.get("hasMedia") or msg.get("mediaUuids")):
             mtype = (msg.get("mediaType") or "").lower()
             priced = bool(msg.get("pricing"))
-            if role == "user":
-                if "audio" in mtype:
-                    text = "[fan sent a voice note / audio]"
-                elif "video" in mtype:
-                    text = "[fan sent a video]"
-                else:
-                    text = "[fan sent a photo]"
-            elif priced:
+            if priced:
                 unlocked = bool(msg.get("purchasedAt"))
-                price = None
-                usd = (msg.get("pricing") or {}).get("USD") or {}
-                if usd.get("price") is not None:
-                    try:
-                        price = float(usd["price"]) / 100.0
-                    except (TypeError, ValueError):
-                        price = None
+                price = tip_amount_usd(msg)
                 price_bit = f" ${price:.0f}" if price is not None else ""
                 if unlocked:
                     text = f"[you locked a paid photo{price_bit} — HE UNLOCKED IT]"
                 else:
                     text = f"[you locked a paid photo{price_bit} — still locked / unpaid]"
             elif "audio" in mtype:
-                text = (text + " " if text else "") + "[you sent a VOICE NOTE — free audio, not a photo]"
+                text = "[you sent a VOICE NOTE — free audio, not a photo]"
             else:
-                text = (text + " " if text else "") + "[you sent a FREE photo — unlocked gift]"
+                text = "[you sent a FREE photo — unlocked gift]"
         elif text and role == "assistant" and (msg.get("hasMedia") or msg.get("mediaUuids")):
             mtype = (msg.get("mediaType") or "").lower()
             if "audio" in mtype and "[voice note" not in text.lower():
@@ -165,10 +222,6 @@ def fanvue_messages_to_turns(
             elif msg.get("pricing") and "[locked" not in text.lower() and "[paid" not in text.lower():
                 text = f"{text} [paid photo lock attached]"
         if not text:
-            # Log unknown message types so we can identify gifts, tips, etc.
-            msg_keys = {k: v for k, v in msg.items() if k not in ("uuid", "sender", "createdAt", "updatedAt")}
-            if role == "user" and any(msg_keys.values()):
-                print(f"   [debug] unhandled fan msg keys: {list(msg_keys.keys())} val={str(msg_keys)[:200]}")
             continue
         if turns and turns[-1]["role"] == role:
             turns[-1]["content"] = turns[-1]["content"] + "\n" + text

@@ -43,10 +43,12 @@ from core import (
 )
 from core.reply_engine import (
     _parse_msg_time,
+    fan_message_display_text,
     fanvue_messages_to_turns,
     filter_messages_for_context,
     generate_emma_reply,
     split_into_messages,
+    tip_amount_usd,
 )
 from core.reply_v2 import generate_reply_v2
 from core.intent_router import route as route_intent
@@ -249,23 +251,8 @@ def _check_last_ppv(messages: list, creator_uuid: str, mem: dict):
 
 
 def _fan_message_text(msg: dict) -> str:
-    """Text body, or a stub when the fan sent media with no caption."""
-    text = (msg.get("text") or "").strip()
-    if text:
-        return text
-    has_media = bool(msg.get("hasMedia") or msg.get("mediaUuids"))
-    if not has_media:
-        # Log unknown non-text non-media fan messages (gifts, tips, reactions, etc.)
-        all_keys = {k: v for k, v in msg.items()
-                    if k not in ("uuid", "sender", "createdAt", "updatedAt", "isRead")}
-        if any(v for v in all_keys.values()):
-            print(f"   [debug:gift?] unknown msg struct: {str(all_keys)[:300]}")
-        return ""
-    # Priced media from fan is rare; treat as photo/video share
-    mtype = (msg.get("mediaType") or "").lower()
-    if "video" in mtype:
-        return "[fan sent a video]"
-    return "[fan sent a photo]"
+    """Text body, media stub, or tip/gift stub."""
+    return fan_message_display_text(msg)
 
 
 def _pending_fan_messages(messages: list, fan_uuid: str, processed: set) -> list:
@@ -679,6 +666,24 @@ def _handle_fan_chat_body(
                     )
                 else:
                     print("   ppv-check: NO active unpaid lock")
+
+        # Tips with a known amount → CLIENT CARD spend (chat gifts often have $0 in API)
+        tip_total = 0.0
+        for m in pending_chrono:
+            amt = tip_amount_usd(m)
+            mtype = (m.get("type") or "").upper()
+            if amt and amt > 0 and (
+                mtype == "TIP" or m.get("tipSource") in ("chat", "post", "media_link")
+            ):
+                tip_total += amt
+        if tip_total > 0:
+            try:
+                mem = fan_memory.record_purchase(
+                    fan_uuid, tip_total, fan_handle=fan_handle
+                )
+                print(f"   tip: recorded ${tip_total:g} spend")
+            except Exception as exc:
+                print(f"   tip: record_purchase failed: {exc}")
 
         snippets = [
             (m.get("text") or "")[:120]
