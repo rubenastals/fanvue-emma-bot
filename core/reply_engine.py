@@ -506,13 +506,7 @@ def generate_emma_reply(
     if voice_will_send:
         turn_blocks.append(
             "VOICE NOTE THIS TURN: Free sensual audio attaches AFTER your text. "
-            "Tease escúchame briefly. You DO send voice notes — never say solo fotos or no grabar."
-        )
-    elif _thread_mentions_voice(turns, fan_message):
-        turn_blocks.append(
-            "FAN WANTS AUDIO (read history): No voice note this turn. "
-            "Do NOT promise audio, escúchame, or 🎙️. "
-            "Do NOT say 'solo fotos / no grabar' — if you cannot send voice, be honest in text only."
+            "Tease it briefly — intimate, not salesy. Never say solo fotos or no grabar."
         )
 
     if not lean:
