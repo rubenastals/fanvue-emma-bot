@@ -285,6 +285,124 @@ _SELLS_HER_LOCK = re.compile(
 )
 
 
+# Fan pretends he saw / liked / opened a lock he never paid for
+_FAN_CLAIMS_SAW_PPV = re.compile(
+    r"(?i)\b("
+    r"ya\s+la\s+(vi|abr[ií]|desbloque\w*|compr[eé]|pagu[eé])|"
+    r"la\s+(vi|abr[ií]|desbloque[eé]|compr[eé])|"
+    r"(i\s+)?(already\s+)?(opened|unlocked|bought|paid\s+for)\s+(it|the\s+photo)|"
+    r"(i\s+)?(saw|seen)\s+(it|the\s+photo|that\s+photo)|"
+    r"qu[eé]\s+rica\s+(la|esa|esta)\s+foto|"
+    r"(la|esa|esta)\s+(última|ultima)?\s*foto\s+"
+    r"(está|esta|estaba|era|fue)\s+(muy\s+)?"
+    r"(buena|guarra|rica|hot)"
+    r")\b"
+)
+
+# "me ha gustado mucho la ultima foto" / "liked the last photo"
+_FAN_LIKED_LAST_PHOTO = re.compile(
+    r"(?i)\b("
+    r"(me\s+ha\s+gustado|me\s+gust[oó]|me\s+encant[oó]|liked|loved).{0,40}"
+    r"(última|ultima|last|esa|esta|la)\s+(foto|photo|pic|imagen)|"
+    r"(última|ultima|last)\s+(foto|photo|pic).{0,20}"
+    r"(gust|like|encant|buena|guarra|hot|rica)"
+    r")\b"
+)
+
+# Emma validates that he saw / liked content he never unlocked
+_VALIDATES_UNSEEN_PPV = re.compile(
+    r"(?i)\b("
+    r"me\s+alegro\s+que\s+te\s+gust|"
+    r"qu[eé]\s+bien\s+que\s+te\s+gust|"
+    r"glad\s+you\s+(liked|enjoyed)|"
+    r"happy\s+you\s+(liked|enjoyed)|"
+    r"since\s+you\s+(liked|enjoyed)|"
+    r"ya\s+que\s+te\s+gust|"
+    r"esa\s+era\s+solo|"
+    r"esa\s+era\s+un\s+poquit|"
+    r"that\s+was\s+just\s+a\s+(little|taste|tease)|"
+    r"that\s+was\s+only\s+a\s+(little|taste|tease)|"
+    r"qu[eé]\s+te\s+pareci[oó]|"
+    r"how\s+did\s+you\s+like|"
+    r"ya\s+la\s+viste|"
+    r"you\s+(already\s+)?(saw|opened|unlocked)\s+it|"
+    r"sab[ií]a\s+que\s+te\s+(iba\s+a\s+)?gust"
+    r")\b"
+)
+
+_PURCHASE_CLEAR_REASONS = frozenset(
+    {"purchased", "purchased_or_forbidden", "bought"}
+)
+
+
+def fan_claims_saw_ppv(fan_message: str) -> bool:
+    """True if fan implies he saw/liked/opened a photo lock."""
+    text = (fan_message or "").strip()
+    if not text:
+        return False
+    return bool(
+        _FAN_CLAIMS_SAW_PPV.search(text) or _FAN_LIKED_LAST_PHOTO.search(text)
+    )
+
+
+def validates_unseen_ppv(reply: str) -> bool:
+    """True if Emma treats unpaid/expired lock as already seen and liked."""
+    text = (reply or "").strip()
+    if not text:
+        return False
+    return bool(_VALIDATES_UNSEEN_PPV.search(text))
+
+
+def last_ppv_never_bought(
+    mem: Optional[dict],
+    ppv_status: Optional[dict] = None,
+    *,
+    within_hours: float = 3.0,
+) -> bool:
+    """
+    True when the latest timed PPV was never purchased — still unpaid,
+    or recently expired/unsent without payment.
+    """
+    if ppv_status and ppv_status.get("purchased"):
+        return False
+    if ppv_status and ppv_status.get("active"):
+        return True
+
+    mem = mem or {}
+    reason = str(mem.get("last_ppv_expire_reason") or "").strip().lower()
+    if reason in _PURCHASE_CLEAR_REASONS:
+        return False
+
+    from datetime import datetime, timedelta, timezone
+
+    def _within(raw: Any) -> bool:
+        if not raw:
+            return False
+        try:
+            ts = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            return datetime.now(timezone.utc) - ts <= timedelta(hours=within_hours)
+        except (TypeError, ValueError):
+            return False
+
+    # Recently expired/unsent without purchase
+    if _within(mem.get("last_ppv_expired_at")):
+        return True
+
+    # Recent paid offer, zero spender, never cleared as purchased
+    purchases = int(mem.get("purchases") or 0)
+    spent = float(mem.get("total_spent") or 0)
+    if (
+        purchases <= 0
+        and spent <= 0
+        and _within(mem.get("last_ppv_at"))
+        and (mem.get("last_ppv_media_uuid") or mem.get("last_ppv_label"))
+    ):
+        return True
+    return False
+
+
 def invented_lock_wait_minutes(
     reply: str, *, minutes_ago: Optional[int] = None
 ) -> bool:

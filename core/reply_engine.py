@@ -578,6 +578,44 @@ def generate_emma_reply(
             "- Do NOT claim you've been waiting longer than LOCK STATUS."
         )
 
+    # Fan bluffs that he saw/liked a lock he never paid for (common after expiry)
+    never_bought = scheme_guard.last_ppv_never_bought(mem, ppv_status)
+    fan_saw_bluff = never_bought and scheme_guard.fan_claims_saw_ppv(
+        fan_message or ""
+    )
+    if never_bought and not voice_will_send:
+        if status_active or unpaid_gate:
+            if fan_saw_bluff:
+                turn_blocks.append(
+                    "FAN BLUFF — CRITICAL:\n"
+                    "- He claims he liked/saw the locked photo, but LOCK STATUS says "
+                    "he has NOT purchased it. He cannot have seen it.\n"
+                    "- Do NOT say 'me alegro que te gustara' / 'glad you liked it' / "
+                    "'esa era solo un poquito'.\n"
+                    "- Call the bluff playfully and push THIS unlock — scroll up."
+                )
+        else:
+            # Expired / none — always remind; louder when he claims he liked it
+            if fan_saw_bluff:
+                turn_blocks.append(
+                    "FAN BLUFF — CRITICAL:\n"
+                    "- Last timed PPV expired or was unsent WITHOUT purchase. "
+                    "He NEVER unlocked that photo. He is lying or teasing.\n"
+                    "- HARD BAN: 'me alegro que te gustara', 'glad you liked it', "
+                    "'esa era solo un poquito', 'qué te pareció'.\n"
+                    "- Call the bluff with a smirk: he never opened it / it vanished unpaid / "
+                    "he can't know how hot it was.\n"
+                    "- Do NOT apologize or gift a replacement for content he never bought.\n"
+                    "- Flirt / reconnect; only sell if SELL STATUS says ATTACHING."
+                )
+            else:
+                turn_blocks.append(
+                    "LAST PPV TRUTH:\n"
+                    "- The previous timed lock left WITHOUT purchase (expired/unsent). "
+                    "He never saw that photo.\n"
+                    "- Do not talk about it as if he already enjoyed it."
+                )
+
     if delivery_truth and delivery_truth.get("free_in_chat") is True:
         turn_blocks.append(
             "DELIVERY TRUTH: your FREE photo IS already in this chat. "
@@ -921,6 +959,52 @@ def generate_emma_reply(
                 },
             ]
             reply = _call(fix_msgs)
+
+    # Fan never bought last PPV but reply validates he saw/liked it
+    if never_bought and scheme_guard.validates_unseen_ppv(reply):
+        print("   purchase bluff: reply validated unseen PPV — rewriting")
+        if status_active or unpaid_gate:
+            rewrite_bluff = (
+                "REWRITE HARD: He has NOT purchased the waiting lock. He cannot have "
+                "liked/seen it. Remove every 'glad you liked' / 'esa era solo' validation. "
+                "Call the bluff playfully and push THIS unlock."
+                if not want_spanish
+                else (
+                    "REESCRIBE DURO: NO ha comprado el candado que espera. No puede haber "
+                    "visto/gustado esa foto. Quita 'me alegro que te gustara' / 'esa era solo'. "
+                    "Llama el farol con picardía y empuja ESTE unlock."
+                )
+            )
+        else:
+            rewrite_bluff = (
+                "REWRITE HARD: Last PPV expired WITHOUT purchase — he never unlocked it. "
+                "Remove every validation that he liked/saw it ('glad you liked', "
+                "'esa era solo un poquito'). Call the bluff playfully. Do not apologize "
+                "or gift a replacement. Flirt/reconnect only unless a NEW lock attaches."
+                if not want_spanish
+                else (
+                    "REESCRIBE DURO: El último PPV caducó SIN compra — nunca lo desbloqueó. "
+                    "Quita toda validación de que le gustó/vio ('me alegro que te gustara', "
+                    "'esa era solo un poquito'). Llama el farol con picardía. No pidas perdón "
+                    "ni regales reemplazo. Solo flirteo/reconexión salvo que se adjunte un candado NUEVO."
+                )
+            )
+        fix_msgs = messages + [
+            {"role": "assistant", "content": reply},
+            {"role": "user", "content": rewrite_bluff},
+        ]
+        reply = _call(fix_msgs)
+        if scheme_guard.validates_unseen_ppv(reply):
+            reply = (
+                "Mmm… mentiroso 😏 esa foto se fue sin que la abrieras. "
+                "No puedes saber lo guarra que era… todavía."
+                if want_spanish
+                else (
+                    "Mmm… liar 😏 that photo left without you unlocking it. "
+                    "You can't know how filthy it was… yet."
+                )
+            )
+            print("   🔒 unseen-ppv rewrite → bluff fallback")
 
     # Invented candado when LOCK STATUS=none → forced rewrite (same rail as delivery)
     if no_lock and not offer and scheme_guard.invented_lock_claim(
