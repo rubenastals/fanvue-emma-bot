@@ -58,6 +58,11 @@ from db import redis_client as redis_store
 _shutting_down = False
 _in_fan_turn = False
 
+# Double-reply guard: track when Emma last sent to each fan (in-process, lightweight).
+import time as _time
+_last_reply_at: dict[str, float] = {}
+_DOUBLE_REPLY_GUARD_SEC = 20  # ignore same fan within this window after a successful send
+
 
 def _request_shutdown(signum=None, frame=None) -> None:
     global _shutting_down
@@ -1257,6 +1262,7 @@ def _handle_fan_chat_body(
         if bubbles_sent > 0 or free_sent or ppv_sent or voice_sent:
             for uid in pending_ids:
                 _mark_processed(processed, uid)
+            _last_reply_at[fan_uuid] = _time.monotonic()
         else:
             print("   ⚠️ no bubble sent — leaving fan msgs unprocessed for retry")
 
@@ -1443,6 +1449,10 @@ def poll_once(fv: FanvueConnector, processed: set, creator_uuid: str) -> int:
         if fan_handle.lower().lstrip("@") in blocked_handles:
             continue
         if any(fan_uuid.startswith(b) or b == fan_uuid for b in blocked_handles):
+            continue
+        # Double-reply guard: skip if Emma just replied to this fan very recently
+        last_sent = _last_reply_at.get(fan_uuid, 0)
+        if _time.monotonic() - last_sent < _DOUBLE_REPLY_GUARD_SEC:
             continue
         try:
             handled += _handle_fan_chat(
