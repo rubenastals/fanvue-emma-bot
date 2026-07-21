@@ -99,12 +99,18 @@ def is_mixed_or_wrong(text: str, *, want_spanish: bool) -> bool:
 def language_system_block(want_spanish: bool) -> str:
     if want_spanish:
         return (
-            "LANGUAGE LOCK (STRICT):\n"
-            "- Write this ENTIRE reply in correct, natural Spanish only.\n"
-            "- Zero English words. Zero Spanglish.\n"
-            "- Perfect spelling in YOUR words only — never pedantically 'fix' or quote back his typos.\n"
-            "- Do NOT blame the chat app, translator, or glitches — stay in character.\n"
-            "- Never use the word 'caro' as a pet name."
+            "LANGUAGE LOCK (STRICT) — español nativo, no traducción mental del inglés:\n"
+            "- TODO el mensaje en español correcto y natural. Cero inglés. Cero Spanglish.\n"
+            "- TÚ con el fan (nunca usted). Concordancia de género OBLIGATORIA:\n"
+            "  · TÚ (Emma) = femenino: mojada, excitada, desnuda, guarra, lista, tuya.\n"
+            "  · ÉL (fan) = masculino: guapo, rico, listo, tuyo, mojado/excitado si hablas DE él.\n"
+            "  · Nunca le llames guapa/hermosa/preciosa/bonita; nunca digas 'estoy mojado/excitado'.\n"
+            "- Tiempos verbales coherentes en la misma frase (no mezcles pretérito/presente al azar).\n"
+            "- Persona correcta: yo estoy / tú estás / me tienes… Nunca 'tú estoy' ni 'yo estás'.\n"
+            "- Frases cortas de chat real (España/Latam neutro). No calcos del inglés "
+            "('estoy getting wet', 'you make me so…' calcado).\n"
+            "- Ortografía limpia en TUS palabras — no corrijas ni cites sus faltas.\n"
+            "- Nunca 'caro/papi/nena/nene' como apodo. No culpes a la app/traductor."
         )
     return (
         "LANGUAGE LOCK (STRICT):\n"
@@ -121,12 +127,69 @@ def language_system_block(want_spanish: bool) -> str:
 def rewrite_instruction(want_spanish: bool) -> str:
     if want_spanish:
         return (
-            "Rewrite your last reply in correct Spanish only. "
-            "No English. Clean grammar in your words — don't 'fix' his typos. "
-            "Keep the same meaning and flirty tone."
+            "REESCRIBE tu último mensaje en español correcto y natural. "
+            "Cero inglés. Concordancia: tú=femenina (mojada/excitada/guarra); "
+            "él=masculino (guapo, no guapa). Tiempos verbales coherentes; "
+            "yo/tú bien conjugados. Mismo tono pícaro; no corrijas sus faltas."
         )
     return (
         "Rewrite your last reply in correct English only. "
         "No Spanish words at all. No Spanglish. Clean grammar in your words — don't 'fix' his typos. "
         "Keep the same meaning and flirty tone. Native American English."
+    )
+
+
+# Emma (female) using masculine self-agreement — common DeepSeek slip
+_BROKEN_SELF_MASC = re.compile(
+    r"(?i)\b("
+    r"(estoy|quedo|me\s+siento|ando)\s+(mojado|excitado|desnudo|listo|abierto|guarro)|"
+    r"me\s+tiene\s+mojado|"
+    r"soy\s+(muy\s+)?(guarro|sucio)|"
+    r"dej[aá]me\s+(mojado|excitado)"
+    r")\b"
+)
+
+# Calling HIM with feminine nicknames
+_CALL_HIM_FEM = re.compile(
+    r"(?i)\b("
+    r"(ay+|eh+|hola|vamos|dale|ven)\s*,?\s*(guapa|hermosa|preciosa|bonita|rica)|"
+    r"mi\s+(guapa|hermosa|preciosa|bonita|nena)|"
+    r"(eres|estás)\s+(muy\s+)?(guapa|hermosa|preciosa|bonita)"
+    r")\b"
+)
+
+# Broken person / conjugation crumbs
+_BROKEN_PERSON = re.compile(
+    r"(?i)\b("
+    r"(t[uú])\s+(estoy|somos|soy|éramos)|"
+    r"(yo)\s+(estás|eres|sois)|"
+    r"(nosotros)\s+(estoy|estás)|"
+    r"tu\s+está\b|"  # missing accent often marks "tu esta" calque; still flag tu+está mismatch vibes
+    r"me\s+hacer\b|te\s+hacer\b|"
+    r"estoy\s+getting|you\s+make\s+me|"
+    r"i'?m\s+\w+ando"  # half English gerund salad
+    r")\b"
+)
+
+
+def looks_broken_spanish(text: str) -> bool:
+    """Cheap detectors for gender/person slips that kill immersion."""
+    t = (text or "").strip()
+    if not t:
+        return False
+    return bool(
+        _BROKEN_SELF_MASC.search(t)
+        or _CALL_HIM_FEM.search(t)
+        or _BROKEN_PERSON.search(t)
+    )
+
+
+def grammar_rewrite_instruction() -> str:
+    return (
+        "REESCRIBE DURO en español nativo correcto. "
+        "Arregla SOLO gramática: género (Emma femenina: mojada/excitada/desnuda/guarra; "
+        "fan masculino: guapo/rico — nunca guapa/hermosa para él), "
+        "conjugación yo/tú, y tiempos coherentes. "
+        "Nada de calcos del inglés. Mismo significado y tono sexual/dulce. "
+        "No añadas candados ni precios nuevos."
     )

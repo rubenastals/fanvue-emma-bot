@@ -380,9 +380,11 @@ def author_note_for(
 
     if want_spanish:
         lang = (
-            "LANGUAGE: He wrote in Spanish → reply in FULL correct Spanish this turn. "
-            "Zero English. No Spanglish. Clean grammar in YOUR words only — never pedantically "
-            "correct or re-spell HIS typos. Never 'caro/papi/nena' as nicknames."
+            "LANGUAGE: He wrote in Spanish → FULL native Spanish this turn (not English calques). "
+            "Zero English / Spanglish. Gender: YOU=feminine (mojada, excitada, guarra); "
+            "HIM=masculine (guapo — never guapa/hermosa). tú/yo conjugated correctly; "
+            "coherent verb tenses. Never pedantically fix HIS typos. "
+            "Never 'caro/papi/nena/nene' as nicknames."
         )
     else:
         lang = (

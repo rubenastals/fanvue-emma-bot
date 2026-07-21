@@ -260,6 +260,17 @@ def generate_reply_v2(
         ).strip()
         print("   💵 v2 price-truth: stripped invent (SELL=NONE)")
 
+    if want_spanish and language.looks_broken_spanish(reply):
+        print("   grammar v2: broken Spanish — rewriting")
+        fix = messages + [
+            {"role": "assistant", "content": reply},
+            {"role": "user", "content": language.grammar_rewrite_instruction()},
+        ]
+        kwargs["messages"] = fix
+        reply = (
+            _client().chat.completions.create(**kwargs).choices[0].message.content or ""
+        ).strip()
+
     decision.pack_id = route_result.pack_id or ""
     decision.technique = "v2"
     decision.lock_active = lock_active

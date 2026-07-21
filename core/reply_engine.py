@@ -1193,6 +1193,29 @@ def generate_emma_reply(
         want_spanish=want_spanish,
     )
 
+    # Spanish gender / conjugation slips (common after English rewrite cascades)
+    if want_spanish and language.looks_broken_spanish(reply):
+        print("   grammar: broken Spanish gender/person — rewriting")
+        fix_msgs = messages + [
+            {"role": "assistant", "content": reply},
+            {
+                "role": "user",
+                "content": language.grammar_rewrite_instruction(),
+            },
+        ]
+        reply = _call(fix_msgs)
+        if language.looks_broken_spanish(reply):
+            # Second pass with the language rewrite (also Spanish-native)
+            fix_msgs = messages + [
+                {"role": "assistant", "content": reply},
+                {
+                    "role": "user",
+                    "content": language.rewrite_instruction(True),
+                },
+            ]
+            reply = _call(fix_msgs)
+            print("   grammar: second Spanish polish")
+
     # Scheme meta + deterministic guard
     decision.pack_id = pack_id or ""
     decision.technique = tech_name or ""
