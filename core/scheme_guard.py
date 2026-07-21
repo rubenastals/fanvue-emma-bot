@@ -305,6 +305,30 @@ def recent_openings(
     return out[-n:]
 
 
+_EMOJI_RE = re.compile(
+    r"[\U0001F300-\U0001FAFF\U00002700-\U000027BF"
+    r"\U0001F600-\U0001F64F\U0001F900-\U0001F9FF"
+    r"\u2600-\u26FF\u2700-\u27BF]+",
+    flags=re.UNICODE,
+)
+
+
+def recent_emojis(
+    history_turns: Optional[List[Dict[str, Any]]], *, n: int = 6
+) -> List[str]:
+    """Emoji combos used in Emma's last n turns — used to ban repeats."""
+    seen: List[str] = []
+    if not history_turns:
+        return seen
+    for turn in history_turns:
+        if (turn.get("role") or "") != "assistant":
+            continue
+        hits = _EMOJI_RE.findall(str(turn.get("content") or ""))
+        if hits:
+            seen.append(" ".join(hits))
+    return seen[-n:]
+
+
 def sticky_ay_open(text: str) -> bool:
     """True when reply opens with the overused 'Ay, qué rico/pillín…' stamp."""
     first = (text or "").strip().split("\n", 1)[0]

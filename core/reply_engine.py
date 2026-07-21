@@ -383,6 +383,7 @@ def generate_emma_reply(
 
         cooling = _looks_cooling(fan_message, turns)
         banned_opens = scheme_guard.recent_openings(turns, n=5)
+        recent_emojis = scheme_guard.recent_emojis(turns, n=4)
         ts = strategy_prompt.truth_state(
             lock_active=lock_active,
             offer_price=float(offer.get("price") or 0) if offer else None,
@@ -392,6 +393,11 @@ def generate_emma_reply(
         )
         if ts:
             turn_blocks.append(ts)
+        if recent_emojis:
+            turn_blocks.append(
+                f"EMOJI BAN — you used these recently: {recent_emojis}. "
+                "Do NOT repeat these combos. Pick something different or use no emoji."
+            )
         print(
             f"   simple: cooling={cooling} rival_banned={ban_rival} "
             f"banned_opens={len(banned_opens)} pack={pack_id}"
