@@ -191,7 +191,7 @@ def _generate_script(
         "CRITICAL: continue the SAME beat as Emma's last text ? same mood, topic, energy. "
         "If her text apologized, cooled down, or talked about spam/pressure ? soft intimate "
         "voice, NOT a random porn script. If her text is already filthy/horny ? breathy and dirty. "
-        "15-35 words. Natural pauses with ? Sound spontaneous. "
+        "15-35 words. Natural pauses with ... Sound spontaneous. "
         "NEVER mention photos, prices, PPV, unlocking, captions, or emojis. "
         "Output ONLY spoken words. No stage directions, brackets, quotes, or emoji."
     )
@@ -219,7 +219,7 @@ def _generate_script(
         raw = (resp.choices[0].message.content or "").strip()
         raw = raw.strip('"\'')
         raw = re.sub(r"\[.*?\]", "", raw).strip()
-        raw = re.sub(r"[\U0001F300-\U0001FAFF??????????]+", "", raw).strip()
+        raw = re.sub(r"[\U0001F300-\U0001FAFF]+", "", raw).strip()
         if raw and len(raw) <= int(getattr(config, "VOICE_NOTE_MAX_CHARS", 320) or 320):
             return raw
     except Exception:
@@ -232,27 +232,33 @@ def _fallback_script(want_spanish: bool, reply: str = "") -> str:
     soft = bool(
         re.search(
             r"(?i)\b("
-            r"sorry|perdon|perd?n|disculp|spam|pressure|presi?n|presion|"
-            r"you're right|tienes raz[o?]n|me equivoqu|my bad|okay"
+            r"sorry|perdon|perd[o\u00f3]n|disculp|spam|pressure|presi[o\u00f3]n|presion|"
+            r"you're right|tienes raz[o\u00f3]n|me equivoqu|my bad|okay"
             r")\b",
             reply or "",
         )
     )
     if soft:
         if want_spanish:
-            return "Mmm? perdona, de verdad? no quer?a agobiarte? solo? te ten?a en la cabeza?"
-        return "Mmm? sorry, for real? I didn't mean to push? I just? had you on my mind?"
+            return (
+                "Mmm... perdona, de verdad... no queria agobiarte... "
+                "solo... te tenia en la cabeza..."
+            )
+        return (
+            "Mmm... sorry, for real... I didn't mean to push... "
+            "I just... had you on my mind..."
+        )
     if want_spanish:
         opts = [
-            "Mmm? me tienes en la cabeza ahora mismo? no puedo soltarte?",
-            "Joder? lo que me acabas de decir? me ha dejado temblando?",
-            "Ah? sigue habl?ndome as?? me vuelve loca?",
+            "Mmm... me tienes en la cabeza ahora mismo... no puedo soltarte...",
+            "Joder... lo que me acabas de decir... me ha dejado temblando...",
+            "Ah... sigue hablandome asi... me vuelve loca...",
         ]
     else:
         opts = [
-            "Mmm? you got me stuck on what you just said? can't shake it?",
-            "Fuck? that last message? I'm still thinking about it?",
-            "Ah? keep talking to me like that? you wreck me?",
+            "Mmm... you got me stuck on what you just said... can't shake it...",
+            "Fuck... that last message... I'm still thinking about it...",
+            "Ah... keep talking to me like that... you wreck me...",
         ]
     return random.choice(opts)
 
@@ -297,13 +303,13 @@ def maybe_send(
     # Don't drop a random filthy audio after an apology / cooling text
     if not fan_asked_voice(fan_message) and re.search(
         r"(?i)\b("
-        r"sorry|perdon|perdón|disculp|spam|pressure|presión|"
-        r"you're right|tienes raz[oó]n|me equivoqu|my bad|"
-        r"no (quería|queria) |didn't mean"
+        r"sorry|perdon|perd[o\u00f3]n|disculp|spam|pressure|presi[o\u00f3]n|"
+        r"you're right|tienes raz[o\u00f3]n|me equivoqu|my bad|"
+        r"no (quer[i\u00ed]a|queria) |didn't mean"
         r")\b",
         reply or "",
     ):
-        print("   ??? voice skipped: text is apology/cooling ? wrong beat for audio")
+        print("   voice skipped: text is apology/cooling ? wrong beat for audio")
         return False
 
     want_spanish = language.fan_wants_spanish(fan_message, mem)
