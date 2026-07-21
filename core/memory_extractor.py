@@ -32,7 +32,7 @@ Return ONLY valid JSON:
   "profile": {"name": "", "age": "", "city": "", "job": "", "relationship": "", "kids": "", "hobbies": ""},
   "facts": ["short durable fact", "..."],
   "avoid": ["thing Emma must never invent or repeat wrongly"],
-  "summary": "2-4 sentences about who he is and the relationship so far"
+  "summary": "2-4 sentences: who he is + relationship + CURRENT open thread (what you two are mid-talking about right now)"
 }
 
 Rules:
@@ -46,6 +46,8 @@ Rules:
   "his dog died", "trouble with his boss", etc. These are CRITICAL for Emma's memory.
 - avoid: corrections like "his name is not Jamie", "he did not send a car gift".
 - summary: grounded in evidence; if little is known, keep it short.
+  ALWAYS include the live thread beat when clear (e.g. "grieving his dog and asking for comfort",
+  "haggling a $4 lingerie lock", "angry about spam PPVs but still flirting"). This stops Emma restarting.
 - Max 6 new facts, max 3 avoid items this turn.
 - No moralizing. Adult chat is fine."""
 

@@ -661,6 +661,130 @@ def opening_repeats_recent(
     return False
 
 
+_QUESTION_CHUNK = re.compile(r"[^?\n]+[?¿]")
+
+
+def _norm_q(text: str) -> str:
+    t = (text or "").lower()
+    t = re.sub(r"[^\w\sÁÉÍÓÚÜÑáéíóúüñ]", " ", t, flags=re.UNICODE)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def recent_emma_questions(
+    history_turns: Optional[List[Dict[str, Any]]], *, n_turns: int = 3
+) -> List[str]:
+    """Questions Emma already asked in her last few turns."""
+    if not history_turns:
+        return []
+    out: List[str] = []
+    seen = 0
+    for turn in reversed(history_turns):
+        if (turn.get("role") or "") != "assistant":
+            continue
+        seen += 1
+        body = str(turn.get("content") or "")
+        for m in _QUESTION_CHUNK.findall(body):
+            q = _norm_q(m)
+            if len(q) >= 12:
+                out.append(q)
+        if seen >= n_turns:
+            break
+    return out
+
+
+def repeats_recent_question(
+    reply: str, history_turns: Optional[List[Dict[str, Any]]], *, n_turns: int = 3
+) -> bool:
+    """True if this reply re-asks a question Emma already asked recently."""
+    qs = recent_emma_questions(history_turns, n_turns=n_turns)
+    if not qs:
+        return False
+    for m in _QUESTION_CHUNK.findall(reply or ""):
+        q = _norm_q(m)
+        if len(q) < 12:
+            continue
+        q_toks = set(q.split())
+        for prev in qs:
+            p_toks = set(prev.split())
+            if not q_toks or not p_toks:
+                continue
+            overlap = len(q_toks & p_toks) / max(1, min(len(q_toks), len(p_toks)))
+            if overlap >= 0.72 or q in prev or prev in q:
+                return True
+    return False
+
+
+def too_similar_to_last_assistant(
+    reply: str, history_turns: Optional[List[Dict[str, Any]]]
+) -> bool:
+    """True if reply is nearly the same beat as Emma's previous message."""
+    if not history_turns:
+        return False
+    last = ""
+    for turn in reversed(history_turns):
+        if (turn.get("role") or "") == "assistant":
+            last = str(turn.get("content") or "")
+            break
+    if not last.strip() or not (reply or "").strip():
+        return False
+    a = set(_norm_q(reply).split())
+    b = set(_norm_q(last).split())
+    if len(a) < 4 or len(b) < 4:
+        return False
+    return len(a & b) / max(len(a), len(b)) >= 0.65
+
+
+def continuity_loop(reply: str, history_turns: Optional[List[Dict[str, Any]]]) -> bool:
+    """Any hard continuity failure worth a rewrite."""
+    return (
+        opening_repeats_recent(reply, history_turns, n=4)
+        or repeats_recent_question(reply, history_turns, n_turns=3)
+        or too_similar_to_last_assistant(reply, history_turns)
+    )
+
+
+def thread_beat_block(
+    history_turns: Optional[List[Dict[str, Any]]],
+    mem: Optional[dict] = None,
+) -> str:
+    """
+    Compact continuity cue (not a second persona wall).
+    Keeps her on THIS long chat: summary + open questions + last fan beat.
+    """
+    mem = mem or {}
+    lines = [
+        "THREAD BEAT — continue THIS long chat (do not restart / do not loop):",
+    ]
+    summary = (mem.get("summary") or "").strip()
+    if summary:
+        lines.append(f"- Rolling story: {summary[:240]}")
+    facts = [str(f).strip() for f in (mem.get("facts") or []) if str(f).strip()]
+    if facts:
+        lines.append("- Remember: " + "; ".join(facts[-4:])[:220])
+
+    # Last fan message (what to answer)
+    last_fan = ""
+    for turn in reversed(history_turns or []):
+        if (turn.get("role") or "") == "user":
+            last_fan = str(turn.get("content") or "").strip().split("\n")[0][:140]
+            break
+    if last_fan:
+        lines.append(f"- He just said: {last_fan}")
+
+    asked = recent_emma_questions(history_turns, n_turns=3)[:3]
+    if asked:
+        lines.append(
+            "- You ALREADY asked (banned to repeat): "
+            + " | ".join(f'"{q[:70]}"' for q in asked)
+        )
+
+    lines.append(
+        "- Advance the thread: reference something real from above, "
+        "answer him, then ONE new beat — never the same question again."
+    )
+    return "\n".join(lines)
+
+
 def summarize(errors: List[Dict[str, Any]]) -> str:
     if not errors:
         return "scheme_ok"

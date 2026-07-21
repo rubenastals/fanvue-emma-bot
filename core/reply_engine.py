@@ -460,6 +460,10 @@ def generate_emma_reply(
                 f"EMOJI BAN — you used these recently: {recent_emojis}. "
                 "Do NOT repeat these combos. Pick something different or use no emoji."
             )
+        # Compact continuity — keep her in the long thread without a fat CONTEXT wall
+        beat = scheme_guard.thread_beat_block(turns, mem)
+        if beat:
+            turn_blocks.append(beat)
         if pack_id == "phase_hook" and msgs_n <= 2:
             turn_blocks.append(
                 "WELCOME THIS TURN (first messages):\n"
@@ -1307,6 +1311,38 @@ def generate_emma_reply(
         messages=messages,
         want_spanish=want_spanish,
     )
+
+    # Continuity: kill loops / repeated questions / same-beat replies
+    if scheme_guard.continuity_loop(reply, turns):
+        print("   continuity: loop/repeat detected — rewriting")
+        fix_msgs = messages + [
+            {"role": "assistant", "content": reply},
+            {
+                "role": "user",
+                "content": (
+                    "REWRITE HARD: You repeated an opening, re-asked a question you "
+                    "already asked, or stayed on the same beat as your last message. "
+                    "Continue the LONG thread: reference something concrete from the "
+                    "CHAT HISTORY / THREAD BEAT, answer what he just said, and move "
+                    "ONE step forward. No repeated questions. No generic restart."
+                    if not want_spanish
+                    else (
+                        "REESCRIBE DURO: Repetiste un opening, repreguntaste algo que "
+                        "ya preguntaste, o te quedaste en el mismo beat que tu último "
+                        "mensaje. Continúa el hilo LARGO: menciona algo concreto del "
+                        "CHAT HISTORY / THREAD BEAT, responde a lo que acaba de decir, "
+                        "y avanza UN paso. Sin preguntas repetidas. Sin reiniciar."
+                    )
+                ),
+            },
+        ]
+        reply = _call(fix_msgs)
+        if scheme_guard.continuity_loop(reply, turns):
+            # Strip trailing question if she's looping questions
+            if scheme_guard.repeats_recent_question(reply, turns):
+                reply = re.sub(r"[¿?][^¿?]*[?¿]\s*$", "", reply).strip()
+                reply = re.sub(r"\?\s*$", "", reply).strip()
+            print("   continuity: still sticky — stripped loop question")
 
     # Spanish gender / conjugation slips (common after English rewrite cascades)
     if want_spanish and language.looks_broken_spanish(reply):

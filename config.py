@@ -81,9 +81,10 @@ class Config:
 
     # Chat history fed to DeepSeek (not the whole inbox — recent window only).
     # Too much history → model imitates old bland turns and loses voice consistency.
-    HISTORY_HOURS = int(os.getenv("HISTORY_HOURS", "36"))
-    HISTORY_MAX_MESSAGES = int(os.getenv("HISTORY_MAX_MESSAGES", "36"))
-    HISTORY_MIN_MESSAGES = int(os.getenv("HISTORY_MIN_MESSAGES", "12"))
+    # Slightly wider window so she can reference the long thread without drowning voice.
+    HISTORY_HOURS = int(os.getenv("HISTORY_HOURS", "48"))
+    HISTORY_MAX_MESSAGES = int(os.getenv("HISTORY_MAX_MESSAGES", "48"))
+    HISTORY_MIN_MESSAGES = int(os.getenv("HISTORY_MIN_MESSAGES", "16"))
 
     # V2 brain: one English psychology prompt + recent history (default ON).
     # Old pack/analyst/manipulation path only if REPLY_V2=0.
