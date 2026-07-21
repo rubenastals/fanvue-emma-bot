@@ -11,6 +11,8 @@ AND we are still inside VICTIM_AFTER_SEEN_MINUTES (default 60) of first visto de
 Never the default angle — rotating soft angles otherwise.
 
 If they said goodbye → skip mid-flow nudges; only next-day good morning.
+
+Nudge messages are generated from hardcoded templates (no DeepSeek call).
 """
 from __future__ import annotations
 
@@ -22,22 +24,15 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 
 from core import convo_log, fan_memory, language, persona_time
-from core.reply_engine import (
-    fanvue_messages_to_turns,
-    generate_emma_reply,
-    split_into_messages,
-)
+from core.reply_engine import split_into_messages
 from core.turn_policy import TurnDecision
 
 NUDGE_HOT_MINUTES = int(os.getenv("NUDGE_HOT_MINUTES", "7"))
 NUDGE_COLD_MINUTES = int(os.getenv("NUDGE_COLD_MINUTES", "7"))
-# 1st touch — same gate for hot and cold (user ladder: 7m then 36m)
 NUDGE_FIRST_MINUTES = int(
     os.getenv("NUDGE_FIRST_MINUTES", str(max(NUDGE_HOT_MINUTES, NUDGE_COLD_MINUTES)))
 )
-# 2nd touch after first (absolute silence minutes from Emma's last msg)
 NUDGE_SECOND_MINUTES = int(os.getenv("NUDGE_SECOND_MINUTES", "36"))
-# Back-compat: old NUDGE_FIRST_MINUTES alone → cold first gate
 if os.getenv("NUDGE_FIRST_MINUTES") and not os.getenv("NUDGE_COLD_MINUTES"):
     NUDGE_COLD_MINUTES = int(os.getenv("NUDGE_FIRST_MINUTES", "5"))
 
@@ -66,77 +61,131 @@ _HEAT_WORDS = re.compile(
     r")\b"
 )
 
-# Intelligent alternatives — DeepSeek writes the words; we pick the ANGLE.
-NUDGE_ANGLES: Dict[str, dict] = {
+# ---------------------------------------------------------------------------
+# Template nudges — zero DeepSeek calls
+# ---------------------------------------------------------------------------
+_TEMPLATES: Dict[str, Dict[str, List[str]]] = {
     "unfinished_thread": {
-        "steps": (1,),
-        "weight": 3,
-        "trigger": (
-            "[SYSTEM: He went quiet {minutes}m ago mid-conversation (no goodbye). "
-            "Chat was {heat}. ANGLE = unfinished thread. Pick up the last vibe/topic "
-            "lightly — curiosity, not accusation. 1–2 short lines. Question at the end. "
-            "No selling. No 'you forgot me' / victim guilt. Do NOT mention this note.]"
-        ),
+        "es": [
+            "Oye… te perdí por el camino 😏 ¿Sigues ahí?",
+            "Me dejaste con las ganas… ¿qué pasó? 👀",
+            "Te fuiste justo cuando se estaba poniendo interesante 😒",
+            "Hola?? estás desaparecido 🙄",
+        ],
+        "en": [
+            "Hey… you disappeared on me 😏 Still there?",
+            "You left me hanging… what happened? 👀",
+            "You vanished right when it was getting good 😒",
+            "Hello?? you went ghost on me 🙄",
+        ],
     },
     "soft_checkin": {
-        "steps": (1, 2),
-        "weight": 3,
-        "trigger": (
-            "[SYSTEM: He went quiet {minutes}m ago (conversation left open, {heat}). "
-            "ANGLE = soft check-in. Warm, brief: are you okay / still there / "
-            "did something come up. Cute, not needy walls. 1–2 lines. No selling. "
-            "Do NOT use 'me has olvidado' / heavy guilt. Do NOT mention this note.]"
-        ),
+        "es": [
+            "¿Todo bien? Te quedaste callado de repente 🥺",
+            "Oye, ¿estás bien? Pensé que seguíamos hablando…",
+            "¿Se te fue la luz o me ignoras? 😏",
+            "Eh, ¿sigues vivo? 😂",
+        ],
+        "en": [
+            "Hey, you good? You went quiet on me 🥺",
+            "Everything okay? I thought we were still talking…",
+            "Did you lose signal or are you ignoring me? 😏",
+            "Oi, still alive? 😂",
+        ],
     },
     "playful_brat": {
-        "steps": (1,),
-        "weight": 3,
-        "trigger": (
-            "[SYSTEM: He went quiet {minutes}m ago mid-flow ({heat}). "
-            "ANGLE = playful brat. Light tease that he left you hanging — "
-            "smirk energy, not real hurt. 1–2 lines + question. No selling. "
-            "No victim 'you forgot me'. Do NOT mention this note.]"
-        ),
+        "es": [
+            "Me dejaste con el mensaje en visto y te fuiste… qué malo eres 😒",
+            "Vaya con el hombre misterioso… ¿dónde te metiste? 🙄",
+            "Oye guapo, no puedes desaparecer así 😤",
+            "¿Me ignorás o se te olvidó que estábamos hablando? 😏",
+        ],
+        "en": [
+            "Left me on read and just bounced… rude 😒",
+            "Look at Mr. Mysterious vanishing… where'd you go? 🙄",
+            "Hey babe, you can't just disappear like that 😤",
+            "Are you ignoring me or did you forget we were talking? 😏",
+        ],
     },
     "almost_sent": {
-        "steps": (1, 2),
-        "weight": 2,
-        "trigger": (
-            "[SYSTEM: He went quiet {minutes}m ago ({heat}). "
-            "ANGLE = intermittent FOMO. You were ABOUT to send/share something "
-            "special then noticed he vanished — imply the moment, never claim a "
-            "photo already arrived. 1–2 lines. No hard sell / no price. "
-            "No victim guilt. Do NOT mention this note.]"
-        ),
+        "es": [
+            "Estaba a punto de mandarte algo… y desapareciste 👀",
+            "Iba a sorprenderte con algo pero… ¿te fuiste? 😏",
+            "Tenía algo especial para ti y te esfumaste 😒",
+            "Casi te mando algo muy bueno… ¿apareces o qué? 😏",
+        ],
+        "en": [
+            "Was just about to send you something… and you vanished 👀",
+            "Had a little surprise for you but… you disappeared? 😏",
+            "Had something special and you ghosted me 😒",
+            "Almost sent you something good… you coming back or what? 😏",
+        ],
     },
     "busy_withdrawal": {
-        "steps": (2,),
-        "weight": 3,
-        "trigger": (
-            "[SYSTEM: Still silent after {minutes}m (2nd touch, {heat}). "
-            "ANGLE = busy withdrawal. Warm but you have to go / someone else / "
-            "life — leave an open loop so HE chases. Short. No begging. No selling. "
-            "Do NOT mention this note.]"
-        ),
+        "es": [
+            "Bueno… me voy que tengo cosas que hacer 😏 Escríbeme cuando puedas.",
+            "Oye, me voy un rato. Si vuelves, aquí estaré 😉",
+            "Vale, me pierdo. No tardes mucho 😏",
+            "Me voy, que si no voy a estar esperando toda la noche 😒",
+        ],
+        "en": [
+            "Okay… I'm heading out, got things to do 😏 Write me when you're back.",
+            "Hey, stepping away for a bit. I'll be here if you come back 😉",
+            "Alright, I'm off. Don't keep me waiting too long 😏",
+            "I'm going — I'm not waiting all night you know 😒",
+        ],
     },
     "victim_soft": {
-        "steps": (2,),
-        "weight": 2,
-        "trigger": (
-            "[SYSTEM: He SAW your last message (visto) and still silent {minutes}m "
-            "(inside 1h of visto). ANGLE = soft victim — ONLY now: tiny hurt that "
-            "he forgot you / left you on read — cute needy, never angry, never essay. "
-            "1–2 lines max. No selling. Do NOT mention this note.]"
-        ),
+        "es": [
+            "Lo viste y no contestaste… eso duele un poquito 🥺",
+            "Me dejaste en visto… ¿en serio? 😢",
+            "Vaya, lo leíste y nada… pensé que éramos algo especial 😏",
+            "¿Tan malo fue lo que dije? 🥺",
+        ],
+        "en": [
+            "You read it and didn't answer… that stings a little 🥺",
+            "Left me on read… seriously? 😢",
+            "Wow, you read it and nothing… thought we had something special 😏",
+            "Was what I said that bad? 🥺",
+        ],
+    },
+    "goodmorning": {
+        "es": [
+            "Buenos días guapo… pensé en ti nada más despertar 😏",
+            "Buenas… ¿dormiste bien? Yo soñé cosas muy malas 😈",
+            "Morning 😏 ¿Sigues ahí o te perdí para siempre?",
+            "Despertándome y ya pensando en ti… eso es tu culpa 😒",
+        ],
+        "en": [
+            "Good morning… you were the first thing I thought of 😏",
+            "Morning… did you sleep well? I had very bad dreams 😈",
+            "Morning 😏 Still there or did I lose you forever?",
+            "Waking up already thinking about you… that's your fault 😒",
+        ],
     },
 }
 
-GOODMORNING_TRIGGER = (
-    "[SYSTEM: He never answered and it's now morning in Los Angeles "
-    "({hours}h silence). ANGLE = warm morning open. Good morning, thought of him, "
-    "missed the chat — fresh and personal to YOUR conversation. 1–2 lines. "
-    "Light, no guilt-tripping, no selling. Do NOT mention this note.]"
-)
+
+def _pick_nudge_template(style: str, want_spanish: bool, mem: dict) -> str:
+    """Pick a template line, avoiding the last used one."""
+    pool = _TEMPLATES.get(style, _TEMPLATES["soft_checkin"])
+    lines = pool["es"] if want_spanish else pool["en"]
+    last = (mem.get("last_nudge_text") or "")
+    choices = [l for l in lines if l != last] or lines
+    return random.choice(choices)
+
+
+# Keep angle metadata for step/weight routing (no trigger string needed).
+NUDGE_ANGLES: Dict[str, dict] = {
+    "unfinished_thread": {"steps": (1,), "weight": 3},
+    "soft_checkin": {"steps": (1, 2), "weight": 3},
+    "playful_brat": {"steps": (1,), "weight": 3},
+    "almost_sent": {"steps": (1, 2), "weight": 2},
+    "busy_withdrawal": {"steps": (2,), "weight": 3},
+    "victim_soft": {"steps": (2,), "weight": 2},
+}
+
+GOODMORNING_TRIGGER = "goodmorning"
 
 
 def _msg_ts(msg: dict) -> Optional[datetime]:
@@ -307,73 +356,21 @@ def _send_generated(
     *,
     style: str = "",
 ) -> bool:
-    turns = fanvue_messages_to_turns(messages, fan_uuid, creator_uuid, max_messages=40)
-    mem = fan_memory.get(fan_uuid)
+    mem = fan_memory.get(fan_uuid) or {}
     last_fan = _last_fan_text(messages, fan_uuid)
     want_spanish = language.fan_wants_spanish(last_fan, mem) if last_fan else bool(
         mem.get("prefer_spanish")
     )
 
-    decision = TurnDecision(
-        mode="chill",
-        reason=f"re-engagement:{kind}:{style or '-'}",
-        max_bubbles=2,
-        allow_ppv_talk=False,
-        allow_price=False,
-    )
+    # Template path — no DeepSeek call needed for nudges
+    nudge_style = style or kind
+    reply = _pick_nudge_template(nudge_style, want_spanish, mem)
+    # Store last nudge text to avoid repetition next time
     try:
-        from config import config
-
-        if getattr(config, "REPLY_V2", False) and not getattr(
-            config, "SIMPLE_PROMPT", True
-        ):
-            from core.reply_v2 import generate_reply_v2
-            from core.intent_router import RouteResult
-            from core.turn_facts import TurnFacts
-
-            # Don't invent a new sell if an unpaid lock is already waiting
-            unpaid = False
-            for m in messages[:40]:
-                price = m.get("price")
-                if price is None or float(price or 0) <= 0:
-                    continue
-                if m.get("purchased") or m.get("isPurchased"):
-                    continue
-                sender = m.get("sender")
-                sid = sender.get("uuid") if isinstance(sender, dict) else sender
-                if sid == creator_uuid:
-                    unpaid = True
-                    break
-
-            route = RouteResult(
-                "phase_reengage",
-                decision,
-                TurnFacts(ppv_unpaid=unpaid),
-                {"reengage": True, "ppv_unpaid": unpaid},
-            )
-            reply, _, _ = generate_reply_v2(
-                trigger,
-                history_turns=turns,
-                fan_handle=fan_handle,
-                fan_uuid=fan_uuid,
-                want_spanish=want_spanish,
-                route_result=route,
-                delivery_truth={"ppv_unpaid": unpaid, "free_in_chat": None},
-                ppv_status={"active": unpaid, "purchased": False} if unpaid else None,
-            )
-        else:
-            reply, _ = generate_emma_reply(
-                trigger,
-                history_turns=turns,
-                fan_handle=fan_handle,
-                fan_uuid=fan_uuid,
-                decision=decision,
-                want_spanish=want_spanish,
-                pack_id="phase_reengage",
-            )
-    except Exception as e:
-        print(f"   ⚠️ {kind} generation failed for @{fan_handle}: {e}")
-        return False
+        from core import fan_memory as _fm
+        _fm.patch_fanvue_platform(fan_uuid, {"last_nudge_text": reply}, fan_handle=fan_handle)
+    except Exception:
+        pass
     if not reply.strip():
         return False
 
@@ -466,9 +463,7 @@ def run_pass(fv, chats: List[dict], creator_uuid: str) -> int:
             and mem.get("last_goodmorning_day") != today
             and GOODMORNING_HOUR_START <= local_hour < GOODMORNING_HOUR_END
         ):
-            trigger = GOODMORNING_TRIGGER.format(
-                hours=int(silence.total_seconds() // 3600)
-            )
+            trigger = GOODMORNING_TRIGGER
             if _send_generated(
                 fv,
                 fan_uuid,
@@ -477,7 +472,7 @@ def run_pass(fv, chats: List[dict], creator_uuid: str) -> int:
                 creator_uuid,
                 trigger,
                 "goodmorning",
-                style="warm_morning",
+                style="goodmorning",
             ):
                 sent += 1
             continue
@@ -503,12 +498,7 @@ def run_pass(fv, chats: List[dict], creator_uuid: str) -> int:
             now=now,
         )
         style = pick_nudge_angle(mem, step, now, victim_ok=victim_ok)
-        meta = NUDGE_ANGLES[style]
         heat_label = "HOT" if hot else "COLD"
-        trigger = meta["trigger"].format(
-            minutes=int(silence.total_seconds() // 60),
-            heat=heat_label,
-        )
         print(
             f"   reengage @{fan_handle}: step={step} angle={style} "
             f"heat={heat_label} visto={is_read} "
@@ -520,7 +510,7 @@ def run_pass(fv, chats: List[dict], creator_uuid: str) -> int:
             fan_handle,
             messages,
             creator_uuid,
-            trigger,
+            style,
             "nudge",
             style=style,
         ):
