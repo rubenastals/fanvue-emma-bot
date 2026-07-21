@@ -124,6 +124,8 @@ def _blank(fan_handle: str) -> dict:
         "last_victim_nudge_at": None,
         "last_seen_by_fan_at": None,  # when we first saw isRead on Emma's last msg
         "last_goodmorning_day": None,
+        "welcome_sent_at": None,
+        "welcome_kind": None,  # subscribe_delay | first_message | skipped_*
         "voice_notes_sent": 0,
         "voice_notes_today": 0,
         "voice_notes_day": None,
@@ -964,6 +966,23 @@ def mark_seen_by_fan(fan_uuid: str, fan_handle: str = "") -> Optional[str]:
         mem["last_seen_by_fan_at"] = stamp
         _put(fan_uuid, mem)
         return stamp
+
+
+def mark_welcome_sent(
+    fan_uuid: str, fan_handle: str = "", *, kind: str = "first_message"
+) -> None:
+    """Record that we already welcomed this fan (subscribe DM or first reply)."""
+    if not fan_uuid:
+        return
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        if fan_handle:
+            mem["handle"] = fan_handle
+        if not mem.get("welcome_sent_at"):
+            mem["welcome_sent_at"] = _now()
+        mem["welcome_kind"] = kind or mem.get("welcome_kind") or "first_message"
+        _put(fan_uuid, mem)
 
 
 def set_note(fan_uuid: str, note: str, fan_handle: str = "") -> None:

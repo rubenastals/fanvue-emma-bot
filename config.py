@@ -51,6 +51,12 @@ class Config:
     MAX_NUDGES_PER_EPISODE = int(os.getenv("MAX_NUDGES_PER_EPISODE", "2"))
     VICTIM_AFTER_SEEN_MINUTES = int(os.getenv("VICTIM_AFTER_SEEN_MINUTES", "60"))
     VICTIM_COOLDOWN_HOURS = int(os.getenv("VICTIM_COOLDOWN_HOURS", "12"))
+    # New-subscriber welcome DM (~15m after firstSubscribedAt if they never wrote)
+    WELCOME_ENABLED = os.getenv("WELCOME_ENABLED", "1") == "1"
+    WELCOME_AFTER_SUBSCRIBE_MINUTES = int(
+        os.getenv("WELCOME_AFTER_SUBSCRIBE_MINUTES", "15")
+    )
+    WELCOME_WINDOW_MAX_MINUTES = int(os.getenv("WELCOME_WINDOW_MAX_MINUTES", "50"))
 
     # Embeddings
     EMBEDDING_DIM = 1536

@@ -402,6 +402,35 @@ class FanvueConnector:
                 return msg["text"]
         return ""
 
+    def list_subscribers(
+        self, creator_uuid: str = None, *, page: int = 1, size: int = 50
+    ) -> list:
+        """Paginated subscribers for a creator (defaults to /subscribers = me)."""
+        size = max(1, min(50, int(size or 50)))
+        if creator_uuid:
+            path = f"/creators/{creator_uuid}/subscribers"
+        else:
+            path = "/subscribers"
+        data = self._request("GET", path, params={"page": page, "size": size})
+        return data.get("data", []) if isinstance(data, dict) else (data or [])
+
+    def ensure_chat(self, creator_uuid: str, fan_uuid: str) -> None:
+        """Create chat if missing (idempotent — ignore already-exists errors)."""
+        if not creator_uuid or not fan_uuid:
+            return
+        try:
+            self._request(
+                "POST",
+                f"/creators/{creator_uuid}/chats",
+                json={"userUuid": fan_uuid},
+            )
+        except Exception as exc:
+            msg = str(exc).lower()
+            if any(x in msg for x in ("already", "exist", "409")):
+                return
+            # Still try send_message afterward
+            print(f"   ensure_chat: {exc}")
+
     def get_fan_insights(self, fan_uuid: str) -> dict:
         return self._request("GET", f"/insights/fans/{fan_uuid}")
 

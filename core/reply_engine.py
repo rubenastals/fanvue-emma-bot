@@ -455,6 +455,15 @@ def generate_emma_reply(
                 f"EMOJI BAN — you used these recently: {recent_emojis}. "
                 "Do NOT repeat these combos. Pick something different or use no emoji."
             )
+        if pack_id == "phase_hook" and msgs_n <= 2:
+            turn_blocks.append(
+                "WELCOME THIS TURN (first messages):\n"
+                "- Soft subscribe welcome — glad he subbed, now you can finally talk.\n"
+                "- Casual cute vibe like: \"so glad you subscribed, now we can finally talkk 😋\" "
+                "(ES mirror if he writes Spanish).\n"
+                "- No sell, no free photo pitch, no price. One warm question max.\n"
+                "- Do NOT jump straight into dirty / content push."
+            )
         print(
             f"   simple: cooling={cooling} rival_banned={ban_rival} "
             f"banned_opens={len(banned_opens)} pack={pack_id}"

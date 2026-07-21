@@ -184,6 +184,25 @@ def _hard_route(
             "reward_purchase", d, facts, {"reward_purchase": True}
         )
 
+    # First 1–2 fan messages: warm subscribe welcome — no sell / no free tease
+    if (
+        facts.msgs <= 2
+        and not facts.buying
+        and not facts.ask_free
+        and not facts.horny
+        and not facts.ppv_unpaid
+    ):
+        facts.hard_pack = "phase_hook"
+        d = _decision(
+            MODE_TEASE,
+            "first messages — welcome vibe, no pitch",
+            allow_price=False,
+            allow_ppv_talk=False,
+            allow_free_tease=False,
+            max_bubbles=2,
+        )
+        return RouteResult("phase_hook", d, facts, {"phase_hook": True})
+
     # Unpaid lock — ALWAYS push that unlock. Never stack a second (even if
     # he says "manda/buy/video" — that means open the waiting lock, not invent).
     if facts.ppv_unpaid:
@@ -289,17 +308,16 @@ def _soft_active(facts: TurnFacts, mem: dict) -> Dict[str, bool]:
         active["lock_now"] = True
     elif facts.msgs < 3 and not facts.horny and not facts.buying:
         active["phase_hook"] = True
-        if free_ok:
-            active["ask_free_first"] = True
+        # No free tease on first beats — welcome first (ask_free_first steals pack)
     elif facts.horny or (facts.heated and facts.msgs >= 8):
         # Genuinely hot — can close
         active["phase_close"] = True
-        if never_gifted and free_ok:
+        if never_gifted and free_ok and facts.msgs >= 3:
             active["ask_free_first"] = True
     else:
         # Mid-chat without strong buy/heat signal — build desire first
         active["phase_pull"] = True
-        if never_gifted and free_ok:
+        if never_gifted and free_ok and facts.msgs >= 3:
             active["ask_free_first"] = True
 
     if not any(active.values()):

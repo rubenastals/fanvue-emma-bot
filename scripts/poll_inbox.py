@@ -40,6 +40,7 @@ from core import (
     ppv_expiry,
     reengagement,
     vault_catalog,
+    welcome,
 )
 from core.reply_engine import (
     _parse_msg_time,
@@ -1273,6 +1274,13 @@ def _handle_fan_chat_body(
             for uid in pending_ids:
                 _mark_processed(processed, uid)
             _last_reply_at[fan_uuid] = _time.monotonic()
+            if route_result.pack_id == "phase_hook" and int(mem.get("messages") or 0) <= 2:
+                try:
+                    fan_memory.mark_welcome_sent(
+                        fan_uuid, fan_handle=fan_handle, kind="first_message"
+                    )
+                except Exception:
+                    pass
         else:
             print("   ⚠️ no bubble sent — leaving fan msgs unprocessed for retry")
 
@@ -1503,6 +1511,8 @@ def main():
     from core import reengagement as _re
 
     print(
+        f"   welcome: after={getattr(config, 'WELCOME_AFTER_SUBSCRIBE_MINUTES', 15)}m "
+        f"({'ON' if getattr(config, 'WELCOME_ENABLED', True) else 'OFF'})\n"
         f"   reengage: 1st={_re.NUDGE_FIRST_MINUTES}m "
         f"2nd={_re.NUDGE_SECOND_MINUTES}m "
         f"(hot={_re.NUDGE_HOT_MINUTES} cold={_re.NUDGE_COLD_MINUTES})"
@@ -1713,6 +1723,12 @@ def main():
                             print(f"\n--- re-engaged {n} fan(s) ---\n")
                     except Exception as e:
                         print(f"\n⚠️ Re-engagement error: {e}")
+                    try:
+                        n_w = welcome.run_pass(fv, creator_uuid)
+                        if n_w:
+                            print(f"\n--- welcomed {n_w} new sub(s) ---\n")
+                    except Exception as e:
+                        print(f"\n⚠️ Welcome error: {e}")
 
                 # Every hour: DeepSeek reviews ONLY last-hour turns → Soft/Hard board
                 # Soft stays PENDING (no live prompt inject unless AUTO_APPROVE_SOFT_LESSONS=1)
