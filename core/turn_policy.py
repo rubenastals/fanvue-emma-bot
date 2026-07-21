@@ -34,7 +34,9 @@ _BUYING = (
     r"(foto|pic|pics|photo).{0,12}(por ?favor|ya|ahora)|"
     r"tic\s*tac|ya\s*est[aá]|d[oó]nde\s+est[aá]\s+(la\s+)?foto)\b|"
     r"s[ií]+\s*quiero|lo quiero|dale\b|"
-    r"venga\s*va|vamos\s*ya|te lo demuestro|hazlo|m[aá]ndala|env[ií]ala"
+    r"venga\s*va|vamos\s*ya|hazlo|m[aá]ndala|env[ií]ala"
+    # NOTE: do NOT treat "te lo demuestro / demuéstrame que soy bueno" as buy —
+    # that is loyalty/bond talk, not a content request.
 )
 # Fan is talking about media HE sent (react, don't pitch)
 _FAN_SENT_MEDIA = (
@@ -103,7 +105,7 @@ _FAN_PUSHBACK = (
 _ACCEPT = (
     r"\b(i'?ll (pay|take|buy)|take it|unlock(ing)? it|"
     r"lo quiero|vale|dale|te (pago|compro)|deal|"
-    r"venga\s*va|vamos\s*ya|te lo demuestro|hazlo)\b|"
+    r"venga\s*va|vamos\s*ya|hazlo)\b|"
     r"s[ií]+\s*(quiero|dale|p[aá]galo)"
 )
 # Fan says the promised photo never arrived — must actually send, not invent glitches

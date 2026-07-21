@@ -304,18 +304,20 @@ def _soft_active(facts: TurnFacts, mem: dict) -> Dict[str, bool]:
         active["delivery_missing"] = True
 
     if facts.buying and not facts.ask_free:
+        # Only an explicit content/buy ask closes — never "msgs>=8 so sell"
         active["phase_close"] = True
         active["lock_now"] = True
     elif facts.msgs < 3 and not facts.horny and not facts.buying:
         active["phase_hook"] = True
         # No free tease on first beats — welcome first (ask_free_first steals pack)
-    elif facts.horny or (facts.heated and facts.msgs >= 8):
-        # Genuinely hot — can close
-        active["phase_close"] = True
+    elif facts.horny:
+        # Hot talk = heat/pull, not an automatic PPV drop
+        active["phase_pull"] = True
+        active["tease_heat"] = True
         if never_gifted and free_ok and facts.msgs >= 3:
             active["ask_free_first"] = True
     else:
-        # Mid-chat without strong buy/heat signal — build desire first
+        # Mid-chat / warm bond — build desire first (selector may still sell later)
         active["phase_pull"] = True
         if never_gifted and free_ok and facts.msgs >= 3:
             active["ask_free_first"] = True

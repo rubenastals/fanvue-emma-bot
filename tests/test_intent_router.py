@@ -77,13 +77,20 @@ def test_missing_delivery():
 
 
 def test_close_after_free_heat():
+    # Warm mid-chat without an explicit buy ask → pull/tease, not auto-close
     r = route(
         _mem(messages=12, free_teases_sent=1, status="warm"),
         "jaja que rica",
         delivery_truth={"ppv_unpaid": False},
     )
-    assert r.pack_id in ("phase_close", "escalate_paid", "lock_now")
-    assert r.decision.allow_price is True
+    assert r.pack_id in ("phase_pull", "tease_heat", "phase_spiral")
+    r2 = route(
+        _mem(messages=12, free_teases_sent=1, status="warm"),
+        "mandame una foto ya",
+        delivery_truth={"ppv_unpaid": False},
+    )
+    assert r2.pack_id in ("phase_close", "escalate_paid", "lock_now")
+    assert r2.decision.allow_price is True
 
 
 def test_price_objection():
