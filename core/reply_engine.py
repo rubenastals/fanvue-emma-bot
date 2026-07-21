@@ -507,9 +507,15 @@ def generate_emma_reply(
         turn_blocks.append(
             "VOICE NOTE THIS TURN: A sensual audio file attaches AFTER your text bubbles. "
             "Your text must be 1 short line only — mysterious, not the script. "
-            "Examples: 'tengo algo para ti…' / 'escucha esto…' / 'para ti solito…' "
+            "Examples: 'I have something for you…' / 'listen to this…' / 'just for you…' "
             "DO NOT write [whispers], [sighs], or any audio script in your text. "
             "The audio handles the words — your text just opens the door."
+        )
+    else:
+        turn_blocks.append(
+            "AUDIO THIS TURN: NO voice note is being sent. "
+            "Do NOT say you recorded something, do NOT tease 🎙️, do NOT promise audio delivery. "
+            "If he asks for audio, flirt and imply you might — but never claim you sent or are sending one now."
         )
 
     if not lean:
