@@ -505,8 +505,11 @@ def generate_emma_reply(
 
     if voice_will_send:
         turn_blocks.append(
-            "VOICE NOTE THIS TURN: Free sensual audio attaches AFTER your text. "
-            "Tease it briefly — intimate, not salesy. Never say solo fotos or no grabar."
+            "VOICE NOTE THIS TURN: A sensual audio file attaches AFTER your text bubbles. "
+            "Your text must be 1 short line only — mysterious, not the script. "
+            "Examples: 'tengo algo para ti…' / 'escucha esto…' / 'para ti solito…' "
+            "DO NOT write [whispers], [sighs], or any audio script in your text. "
+            "The audio handles the words — your text just opens the door."
         )
 
     if not lean:
@@ -1014,7 +1017,8 @@ _BANNED_ALWAYS = re.compile(
 _STAGE_BRACKETS = re.compile(
     r"\s*\["
     r"(?:image locked|photo locked|locked image|paid photo lock|voice note attached|"
-    r"you locked|you sent a|fan sent a|SYSTEM[: ]|Transmite|envi[oó]|you can send)"
+    r"you locked|you sent a|fan sent a|SYSTEM[: ]|Transmite|envi[oó]|you can send|"
+    r"whispers?|sighs?|chuckles?|exhales?|moans?|laughs?|breathes?|pauses?|gasps?)"
     r"[^\]]*\]",
     re.I,
 )
