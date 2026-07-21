@@ -156,12 +156,33 @@ def _decision(
     )
 
 
-def _hard_route(facts: TurnFacts, mem: dict) -> Optional[RouteResult]:
+def _hard_route(
+    facts: TurnFacts, mem: dict, *, fan_message: str = ""
+) -> Optional[RouteResult]:
     """
     Only Group-B truth gates. No creativity/sell bans (chill, cooloff, broke,
     billing, react-no-pitch, daily cap) — DeepSeek + SIMPLE core own tone.
     """
     now = _now()
+
+    # Tip / chat gift this turn — thank first (beats unpaid-lock nag)
+    if re.search(
+        r"\[fan (tipped you|sent you a Fanvue chat gift)",
+        fan_message or "",
+        re.I,
+    ):
+        facts.hard_pack = "reward_purchase"
+        facts.recent_purchase = True
+        d = _decision(
+            MODE_TEASE,
+            "fan tip/gift this turn — reward, no new pitch",
+            allow_price=False,
+            allow_ppv_talk=False,
+            allow_free_tease=False,
+        )
+        return RouteResult(
+            "reward_purchase", d, facts, {"reward_purchase": True}
+        )
 
     # Unpaid lock — ALWAYS push that unlock. Never stack a second (even if
     # he says "manda/buy/video" — that means open the waiting lock, not invent).
@@ -407,7 +428,7 @@ def route(
     """
     facts = build_facts(mem, fan_message, delivery_truth=delivery_truth)
 
-    hard = _hard_route(facts, mem)
+    hard = _hard_route(facts, mem, fan_message=fan_message or "")
     if hard:
         return hard
 
