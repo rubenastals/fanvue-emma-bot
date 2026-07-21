@@ -1,12 +1,13 @@
 """
 Layered prompt assembly with HARD budgets.
 
-Priority (never inverted):
-  1. CORE (immutable) — who Emma is + hard bans
+Order (context before rules — models weight the start hard):
+  1. CONTEXT FIRST — read card + chat, then answer as that thread
   2. CLIENT CARD — durable facts about him
-  3. HISTORY — recent chat turns
+  3. CORE — who Emma is + hard bans
   4. TURN — only what this turn needs (lang, offer, vision, delivery)
-  5. AUTHOR — one short steer line
+  5. HISTORY — recent chat turns (appended by reply_engine)
+  6. AUTHOR — short steer on the last user turn
 
 Soft lessons / fat sales essays / lore floods are FORBIDDEN in live path.
 """
@@ -22,6 +23,16 @@ BUDGET_CORE = 5600
 BUDGET_CARD = 2500
 BUDGET_TURN_SYSTEM = 4200  # pack + manipulation banner need room
 BUDGET_AUTHOR = 650
+
+_CONTEXT_FIRST = (
+    "CONTEXT FIRST (do this before writing):\n"
+    "1) Read the CLIENT CARD — who he is, spend, facts, language, what you already sent.\n"
+    "2) Read the full CHAT HISTORY below — what you two just said; newest message is last.\n"
+    "3) Answer as a continuation of THAT specific man and thread.\n"
+    "The persona / turn rules that follow are HOW you speak — they do NOT replace the card "
+    "or the chat. Never invent memories, names, purchases, or photo details that are not "
+    "in the card or recent history. If the card is thin, stay with the chat only."
+)
 
 
 def _clip(text: str, budget: int, label: str) -> str:
@@ -54,9 +65,23 @@ def build_system_layers(
             ephemeral_parts.append(b.strip())
     ephemeral = _clip("\n\n".join(ephemeral_parts), BUDGET_TURN_SYSTEM, "TURN")
 
-    messages: List[Dict[str, str]] = [{"role": "system", "content": core}]
+    # Card before CORE so durable facts are not buried under the persona wall.
+    messages: List[Dict[str, str]] = [
+        {"role": "system", "content": _CONTEXT_FIRST},
+    ]
     if card:
         messages.append({"role": "system", "content": card})
+    else:
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    "CLIENT CARD: (empty / new fan — rely only on CHAT HISTORY; "
+                    "do not invent a backstory.)"
+                ),
+            }
+        )
+    messages.append({"role": "system", "content": core})
     if ephemeral:
         messages.append({"role": "system", "content": ephemeral})
 
@@ -64,7 +89,7 @@ def build_system_layers(
         "core": len(core),
         "card": len(card),
         "turn": len(ephemeral),
-        "system_total": len(core) + len(card) + len(ephemeral),
+        "system_total": len(_CONTEXT_FIRST) + len(card) + len(core) + len(ephemeral),
     }
     return messages, sizes
 
