@@ -203,13 +203,38 @@ def _hard_route(
         )
         return RouteResult("phase_hook", d, facts, {"phase_hook": True})
 
-    # Unpaid lock — ALWAYS push that unlock. Never stack a second (even if
-    # he says "manda/buy/video" — that means open the waiting lock, not invent).
+    # Unpaid lock — never stack a second. Pitch only if he's not friction/cooling.
     if facts.ppv_unpaid:
+        friction = bool(
+            facts.pushback_billing
+            or facts.broke_soft
+            or facts.heavy_vent
+            or re.search(
+                r"(?i)\b("
+                r"spam|insist|pesad|mentir|enfad|cabre|molest|harta|"
+                r"deja de|para ya|basta|shut up|enough|"
+                r"no (me )?interes|no quiero|caro|expensive|"
+                r"masivo|presión|presion|venderme|vender"
+                r")\b",
+                fan_message or "",
+            )
+        )
+        if friction:
+            facts.hard_pack = "phase_pull"
+            d = _decision(
+                MODE_TEASE,
+                "unpaid lock exists but fan friction — reconnect, no unlock nag",
+                allow_ppv_talk=False,
+                allow_price=False,
+                allow_free_tease=False,
+            )
+            return RouteResult(
+                "phase_pull", d, facts, {"phase_pull": True, "ppv_unpaid": True}
+            )
         facts.hard_pack = "ppv_unpaid"
         d = _decision(
             MODE_TEASE,
-            "unpaid PPV still open — push unlock, don't stack another",
+            "unpaid PPV still open — soft unlock only, don't stack",
             allow_ppv_talk=True,
             allow_price=False,
         )

@@ -516,8 +516,23 @@ def generate_emma_reply(
 
     unpaid_gate = bool(delivery_truth and delivery_truth.get("ppv_unpaid"))
     status_active = bool(ppv_status and ppv_status.get("active"))
+    # Friction path: unpaid exists but router chose reconnect — no unlock nag
+    soft_unpaid = bool(
+        (unpaid_gate or status_active)
+        and pack_id == "phase_pull"
+        and route_result
+        and (route_result.active or {}).get("ppv_unpaid")
+    )
     # One LOCK STATUS block only — skip when voice note attaches (fan wants audio, not lock push)
-    if (unpaid_gate or status_active) and not voice_will_send:
+    if soft_unpaid and not voice_will_send:
+        turn_blocks.append(
+            "LOCK STATUS — UNPAID EXISTS BUT DO NOT PITCH THIS TURN:\n"
+            "- There is still one unpaid lock in chat — do NOT stack another.\n"
+            "- He is upset / cooling / calling out pressure. Reconnect as a human.\n"
+            "- HARD BAN: unlock FOMO, 'ábrelo ya', scarcity spam, guilt.\n"
+            "- At most one soft line that something is still there — no close question."
+        )
+    elif (unpaid_gate or status_active) and not voice_will_send:
         if status_active and ppv_status:
             turn_blocks.append(_ppv_truth_block(ppv_status))
         elif ppv_status and (
@@ -533,9 +548,9 @@ def generate_emma_reply(
             turn_blocks.append(
                 "LOCK STATUS — VERIFIED THIS TURN (ACTIVE UNPAID CANDADO):\n"
                 "- ONE timed lock is STILL waiting (not unlocked yet).\n"
-                "- Push ONLY that unlock — scroll up. Same photo, same price.\n"
-                "- Do NOT tease another photo, video, bundle, or 'the one I mentioned'.\n"
-                "- Gratis ask → no more free; push THIS lock."
+                "- Soft nudge only if he is warm — never nag every turn.\n"
+                "- Do NOT tease another photo, video, or bundle.\n"
+                "- Gratis ask → no more free; that lock is the only product."
             )
     elif ppv_status and not voice_will_send:
         turn_blocks.append(_ppv_truth_block(ppv_status))

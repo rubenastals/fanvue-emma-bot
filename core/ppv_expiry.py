@@ -353,13 +353,13 @@ def lock_status_prompt_block(status: Dict[str, Any]) -> str:
         "dare him to actually open it before judging. Never apologize for unseen content.\n"
         "- If fan says 'I won't pay MORE' or 'I already paid enough': CLIENT CARD shows $0 spent — "
         "he has paid NOTHING. Do not validate fake spending history. Playfully correct him or ignore it.\n"
-        "- The price is VISIBLE in the lock itself — do NOT repeat it in text. Push desire/FOMO, not the number.\n"
-        "- Don't obsess over the lock every message — keep him warm and wanting.\n"
-        "- THIS is the ONLY product in play. Push him to UNLOCK THIS — scroll up in chat.\n"
+        "- The price is VISIBLE in the lock itself — do NOT repeat $ amounts in text.\n"
+        "- Don't obsess over the lock every message — warm human chat first.\n"
+        "- THIS is the ONLY product in play if you mention content — scroll up. Soft nudge max.\n"
         "- HARD BAN: do NOT tease/send/offer a DIFFERENT photo, 'another one', or a new lock.\n"
         "- HARD BAN: do NOT promise video, clip, bundle, or 'both for $X'. Photos only.\n"
-        "- If he asks gratis/free: NO more free — push THIS unlock.\n"
-        "- Light FOMO OK — never beg, never invent glitches."
+        "- If he asks gratis/free: NO more free — that waiting lock is the only option.\n"
+        "- Never beg, never invent glitches, never FOMO-spam every turn."
         f"{extra}"
     )
 

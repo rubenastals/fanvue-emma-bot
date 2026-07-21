@@ -46,15 +46,15 @@ _THEMES = {
     "lingerie": ("lingerie", "underwear", "bragas", "panties"),
 }
 
+# Clear ask for THIS photo — keep narrow so "dale/video" don't force random PPVs
 _DIRECT_BUY = re.compile(
     r"(?i)\b("
-    r"unlock|buy|pay|price|how much|cu[aá]nto|precio|ppv|"
-    r"show me|let me see|quiero ver|"
+    r"unlock|buy|pay|how much|cu[aá]nto\s+(cuesta|cuesta|es)|precio|"
+    r"show me|let me see|quiero ver(la|lo)?|"
     r"m[aá]nda(me|la|mela)|env[ií]a(me|la|mela)|p[aá]sa(me|la|mela)|"
     r"ense[nñ][aá](me|mela|rmela)?|muestr[aá](me|mela)|"
     r"por\s*favor|please|"
-    r"no\s+me\s+dejes(\s+con)?|"
-    r"dale|venga va|hazlo|video|v[ií]deo|custom|clip"
+    r"no\s+me\s+dejes(\s+con)?"
     r")\b"
 )
 # NEVER bare \bno\b — matches "no me dejes con las ganas" and kills closes
@@ -372,14 +372,10 @@ def choose_offer(
         return OfferChoice(False, None, "objection/vent: reconnect first", 1.0, "code")
     if _REJECT.search(fan_message or "") and not direct:
         return OfferChoice(False, None, "current message rejects sale", 1.0, "code")
-    # Right after a 30m lock vanished — don't drop a random new PPV unless
-    # he's clearly asking for content / the dirtiest shot / she owes a send.
-    if (
-        _recently_expired(mem, minutes=8)
-        and not direct
-        and not max_dirty
-        and not owed
-    ):
+    # Right after a lock vanished — reconnect first. No new PPV for ~10 min,
+    # even on "enséñamela" (that was the extreme that felt spammy).
+    # Only exception: he explicitly wants the dirtiest shot again.
+    if _recently_expired(mem, minutes=10) and not max_dirty:
         return OfferChoice(
             False,
             None,
@@ -417,19 +413,11 @@ def choose_offer(
         "Return ONLY JSON. Decide whether this exact turn is a natural PPV close. "
         "If selling, choose exactly one media_uuid from CANDIDATES. "
         "Never invent a UUID, product, price, video, custom, bundle, or description. "
-        "Direct requests for content/price/unlock should sell now. "
-        "If he asks for the dirtiest / most explicit / 'más guarro' / 'más picante' "
-        "she has, you MUST pick the HIGHEST level (and score) among CANDIDATES — "
-        "never a soft L1/L2 lingerie tease when harder options exist. "
-        "Smalltalk, emotional disclosure, price rejection, or a cold one-word reply "
-        "should reconnect and not sell. "
-        "If Emma JUST promised a filthy shot ('la más guarra', touching herself) "
-        "and he asks to see it / says please — sell_now MUST be true and pick the "
-        "HIGHEST level candidate. Never bait-and-switch with a soft L1/L2. "
-        "If Emma said 'pídemela bien / te la mando' and he complied — sell NOW. "
-        "Sexual momentum may sell ONLY if timing feels clearly earned — several hot "
-        "exchanges AND he is leaning in hard. A single horny word is not enough. "
-        "When in doubt and he is NOT asking for the photo, do NOT sell. "
+        "Sell ONLY on a natural close: he clearly asks for the photo / unlock, "
+        "or several hot exchanges AND he is leaning in hard. "
+        "If he asks for the dirtiest / 'más guarro', pick the HIGHEST level candidate. "
+        "Smalltalk, anger, spam complaints, price rejection, cold replies → do NOT sell. "
+        "When in doubt, do NOT sell — reconnect beats a premature pitch. "
         'Schema: {"sell_now":true|false,"media_uuid":"uuid or null",'
         '"reason":"short","confidence":0.0}.'
     )
