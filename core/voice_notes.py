@@ -117,15 +117,6 @@ def should_send(
     if int(mem.get("messages") or 0) < int(getattr(config, "VOICE_NOTES_MIN_MESSAGES", 8) or 8):
         return False, "too early in chat"
 
-    max_day = int(getattr(config, "VOICE_NOTES_MAX_PER_DAY", 2) or 2)
-    if _voice_count_today(mem) >= max_day:
-        return False, "daily cap"
-
-    cooldown_h = float(getattr(config, "VOICE_NOTES_COOLDOWN_HOURS", 6) or 6)
-    last = _parse_iso(mem.get("last_voice_at"))
-    if last and datetime.now(timezone.utc) - last < timedelta(hours=cooldown_h):
-        return False, "cooldown"
-
     mode = (getattr(decision, "mode", "") or "").lower()
     if mode in ("hard_sell", "chill"):
         return False, f"mode={mode}"
