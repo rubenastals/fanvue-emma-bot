@@ -40,10 +40,13 @@ Rules:
 - profile.name: ONLY from fan saying "me llamo X" / "my name is X" / "call me X".
   NEVER from Emma guessing. If fan says "no soy X" / "me llamaste X", put X in avoid and clear name.
 - profile fields: only if fan stated them.
-- facts: lasting personal details (divorce, plays football, lives in X, bought Y for her, etc.).
+- facts: lasting personal details (divorce, plays football, lives in X, job stress, family issues, health,
+  problems he opened up about, stories he shared — anything he'd expect Emma to remember).
+  Capture personal problems/stories explicitly: "stressed about job at [company]", "going through divorce",
+  "his dog died", "trouble with his boss", etc. These are CRITICAL for Emma's memory.
 - avoid: corrections like "his name is not Jamie", "he did not send a car gift".
 - summary: grounded in evidence; if little is known, keep it short.
-- Max 5 new facts, max 3 avoid items this turn.
+- Max 6 new facts, max 3 avoid items this turn.
 - No moralizing. Adult chat is fine."""
 
 
