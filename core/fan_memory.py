@@ -1097,4 +1097,11 @@ def render_block(fan_uuid: str) -> str:
             f"- Last photo HE sent (vision): {mem['last_fan_image_desc'][:180]}"
         )
 
+    # Chat coach notes — what Emma is doing wrong with this specific fan
+    coach_notes = mem.get("coach_notes") or []
+    if coach_notes:
+        lines.append("CHAT COACH (what Emma must improve with this fan — act on these):")
+        for note in coach_notes[:5]:
+            lines.append(f"  ! {note}")
+
     return "\n".join(lines)

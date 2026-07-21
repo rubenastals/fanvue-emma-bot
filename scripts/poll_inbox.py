@@ -1362,6 +1362,12 @@ def _handle_fan_chat_body(
             )
             # Per-turn critic removed — hourly hour_review covers Soft/Hard proposals.
             memory_extractor.update_fan_card_async(fan_uuid, fan_handle)
+            # 24h per-fan chat coach — adds improvement notes to CLIENT CARD
+            try:
+                from core import chat_coach
+                chat_coach.run_coach_async(fan_uuid, fan_handle, turns, mem)
+            except Exception:
+                pass
         except Exception as e:
             print(f"   ⚠️ learning-loop log failed: {e}")
 
