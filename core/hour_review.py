@@ -178,7 +178,7 @@ def run_hourly_review() -> Dict[str, Any]:
         base_url=config.DEEPSEEK_BASE_URL,
     )
     kwargs: Dict[str, Any] = dict(
-        model=config.DEEPSEEK_MODEL,
+        model=getattr(config, "DEEPSEEK_FAST_MODEL", None) or config.DEEPSEEK_MODEL,
         messages=[
             {"role": "system", "content": _PROMPT},
             {

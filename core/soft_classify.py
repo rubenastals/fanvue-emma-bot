@@ -56,7 +56,7 @@ def classify(
         base_url=config.DEEPSEEK_BASE_URL,
     )
     kwargs: Dict[str, Any] = dict(
-        model=getattr(config, "SOFT_CLASSIFY_MODEL", None) or config.DEEPSEEK_MODEL,
+        model=getattr(config, "SOFT_CLASSIFY_MODEL", None) or getattr(config, "DEEPSEEK_FAST_MODEL", None) or config.DEEPSEEK_MODEL,
         messages=[
             {"role": "system", "content": sys},
             {"role": "user", "content": user},

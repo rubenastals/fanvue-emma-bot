@@ -288,6 +288,8 @@ def choose_offer(
     )
     kwargs: Dict[str, Any] = {
         "model": getattr(config, "OFFER_SELECTOR_MODEL", None)
+        or getattr(config, "OFFER_SELECTOR_MODEL", None)
+        or getattr(config, "DEEPSEEK_FAST_MODEL", None)
         or config.DEEPSEEK_MODEL,
         "messages": [
             {"role": "system", "content": system},

@@ -164,7 +164,7 @@ def classify_with_deepseek(evidence: str) -> Dict[str, List[dict]]:
     if not (config.DEEPSEEK_API_KEY or "").strip():
         return empty
     kwargs = dict(
-        model=config.DEEPSEEK_MODEL,
+        model=getattr(config, "DEEPSEEK_FAST_MODEL", None) or config.DEEPSEEK_MODEL,
         messages=[
             {"role": "system", "content": CLASSIFY_PROMPT},
             {"role": "user", "content": evidence[:12000]},

@@ -57,6 +57,9 @@ class Config:
 
     # AI Params — V2 creative defaults (human-like, less repetitive)
     DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro")
+    # Cheaper/faster model for non-creative secondary calls (selector, voice gate,
+    # memory extractor, digest, hour review, soft classify).
+    DEEPSEEK_FAST_MODEL = os.getenv("DEEPSEEK_FAST_MODEL", "deepseek-chat")
     TEMPERATURE = float(os.getenv("DEEPSEEK_TEMPERATURE", "1.0"))
     TOP_P = float(os.getenv("DEEPSEEK_TOP_P", "0.95"))
     FREQUENCY_PENALTY = float(os.getenv("DEEPSEEK_FREQUENCY_PENALTY", "0.4"))

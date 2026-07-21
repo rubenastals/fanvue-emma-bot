@@ -105,7 +105,7 @@ def update_fan_card(fan_uuid: str, fan_handle: str = "") -> Optional[Dict[str, A
         return None
 
     kwargs = dict(
-        model=config.DEEPSEEK_MODEL,
+        model=getattr(config, "DEEPSEEK_FAST_MODEL", None) or config.DEEPSEEK_MODEL,
         messages=[
             {"role": "system", "content": EXTRACT_PROMPT},
             {

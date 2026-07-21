@@ -203,7 +203,7 @@ def _ai_should_send_voice(
     try:
         resp = _deepseek_create(
             client,
-            model=getattr(config, "DEEPSEEK_MODEL", "deepseek-v4-pro"),
+            model=getattr(config, "DEEPSEEK_FAST_MODEL", None) or getattr(config, "DEEPSEEK_MODEL", "deepseek-v4-pro"),
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},

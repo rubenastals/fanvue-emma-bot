@@ -339,7 +339,7 @@ def refresh_interaction_digest(
     )
     try:
         resp = client.chat.completions.create(
-            model=getattr(config, "DEEPSEEK_MODEL", "deepseek-v4-pro"),
+            model=getattr(config, "DEEPSEEK_FAST_MODEL", None) or getattr(config, "DEEPSEEK_MODEL", "deepseek-v4-pro"),
             messages=[
                 {
                     "role": "system",
