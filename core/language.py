@@ -27,20 +27,26 @@ _ASK_ENGLISH = re.compile(
 # Strong Spanish lexical hits (enough to flag Spanglish / Spanish mode text)
 _SPANISH_HITS = re.compile(
     r"(?i)\b("
-    r"hola|mira|beb[eé]|cari[nñ]o|cielo|guapo|guapa|por favor|gracias|"
-    r"[aá]brelo|abrelo|m[ií]rame|mirame|te mand[eé]|te envi[eé]|"
+    r"hola|mira|beb[eé]|cari[nñ]o|cielo|guapo|guapa|por\s*favor|gracias|"
+    r"[aá]bre(lo|la)|m[ií]rame|te mand[eé]|te envi[eé]|"
     r"quiero|puedes|est[aá]s|estoy|nacho|nena|papi|caro|"
     r"lo que|donde|dónde|también|tambien|ma[nñ]ana|mañana|"
-    r"contigo|sin ti|ay+|rev[ií]salo|revisalo|caliente|"
+    r"contigo|sin ti|ay+|rev[ií]salo|caliente|"
     r"pensando en ti|se me|generosa|r[aá]pido|rapido|"
-    r"espa[nñ]ol|ingl[eé]s|traductor"
+    r"espa[nñ]ol|ingl[eé]s|traductor|"
+    r"foto|fotos|gustado|gust[oó]|encant[oó]|ense[nñ]a|"
+    r"m[aá]nda(me|la)?|env[ií]a(me|la)?|p[aá]sa(me|la)?|"
+    r"polla|guarr\w*|candado|vale|venga|dale|"
+    r"siquiera|visto|val[ií]a|primero|luego|ahora|"
+    r"mucho|poco|nada|esto|esta|esos|esas|d[oó]lares?"
     r")\b"
     r"|[áéíóúñ¿¡]"
 )
 
 _ENGLISH_HITS = re.compile(
     r"(?i)\b(the|you|your|what|when|where|this|that|have|with|just|from|"
-    r"unlock|photo|baby|babe|handsome|ignored|happens)\b"
+    r"unlock|photo|baby|babe|handsome|ignored|happens|"
+    r"how|much|does|don't|didn't|can't|won't|isn't|aren't)\b"
 )
 
 
@@ -48,14 +54,31 @@ def _message_is_spanish(text: str) -> bool:
     """Heuristic: is this fan message written in Spanish?"""
     es = len(_SPANISH_HITS.findall(text or ""))
     en = len(_ENGLISH_HITS.findall(text or ""))
-    return es >= 1 and es > en
+    if es >= 1 and es >= en:
+        return True
+    # Accent / ¿¡ alone is enough
+    if re.search(r"[áéíóúñ¿¡]", text or "", re.I) and en == 0:
+        return True
+    return False
+
+
+def _message_is_clearly_english(text: str) -> bool:
+    """True only for clearly English turns (not ambiguous / short Spanish)."""
+    t = (text or "").strip()
+    if not t:
+        return False
+    if _message_is_spanish(t):
+        return False
+    en = len(_ENGLISH_HITS.findall(t))
+    es = len(_SPANISH_HITS.findall(t))
+    return en >= 2 and es == 0
 
 
 def fan_wants_spanish(fan_message: str, mem: Optional[dict] = None) -> bool:
     """
     Emma's native language is English (~95% of fans).
-    Mirror this turn: Spanish message → Spanish reply; otherwise English.
-    Explicit asks and sticky prefer_spanish are tie-breakers for empty/ambiguous turns.
+    Mirror: Spanish message → Spanish; clear English → English.
+    Sticky prefer_spanish covers short/ambiguous turns (not a hard EN wipe).
     """
     text = fan_message or ""
     if _ASK_ENGLISH.search(text):
@@ -64,8 +87,7 @@ def fan_wants_spanish(fan_message: str, mem: Optional[dict] = None) -> bool:
         return True
     if text.strip() and _message_is_spanish(text):
         return True
-    if text.strip():
-        # Any non-Spanish message → English this turn (native default)
+    if text.strip() and _message_is_clearly_english(text):
         return False
     if mem and mem.get("prefer_spanish"):
         return True
@@ -75,7 +97,7 @@ def fan_wants_spanish(fan_message: str, mem: Optional[dict] = None) -> bool:
 def update_language_pref(mem: dict, fan_message: str) -> Optional[bool]:
     """
     Returns new prefer_spanish value if it should change, else None.
-    Sticky follows how HE chats (for nudges/apologies), not Emma's native EN.
+    Sticky follows how HE chats (for nudges/apologies).
     """
     text = fan_message or ""
     if _ASK_ENGLISH.search(text):
@@ -84,7 +106,7 @@ def update_language_pref(mem: dict, fan_message: str) -> Optional[bool]:
         return True
     if text.strip() and _message_is_spanish(text):
         return True
-    if text.strip() and not _message_is_spanish(text):
+    if text.strip() and _message_is_clearly_english(text):
         return False
     return None
 

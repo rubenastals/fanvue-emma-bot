@@ -1047,14 +1047,9 @@ def generate_emma_reply(
             )
             print("   🔒 invented-lock rewrite → safe fallback")
 
-    # Belt: SELL=NONE + no active lock → never ship a lone $ / € amount
+    # Belt: SELL=NONE + no active lock → never ship money talk
     if no_lock and not offer and _stated_prices(reply):
-        reply = re.sub(
-            r"(?:\$|€)\s*\d{1,4}|\d{1,4}\s*(?:€|\$|eur|euros?)",
-            "",
-            reply,
-        ).strip()
-        reply = re.sub(r"\s{2,}", " ", reply).strip()
+        reply = _strip_wrong_prices(reply, real_price=None)
         print("   💵 invent belt: stripped $ with SELL=NONE / no lock")
 
     # Vault is photos only — never promise video/custom/grabar
@@ -1191,8 +1186,11 @@ def generate_emma_reply(
             if real_price is None or abs(p - real_price) > 0.5
         ]
         if still:
-            reply = re.sub(r"(?:\$|€)\s*\d{1,4}|\d{1,4}\s*(?:€|\$|eur|euros?)", "", reply).strip()
-            print("   💵 price-truth rewrite → stripped bad amounts")
+            reply = _strip_wrong_prices(reply, real_price=real_price)
+            print(
+                f"   💵 price-truth rewrite → corrected amounts "
+                f"(real=${real_price if real_price else 'none'})"
+            )
         else:
             print(f"   💵 price-truth rewrite ok (real=${real_price if real_price else 'none'})")
 
@@ -1265,20 +1263,113 @@ def _looks_cooling(fan_message: str, turns: List[Dict[str, str]]) -> bool:
     return False
 
 
+_WORD_MONEY = {
+    "uno": 1,
+    "un": 1,
+    "una": 1,
+    "dos": 2,
+    "tres": 3,
+    "cuatro": 4,
+    "cinco": 5,
+    "seis": 6,
+    "siete": 7,
+    "ocho": 8,
+    "nueve": 9,
+    "diez": 10,
+    "once": 11,
+    "doce": 12,
+    "quince": 15,
+    "veinte": 20,
+    "treinta": 30,
+    "cuarenta": 40,
+    "cincuenta": 50,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "twelve": 12,
+    "fifteen": 15,
+    "twenty": 20,
+    "thirty": 30,
+    "forty": 40,
+    "fifty": 50,
+}
+
+
 def _stated_prices(text: str) -> List[float]:
-    """Dollar/euro amounts the reply asserts (for price-truth guard)."""
+    """Dollar/euro amounts the reply asserts (digits + spelled)."""
     out: List[float] = []
     for m in re.finditer(
-        r"(?:\$|€)\s*(\d{1,4})|(\d{1,4})\s*(?:€|\$|eur|euros?|d[oó]lares?)", text
+        r"(?:\$|€)\s*(\d{1,4})|(\d{1,4})\s*(?:€|\$|eur|euros?|d[oó]lares?|dollars?|bucks?)",
+        text or "",
     ):
         raw = m.group(1) or m.group(2)
         try:
             val = float(raw)
         except (TypeError, ValueError):
             continue
-        if 3 <= val <= 500:
+        # Include $1–$2 — DeepSeek invents micro prices against a $40 lock
+        if 1 <= val <= 500:
             out.append(val)
+    for m in re.finditer(
+        r"(?i)\b("
+        + "|".join(re.escape(k) for k in sorted(_WORD_MONEY, key=len, reverse=True))
+        + r")\s*(d[oó]lares?|dollars?|bucks?)\b",
+        text or "",
+    ):
+        out.append(float(_WORD_MONEY[m.group(1).lower()]))
     return out
+
+
+def _strip_wrong_prices(text: str, *, real_price: Optional[float]) -> str:
+    """Remove or correct invented money phrases after a failed rewrite."""
+    cleaned = text or ""
+    if real_price is not None:
+        # Replace spelled + digit money with the real amount once
+        cleaned = re.sub(
+            r"(?:\$|€)\s*\d{1,4}|\d{1,4}\s*(?:€|\$|eur|euros?|d[oó]lares?|dollars?|bucks?)",
+            f"${real_price:.0f}",
+            cleaned,
+            count=1,
+        )
+        cleaned = re.sub(
+            r"(?i)\b("
+            + "|".join(re.escape(k) for k in sorted(_WORD_MONEY, key=len, reverse=True))
+            + r")\s*(d[oó]lares?|dollars?|bucks?)\b",
+            f"${real_price:.0f}",
+            cleaned,
+            count=1,
+        )
+        # Strip any remaining wrong numeric money tokens
+        for p in _stated_prices(cleaned):
+            if abs(p - real_price) > 0.5:
+                cleaned = re.sub(
+                    rf"(?:\$|€)\s*{int(p)}|{int(p)}\s*(?:€|\$|eur|euros?|d[oó]lares?|dollars?|bucks?)",
+                    "",
+                    cleaned,
+                    count=1,
+                    flags=re.I,
+                )
+    else:
+        cleaned = re.sub(
+            r"(?:\$|€)\s*\d{1,4}|\d{1,4}\s*(?:€|\$|eur|euros?|d[oó]lares?|dollars?|bucks?)",
+            "",
+            cleaned,
+        )
+        cleaned = re.sub(
+            r"(?i)\b("
+            + "|".join(re.escape(k) for k in sorted(_WORD_MONEY, key=len, reverse=True))
+            + r")\s*(d[oó]lares?|dollars?|bucks?)\b",
+            "",
+            cleaned,
+        )
+    return re.sub(r"\s{2,}", " ", cleaned).strip()
 
 
 def _ppv_truth_block(status: dict) -> str:
