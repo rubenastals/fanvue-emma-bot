@@ -1016,6 +1016,14 @@ def _ppv_truth_block(status: dict) -> str:
 _BANNED_ALWAYS = re.compile(
     r"(?i)(?:\s*[,.]?\s*)\b(caro|papi|nena|nene)\b\.?"
 )
+# Stage-direction brackets DeepSeek may copy from history labels — never shown to fan.
+_STAGE_BRACKETS = re.compile(
+    r"\s*\["
+    r"(?:image locked|photo locked|locked image|paid photo lock|voice note attached|"
+    r"you locked|you sent a|fan sent a|SYSTEM[: ]|Transmite|envi[oó]|you can send)"
+    r"[^\]]*\]",
+    re.I,
+)
 # Spanish nicknames — strip only in English mode (Spanglish leak).
 _BANNED_SPANISH_IN_ENGLISH = re.compile(
     r"(?i)(?:\s*[,.]?\s*)\b("
@@ -1216,6 +1224,8 @@ def _sanitize_reply(
     if not text:
         return text
     cleaned = _BANNED_ALWAYS.sub("", text)
+    # Strip any stage-direction brackets copied from history (e.g. [image locked])
+    cleaned = _STAGE_BRACKETS.sub("", cleaned)
     if not want_spanish:
         cleaned = _BANNED_SPANISH_IN_ENGLISH.sub("", cleaned)
     # Past-tense "already sent" is always fake at generation time (media goes AFTER text).
