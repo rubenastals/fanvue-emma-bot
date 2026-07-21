@@ -1409,12 +1409,17 @@ def poll_once(fv: FanvueConnector, processed: set, creator_uuid: str) -> int:
     try:
         from db import fan_memory_store
 
+        blocked_handles = getattr(config, "BLOCKED_HANDLES", []) or []
         for fid, mem in (fan_memory_store.load_all() or {}).items():
             if not _looks_like_uuid(fid) or fid in seen or fid == creator_uuid:
                 continue
             if not isinstance(mem, dict):
                 continue
             if int(mem.get("messages") or 0) < 1:
+                continue
+            # Skip blocked handles from memory scan too
+            mem_handle = (mem.get("handle") or "").lower().lstrip("@")
+            if mem_handle in blocked_handles:
                 continue
             seen.add(fid)
             candidates.append(
@@ -1433,9 +1438,11 @@ def poll_once(fv: FanvueConnector, processed: set, creator_uuid: str) -> int:
         fan_handle = user.get("handle", "fan")
         if not fan_uuid:
             continue
-        # Skip blocked/spam handles
+        # Skip blocked/spam handles (check both handle and UUID prefix)
         blocked_handles = getattr(config, "BLOCKED_HANDLES", []) or []
         if fan_handle.lower().lstrip("@") in blocked_handles:
+            continue
+        if any(fan_uuid.startswith(b) or b == fan_uuid for b in blocked_handles):
             continue
         try:
             handled += _handle_fan_chat(
