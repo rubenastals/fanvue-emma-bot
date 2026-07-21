@@ -36,10 +36,9 @@ _EMOTIONAL = re.compile(
 _HEAT_PACKS = frozenset(
     {
         "phase_spiral",
-        "phase_pull",
         "rapport",
         "reward_purchase",
-        "phase_hook",
+        "phase_close",
     }
 )
 _BLOCK_PACKS = frozenset(
@@ -188,23 +187,20 @@ def _generate_script(
 
     lang = "Spanish" if want_spanish else "English"
     system = (
-        "You write the spoken script for a dirty girlfriend voice note. "
-        "Like a real horny girl grabbing her phone because she HAD to say this right now. "
-        "Raw, filthy, breathy. Use explicit dirty language naturally: "
-        "cock, wet, dripping, I want you inside me, touching myself, "
-        "you make me so horny, fuck me hard, I'm soaking for you, "
-        "I keep thinking about your cock, etc. "
-        "15-40 words. Heavy intonation: mmm, ah, ... pauses, moans, soft sighs. "
-        "Sound completely spontaneous and real, not scripted or polished. "
-        "NEVER mention photos, prices, PPV, unlocking, or anything salesy. "
-        "Output ONLY the spoken words. No stage directions, no brackets, no quotes."
+        "You write a short spoken voice-note script for Emma (dirty girlfriend). "
+        "CRITICAL: continue the SAME beat as Emma's last text ? same mood, topic, energy. "
+        "If her text apologized, cooled down, or talked about spam/pressure ? soft intimate "
+        "voice, NOT a random porn script. If her text is already filthy/horny ? breathy and dirty. "
+        "15-35 words. Natural pauses with ? Sound spontaneous. "
+        "NEVER mention photos, prices, PPV, unlocking, captions, or emojis. "
+        "Output ONLY spoken words. No stage directions, brackets, quotes, or emoji."
     )
     user = (
         f"Language: {lang}\n"
-        f"Context: {trigger_reason}\n"
-        f"He just said: {(fan_message or '')[:200]}\n"
-        f"Emma's last text: {(reply or '')[:200]}\n"
-        "Write the voice note she impulsively sends right now."
+        f"Trigger: {trigger_reason}\n"
+        f"He just said: {(fan_message or '')[:280]}\n"
+        f"Emma's text THIS turn (match this vibe): {(reply or '')[:320]}\n"
+        "Write the voice note that belongs with THAT text ? not a generic dirty line."
     )
     client = OpenAI(
         api_key=api_key,
@@ -217,39 +213,48 @@ def _generate_script(
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            max_tokens=80,
-            temperature=1.0,
+            max_tokens=90,
+            temperature=0.7,
         )
         raw = (resp.choices[0].message.content or "").strip()
         raw = raw.strip('"\'')
         raw = re.sub(r"\[.*?\]", "", raw).strip()
+        raw = re.sub(r"[\U0001F300-\U0001FAFF??????????]+", "", raw).strip()
         if raw and len(raw) <= int(getattr(config, "VOICE_NOTE_MAX_CHARS", 320) or 320):
             return raw
     except Exception:
         pass
-    return _fallback_script(want_spanish)
+    return _fallback_script(want_spanish, reply=reply)
 
 
-def _fallback_script(want_spanish: bool) -> str:
+def _fallback_script(want_spanish: bool, reply: str = "") -> str:
+    """Prefer echoing the text beat over a random dirty stock line."""
+    soft = bool(
+        re.search(
+            r"(?i)\b("
+            r"sorry|perdon|perd?n|disculp|spam|pressure|presi?n|presion|"
+            r"you're right|tienes raz[o?]n|me equivoqu|my bad|okay"
+            r")\b",
+            reply or "",
+        )
+    )
+    if soft:
+        if want_spanish:
+            return "Mmm? perdona, de verdad? no quer?a agobiarte? solo? te ten?a en la cabeza?"
+        return "Mmm? sorry, for real? I didn't mean to push? I just? had you on my mind?"
     if want_spanish:
         opts = [
-            "Mmm... me tienes tan mojada ahora mismo... no puedo parar de pensar en lo que me harias...",
-            "Joder... llevo pensando en tu polla todo el dia... estoy empapada...",
-            "Ah... me estoy tocando pensando en ti... ven aqui ya...",
+            "Mmm? me tienes en la cabeza ahora mismo? no puedo soltarte?",
+            "Joder? lo que me acabas de decir? me ha dejado temblando?",
+            "Ah? sigue habl?ndome as?? me vuelve loca?",
         ]
     else:
         opts = [
-            "Mmm... you got me so fucking wet right now... I can't stop thinking about you inside me...",
-            "God... I've been thinking about your cock all day... I'm literally dripping...",
-            "Ah... I'm touching myself thinking about you... get over here...",
-            "Fuck... you have no idea what you do to me... I'm soaking right now...",
-            "Mmm... I need you so bad right now... thinking about riding you...",
+            "Mmm? you got me stuck on what you just said? can't shake it?",
+            "Fuck? that last message? I'm still thinking about it?",
+            "Ah? keep talking to me like that? you wreck me?",
         ]
     return random.choice(opts)
-
-
-def _caption_for(want_spanish: bool) -> str:
-    return ""
 
 
 def maybe_send(
@@ -289,6 +294,18 @@ def maybe_send(
     if not ok:
         return False
 
+    # Don't drop a random filthy audio after an apology / cooling text
+    if not fan_asked_voice(fan_message) and re.search(
+        r"(?i)\b("
+        r"sorry|perdon|perdón|disculp|spam|pressure|presión|"
+        r"you're right|tienes raz[oó]n|me equivoqu|my bad|"
+        r"no (quería|queria) |didn't mean"
+        r")\b",
+        reply or "",
+    ):
+        print("   ??? voice skipped: text is apology/cooling ? wrong beat for audio")
+        return False
+
     want_spanish = language.fan_wants_spanish(fan_message, mem)
     print(f"   \U0001f399\ufe0f voice note trigger: {why}")
 
@@ -320,10 +337,12 @@ def maybe_send(
             raise RuntimeError(f"upload missing mediaUuid: {upload!r}")
 
         time.sleep(float(getattr(config, "VOICE_NOTE_SEND_DELAY_SEC", 2.5) or 2.5))
+        # No caption / no emoji ? audio only
         fv.send_media_message(
             fan_uuid,
             media_uuids=[media_uuid],
             text="",
+            allow_empty_text=True,
         )
         time.sleep(0.8)
         verified = fv.creator_media_in_chat(
