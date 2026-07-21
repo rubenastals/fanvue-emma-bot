@@ -1,8 +1,8 @@
-﻿"""
-Sensual voice notes — ElevenLabs TTS → Fanvue vault audio → free chat bubble.
+"""
+Voice notes ? ElevenLabs TTS -> Fanvue vault audio -> free chat bubble.
 
-Only at key heating moments (not every reply). Short, breathy scripts with
-heavy intonation (mmm, sighs, … pauses).
+Sent naturally at key heating moments, not promoted or packaged.
+Dirty, spontaneous, real ? like a girl grabbing her phone because she had to say something.
 """
 from __future__ import annotations
 
@@ -27,9 +27,9 @@ _HORNY = re.compile(
 )
 _EMOTIONAL = re.compile(
     r"(?i)\b("
-    r"te quiero|te extra[nñ]o|miss you|thinking about you|"
+    r"te quiero|te extra[n\u00f1]o|miss you|thinking about you|"
     r"me encantas|you turn me on|me pones|need you|"
-    r"pienso en ti|solo t[uú]|only you"
+    r"pienso en ti|solo t[u\u00fa]|only you"
     r")\b"
 )
 
@@ -55,8 +55,9 @@ _BLOCK_PACKS = frozenset(
 _ASK_VOICE = re.compile(
     r"(?i)\b("
     r"audio|audios|voice note|voice memo|voz|nota de voz|"
-    r"gr[aá]bame|m[aá]ndame audio|env[ií]ame audio|escucharte|"
-    r"whisper|susurra|al o[ií]do"
+    r"gr\u00e1bame|grabame|m\u00e1ndame audio|mandame audio|"
+    r"env\u00edame audio|enviame audio|escucharte|"
+    r"whisper|susurra|al o\u00eddo|al oido"
     r")\b"
 )
 
@@ -126,7 +127,6 @@ def should_send(
     heat_pack = pack_id in _HEAT_PACKS
     reward = pack_id == "reward_purchase"
 
-    # Key moments only — need a strong trigger
     trigger = False
     reason = ""
     if fan_asked_voice(fan_message):
@@ -160,7 +160,7 @@ def plan_send(
     unpaid: bool,
     media_sent_this_turn: bool,
 ) -> tuple[bool, str]:
-    """Pre-reply check (includes roll) so text can tease an upcoming voice note."""
+    """Pre-reply check (includes roll) so text can react naturally before audio."""
     return should_send(
         fan_message=fan_message,
         mem=mem,
@@ -188,17 +188,23 @@ def _generate_script(
 
     lang = "Spanish" if want_spanish else "English"
     system = (
-        "You write ONLY the spoken words for a sensual girlfriend voice note. "
-        "Max 10 words, 70 characters. Breathy, intimate, heavy intonation: "
-        "use mmm, ah, … pauses, soft sighs. Very sexy but warm — never salesy, "
-        "never mention photos/prices/unlock. Output ONLY the script, no quotes."
+        "You write the spoken script for a dirty girlfriend voice note. "
+        "Like a real horny girl grabbing her phone because she HAD to say this right now. "
+        "Raw, filthy, breathy. Use explicit dirty language naturally: "
+        "cock, wet, dripping, I want you inside me, touching myself, "
+        "you make me so horny, fuck me hard, I'm soaking for you, "
+        "I keep thinking about your cock, etc. "
+        "15-40 words. Heavy intonation: mmm, ah, ... pauses, moans, soft sighs. "
+        "Sound completely spontaneous and real, not scripted or polished. "
+        "NEVER mention photos, prices, PPV, unlocking, or anything salesy. "
+        "Output ONLY the spoken words. No stage directions, no brackets, no quotes."
     )
     user = (
         f"Language: {lang}\n"
-        f"Moment: {trigger_reason}\n"
-        f"He said: {(fan_message or '')[:200]}\n"
-        f"Emma just texted: {(reply or '')[:200]}\n"
-        "Write one short voice note she sends right after."
+        f"Context: {trigger_reason}\n"
+        f"He just said: {(fan_message or '')[:200]}\n"
+        f"Emma's last text: {(reply or '')[:200]}\n"
+        "Write the voice note she impulsively sends right now."
     )
     client = OpenAI(
         api_key=api_key,
@@ -211,13 +217,13 @@ def _generate_script(
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            max_tokens=60,
-            temperature=0.95,
+            max_tokens=80,
+            temperature=1.0,
         )
         raw = (resp.choices[0].message.content or "").strip()
         raw = raw.strip('"\'')
         raw = re.sub(r"\[.*?\]", "", raw).strip()
-        if raw and len(raw) <= int(getattr(config, "VOICE_NOTE_MAX_CHARS", 120) or 120):
+        if raw and len(raw) <= int(getattr(config, "VOICE_NOTE_MAX_CHARS", 320) or 320):
             return raw
     except Exception:
         pass
@@ -227,23 +233,23 @@ def _generate_script(
 def _fallback_script(want_spanish: bool) -> str:
     if want_spanish:
         opts = [
-            "Mmm… qué duro me pones, cielo…",
-            "Ah… pensaba en ti justo ahora…",
-            "Mmm… escúchame… te necesito…",
+            "Mmm... me tienes tan mojada ahora mismo... no puedo parar de pensar en lo que me harias...",
+            "Joder... llevo pensando en tu polla todo el dia... estoy empapada...",
+            "Ah... me estoy tocando pensando en ti... ven aqui ya...",
         ]
     else:
         opts = [
-            "Mmm… you got me so wet…",
-            "Ah… thinking about you…",
-            "Mmm… listen… I need you…",
+            "Mmm... you got me so fucking wet right now... I can't stop thinking about you inside me...",
+            "God... I've been thinking about your cock all day... I'm literally dripping...",
+            "Ah... I'm touching myself thinking about you... get over here...",
+            "Fuck... you have no idea what you do to me... I'm soaking right now...",
+            "Mmm... I need you so bad right now... thinking about riding you...",
         ]
     return random.choice(opts)
 
 
 def _caption_for(want_spanish: bool) -> str:
-    if want_spanish:
-        return random.choice(["escúchame… 🎙️", "para ti… 🔥", "mmm… 🎙️"])
-    return random.choice(["listen… 🎙️", "for you… 🔥", "mmm… 🎙️"])
+    return ""
 
 
 def maybe_send(
@@ -284,7 +290,7 @@ def maybe_send(
         return False
 
     want_spanish = language.fan_wants_spanish(fan_message, mem)
-    print(f"   🎙️ voice note trigger: {why}")
+    print(f"   \U0001f399\ufe0f voice note trigger: {why}")
 
     script = _generate_script(
         fan_message,
@@ -292,7 +298,7 @@ def maybe_send(
         want_spanish=want_spanish,
         trigger_reason=why,
     )
-    print(f"   🎙️ script: {script[:80]}")
+    print(f"   \U0001f399\ufe0f script: {script[:80]}")
 
     audio_path = None
     try:
@@ -326,12 +332,12 @@ def maybe_send(
             media_uuid,
         )
         if not verified:
-            print("   ⚠️ voice note sent but not verified in chat")
+            print("   \u26a0\ufe0f voice note sent but not verified in chat")
         fan_memory.record_voice_note(fan_uuid, fan_handle=fan_handle, script=script)
-        print(f"   🎙️ voice note sent to @{fan_handle}")
+        print(f"   \U0001f399\ufe0f voice note sent to @{fan_handle}")
         return True
     except Exception as e:
-        print(f"   ❌ voice note failed: {type(e).__name__}: {e}")
+        print(f"   \u274c voice note failed: {type(e).__name__}: {e}")
         return False
     finally:
         try:
@@ -343,4 +349,3 @@ def maybe_send(
                 os.unlink(audio_path)
             except OSError:
                 pass
-

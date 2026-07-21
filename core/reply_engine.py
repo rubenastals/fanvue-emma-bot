@@ -505,11 +505,10 @@ def generate_emma_reply(
 
     if voice_will_send:
         turn_blocks.append(
-            "VOICE NOTE THIS TURN: A sensual audio file attaches AFTER your text bubbles. "
-            "Your text must be 1 short line only — mysterious, not the script. "
-            "Examples: 'I have something for you…' / 'listen to this…' / 'just for you…' "
-            "DO NOT write [whispers], [sighs], or any audio script in your text. "
-            "The audio handles the words — your text just opens the door."
+            "VOICE NOTE THIS TURN: An audio file attaches after your text — naturally, no intro. "
+            "Just continue the conversation normally. Do NOT announce it, promote it, or say "
+            "'I recorded something' / 'listen to this' / 'I have something for you'. "
+            "The audio speaks for itself. Your text is just a normal reply to him."
         )
     else:
         turn_blocks.append(
