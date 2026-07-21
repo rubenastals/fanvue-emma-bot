@@ -270,18 +270,25 @@ _ASK_HIS_MEDIA = re.compile(
 )
 
 # Reply actually sells / locks HER paid photo this turn
+# NOTE: $ / € must stay OUTSIDE \b…\b — "$4" has no word boundary before $.
 _SELLS_HER_LOCK = re.compile(
-    r"(?i)\b("
+    r"(?i)("
+    r"\b("
     r"candado|unlock|desbloque|lock(ing|ed)?|"
     r"bloque(o|ando|ada)|te\s+(lo|la)\s+bloqueo|"
-    r"\$\s*\d+|€\s*\d+|precio|"
+    r"precio|"
     r"abre(lo|la)?|"
     r"(esta|esta)\s+foto|"
     r"mir(a|alo|ala)\s+(esto|esta)|"
     r"te\s+(la|lo)\s+(dejo|mando|env[ií]o)\s+(aqu[ií]|locked|bloquead)|"
     r"verme\s+as[ií]|en\s+cuatro|hilito|thong|tetas?|culo|pussy|"
-    r"esta\s+foto\s+m[ií]a|foto\s+m[ií]a|m[aá]s\s+guarra"
-    r")\b"
+    r"esta\s+foto\s+m[ií]a|foto\s+m[ií]a|m[aá]s\s+guarra|"
+    r"solo\s+para\s+ti|just\s+for\s+you|only\s+for\s+you|"
+    r"no\s+creas\s+que\s+me\s+regalo|not\s+giv(ing|e)\s+myself\s+away"
+    r")\b|"
+    r"(?:\$|€)\s*\d{1,4}|"
+    r"\d{1,4}\s*(?:\$|€|eur|euros?|d[oó]lares?|dollars?|bucks?)"
+    r")"
 )
 
 
