@@ -49,31 +49,8 @@ _THEMES = {
 _DIRECT_BUY = re.compile(
     r"(?i)\b("
     r"unlock|buy|pay|price|how much|cu[aá]nto|precio|ppv|"
-    r"show me|quiero ver|"
-    r"m[aá]ndame\s+(una\s+)?(foto|pic|photo|teta|culo)|"
-    r"m[aá]ndala|env[ií]ame\s+(una\s+)?(foto|pic|photo)|"
-    r"p[aá]samela|venga va|"
-    r"(foto|pic|photo|content).{0,12}(por ?favor|ya|ahora|please)|"
-    r"video|v[ií]deo|custom|clip"
-    r")\b"
-)
-# Bond / loyalty / emotional availability — NOT a PPV close
-_BOND_NOT_BUY = re.compile(
-    r"(?i)("
-    r"demuestr\w*.{0,40}(bueno|good|leal|real)|"
-    r"prove\s+(to\s+)?(you|myself|i'|im)|"
-    r"lo\s+bueno\s+que\s+soy|"
-    r"puedes\s+contar\s+lo|"
-    r"you\s+can\s+tell\s+me|"
-    r"estoy\s+aqu[ií]\s+para|"
-    r"i'?m\s+here\s+for\s+you|"
-    r"tratar(te)?\s+bien|cuidar(te)?"
-    r")"
-)
-_CONTENT_LEAN = re.compile(
-    r"(?i)\b("
-    r"foto|pic|pics|photo|unlock|ppv|precio|price|teta|tetas|culo|ass|"
-    r"boob|nude|naked|lingerie|contenido|content|ver\s+m[aá]s|show\s+me"
+    r"show me|quiero ver|m[aá]ndame|m[aá]ndala|env[ií]ame|p[aá]samela|"
+    r"dale|venga va|hazlo|video|v[ií]deo|custom|clip"
     r")\b"
 )
 _REJECT = re.compile(
@@ -288,15 +265,11 @@ def choose_offer(
         "Return ONLY JSON. Decide whether this exact turn is a natural PPV close. "
         "If selling, choose exactly one media_uuid from CANDIDATES. "
         "Never invent a UUID, product, price, video, custom, bundle, or description. "
-        "Direct requests for content/price/unlock/photo should sell now. "
-        "DO NOT sell on: compliments, thanks, loyalty/'how do I prove I'm good', "
-        "emotional support ('you can tell me anything'), greetings, or post-voice-note "
-        "afterglow. Those need more teasing first. "
+        "Direct requests for content/price/unlock should sell now. "
         "Smalltalk, emotional disclosure, price rejection, or a cold one-word reply "
         "should reconnect and not sell. "
         "Sexual momentum may sell ONLY if timing feels clearly earned — several hot "
-        "exchanges AND he is leaning in hard toward seeing you / unlocking. "
-        "A single horny word or 'I'll treat you well' is not enough. "
+        "exchanges AND he is leaning in hard. A single horny word is not enough. "
         "When in doubt, do NOT sell — warming him up beats a premature pitch. "
         'Schema: {"sell_now":true|false,"media_uuid":"uuid or null",'
         '"reason":"short","confidence":0.0}.'
@@ -371,15 +344,6 @@ def choose_offer(
         reason = f"direct buy override; selector said: {reason}"
         confidence = max(confidence, 0.9)
 
-    # Code veto: bond/loyalty talk or fresh voice afterglow without content lean
-    if sell_now and not direct:
-        veto = _premature_sell_veto(mem, fan_message)
-        if veto:
-            sell_now = False
-            chosen = None
-            reason = veto
-            confidence = min(confidence, 0.4)
-
     elapsed = time.monotonic() - started
     print(
         f"   selector: sell={sell_now} conf={confidence:.2f} "
@@ -392,21 +356,3 @@ def choose_offer(
         confidence=confidence,
         source="ai",
     )
-
-
-def _premature_sell_veto(mem: dict, fan_message: str) -> str:
-    """Block PPV drops on bond talk or right after a voice note."""
-    text = fan_message or ""
-    if _BOND_NOT_BUY.search(text) and not _CONTENT_LEAN.search(text):
-        return "bond/loyalty talk — warm + tease first, no PPV"
-    # Fresh voice note afterglow: need explicit content lean before locking
-    raw = mem.get("last_voice_at")
-    if raw:
-        try:
-            dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
-            mins = (datetime.now(timezone.utc) - dt).total_seconds() / 60.0
-            if mins < 12 and not _CONTENT_LEAN.search(text):
-                return "post-voice afterglow — keep teasing, no PPV yet"
-        except (TypeError, ValueError):
-            pass
-    return ""
