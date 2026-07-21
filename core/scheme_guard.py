@@ -709,7 +709,8 @@ def repeats_recent_question(
             if not q_toks or not p_toks:
                 continue
             overlap = len(q_toks & p_toks) / max(1, min(len(q_toks), len(p_toks)))
-            if overlap >= 0.72 or q in prev or prev in q:
+            # 0.6 catches paraphrases ("sin palabras… qué me harías" loops)
+            if overlap >= 0.6 or q in prev or prev in q:
                 return True
     return False
 
