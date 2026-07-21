@@ -97,7 +97,7 @@ _TEMPLATES: Dict[str, Dict[str, List[str]]] = {
         "es": [
             "Me dejaste con el mensaje en visto y te fuiste… qué malo eres 😒",
             "Vaya con el hombre misterioso… ¿dónde te metiste? 🙄",
-            "Oye guapo, no puedes desaparecer así 😤",
+            "Hey babe, you can't just disappear like that 😤",
             "¿Me ignorás o se te olvidó que estábamos hablando? 😏",
         ],
         "en": [
@@ -151,7 +151,7 @@ _TEMPLATES: Dict[str, Dict[str, List[str]]] = {
     },
     "goodmorning": {
         "es": [
-            "Buenos días guapo… pensé en ti nada más despertar 😏",
+            "Good morning babe… you were the first thing I thought of 😏",
             "Buenas… ¿dormiste bien? Yo soñé cosas muy malas 😈",
             "Morning 😏 ¿Sigues ahí o te perdí para siempre?",
             "Despertándome y ya pensando en ti… eso es tu culpa 😒",

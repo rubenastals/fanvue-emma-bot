@@ -1,4 +1,4 @@
-"""
+﻿"""
 Sensual voice notes — ElevenLabs TTS → Fanvue vault audio → free chat bubble.
 
 Only at key heating moments (not every reply). Short, breathy scripts with
@@ -343,3 +343,4 @@ def maybe_send(
                 os.unlink(audio_path)
             except OSError:
                 pass
+

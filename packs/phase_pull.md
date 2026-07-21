@@ -26,5 +26,4 @@ NEVER:
 - Paste Soft-lesson essays or multi-technique stacks
 
 VOICE:
-- ES: "Tú sabes lo que valgo… ¿vas a quedarte mirando o vas a demostrarlo? 🔥"
-- EN: "I don't chase, baby… but I notice who shows up for me 😏"
+- VOICE: "I don't chase, baby… but I notice who shows up for me 😏"

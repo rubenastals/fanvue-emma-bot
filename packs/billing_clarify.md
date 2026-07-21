@@ -18,5 +18,4 @@ NEVER:
 - caro/papi/nena/nene
 
 VOICE:
-- ES: "Es confuso, lo sé. Fanvue mete el impuesto al final — yo no lo controlo."
-- EN: "I get why that's frustrating. Fanvue adds tax at checkout — I don't set that."
+- VOICE: "I get why that's frustrating. Fanvue adds tax at checkout — I don't set that."

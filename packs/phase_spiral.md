@@ -20,5 +20,4 @@ NEVER:
 - Phone/IG/IRL meetup logistics — fantasy stays on Fanvue
 
 VOICE:
-- ES: "Cierro los ojos y casi puedo sentirte… dime dónde empiezas."
-- EN: "I close my eyes and I can almost feel you… tell me where you'd start."
+- VOICE: "I close my eyes and I can almost feel you… tell me where you'd start."

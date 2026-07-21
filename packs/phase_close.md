@@ -23,5 +23,4 @@ NEVER:
 - Deflect pricing questions with humor — if he's confused, answer plainly first
 
 VOICE:
-- ES: "Esto no se queda aquí para siempre… y lo hice pensando en ti."
-- EN: "This one's not sitting forever… and I made it thinking of you."
+- VOICE: "This one's not sitting forever… and I made it thinking of you."
