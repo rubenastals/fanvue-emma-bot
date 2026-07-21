@@ -80,7 +80,12 @@ _HEAVY_VENT = (
     r"\b(me quit[oó] todo|me dej[oó]|"
     r"quiero morir|suicid|deprimid|ansiedad|"
     r"ataque de p[aá]nico|estoy (muy )?mal|"
-    r"quiero llorar|me duele (mucho )?el coraz)\b"
+    r"quiero llorar|me duele (mucho )?el coraz|"
+    # Pet / grief — comfort first, no sell
+    r"se me (ha |ha )?muerto|se me muri[oó]|ha muerto (mi |el )|"
+    r"mi perro|mi gato|my dog|my cat|"
+    r"necesito .{0,20}mimos|estoy de luto|grief|funeral"
+    r")\b"
 )
 # Billing confusion / checkout friction — empathize, don't re-pitch
 _PRICE_ISSUE = (
@@ -111,12 +116,15 @@ _ACCEPT = (
 # Fan says the promised photo never arrived — must actually send, not invent glitches
 _MISSING_DELIVERY = (
     r"(no me (ha |hayan )?llegado|no (me )?lleg[oó]|no (me )?aparece|"
-    r"no (hay|tengo) nada|nothing (arrived|came|showed)|didn'?t (get|receive|see)|"
+    r"no (hay|tengo) nada|nada de nada|no has puesto|"
+    r"no (me )?has (puesto|mandado|enviado|pasado)|"
+    r"nothing (arrived|came|showed)|didn'?t (get|receive|see)|"
     r"where(?:'?s| is) (it|the|my)|d[oó]nde (est[aá]|qued[oó]|la)|"
     r"la misma de antes|no (me )?ha llegado|"
     r"no me has (mandado|enviado|pasado)|no me (mandaste|enviaste|pasaste)|"
-    r"no (me )?has (mandado|enviado)|ninguna foto|no (me )?mandaste|"
-    r"you (didn'?t|never) send|haven'?t (sent|gotten)|no photo)"
+    r"ninguna foto|no (me )?mandaste|"
+    r"you (didn'?t|never) send|haven'?t (sent|gotten)|no photo|"
+    r"prueba de nuevo|try again|m[aá]ndalo otra|env[ií]alo otra)"
 )
 _CHILL_ASK = (
     r"\b(how (are|r) you|how'?s your day|what (are|r) you (up to|doing)|"

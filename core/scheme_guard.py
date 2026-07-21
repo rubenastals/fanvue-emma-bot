@@ -85,9 +85,25 @@ _GHOST_PROMISE = re.compile(
     r"voy\s+a\s+(mandar|enviar|pasar|prepar)|"
     r"te\s+(mando|env[ií]o|paso)\s+(algo|una\s+foto|una)|"
     r"ya\s+te\s+(la\s+)?(mando|env[ií]o)|"
+    r"te\s+la\s+estoy\s+dejando|"
+    r"mira\s+lo\s+que\s+te\s+tengo|"
+    r"te\s+tengo\s+preparado|"
     r"wait\s+(a\s+)?(sec|second|moment)|"
     r"i('?m| am)\s+(preparing|about\s+to\s+send)|"
     r"let\s+me\s+(send|prep|prepare|grab)"
+    r")\b"
+)
+
+# Blames the fan / FOMO after a ghost send (nothing attached)
+_BLAME_AFTER_GHOST = re.compile(
+    r"(?i)\b("
+    r"se\s+te\s+fue\s+la\s+oportunidad|"
+    r"you\s+missed\s+(your\s+)?chance|"
+    r"ya\s+deber[ií]a\s+estar\s+ah[ií]|"
+    r"de\s+verdad\s+que\s+te\s+la\s+mand[eé]|"
+    r"algo\s+fall[oó]|se\s+supone\s+que\s+ya|"
+    r"i\s+(already\s+)?sent\s+it|"
+    r"should\s+(already\s+)?be\s+(there|in\s+your)"
     r")\b"
 )
 
@@ -253,6 +269,16 @@ def ghost_media_promise(reply: str, *, media_attached: bool) -> bool:
     if not text:
         return False
     return bool(_GHOST_PROMISE.search(text))
+
+
+def blame_after_ghost(reply: str, *, media_attached: bool) -> bool:
+    """True when she gaslights / FOMO-blames him after nothing attached."""
+    if media_attached:
+        return False
+    text = (reply or "").strip()
+    if not text:
+        return False
+    return bool(_BLAME_AFTER_GHOST.search(text))
 
 
 # Reply asks HIM to send his face/body pic (wrong direction for a PPV attach turn)

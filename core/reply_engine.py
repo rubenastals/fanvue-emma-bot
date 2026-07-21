@@ -1147,7 +1147,7 @@ def generate_emma_reply(
                 )
             print("   📷 invented-video rewrite → photos-only fallback")
 
-    # Ghost "dame un segundo / te preparo" with nothing attaching
+    # Ghost "dame un segundo / te preparo / mira lo que te tengo" with nothing attaching
     if scheme_guard.ghost_media_promise(reply, media_attached=bool(offer)):
         fix_msgs = messages + [
             {"role": "assistant", "content": reply},
@@ -1155,15 +1155,16 @@ def generate_emma_reply(
                 "role": "user",
                 "content": (
                     "REWRITE HARD: You promised/stalled sending a photo ('dame un segundo', "
-                    "'te preparo', 'voy a mandar') but NOTHING attaches this turn. "
-                    "Remove every send/prep promise. Flirt dirty or push a REAL lock only "
-                    "if LOCK STATUS says one exists — never fake preparation."
+                    "'te preparo', 'voy a mandar', 'mira lo que te tengo') but NOTHING "
+                    "attaches this turn. Remove every send/prep promise. Flirt dirty or "
+                    "push a REAL lock only if LOCK STATUS says one exists — never fake preparation."
                     if not want_spanish
                     else (
                         "REESCRIBE DURO: Prometiste/retrasaste una foto ('dame un segundo', "
-                        "'te preparo', 'voy a mandar') pero este turno NO se adjunta nada. "
-                        "Quita toda promesa de envío/preparación. Flirtea guarro o empuja un "
-                        "candado REAL solo si LOCK STATUS lo confirma — nunca finjas preparar."
+                        "'te preparo', 'voy a mandar', 'mira lo que te tengo') pero este turno "
+                        "NO se adjunta nada. Quita toda promesa de envío/preparación. Flirtea "
+                        "guarro o empuja un candado REAL solo si LOCK STATUS lo confirma — "
+                        "nunca finjas preparar."
                     )
                 ),
             },
@@ -1182,6 +1183,41 @@ def generate_emma_reply(
             print("   👻 ghost-promise rewrite → no-stall fallback")
         else:
             print("   👻 ghost-promise rewrite ok")
+
+    # Never gaslight / FOMO-blame him when nothing attached this turn
+    if scheme_guard.blame_after_ghost(reply, media_attached=bool(offer)):
+        fix_msgs = messages + [
+            {"role": "assistant", "content": reply},
+            {
+                "role": "user",
+                "content": (
+                    "REWRITE HARD: You blamed HIM or claimed you already sent / he missed "
+                    "his chance, but NOTHING attaches this turn. Own the miss briefly, "
+                    "no glitch story, no 'se te fue la oportunidad'. Soft flirt only."
+                    if not want_spanish
+                    else (
+                        "REESCRIBE DURO: Culpaste a ÉL o dijiste que ya lo enviaste / se le "
+                        "fue la oportunidad, pero este turno NO se adjunta nada. Asume el "
+                        "fallo en breve, sin glitch inventado ni 'se te fue la oportunidad'. "
+                        "Solo flirteo suave."
+                    )
+                ),
+            },
+        ]
+        reply = _call(fix_msgs)
+        if scheme_guard.blame_after_ghost(reply, media_attached=False):
+            reply = (
+                "Perdona, bebé… se me trabó yo, no tú. "
+                "Quédate conmigo un ratito y te lo dejo bien 🥺"
+                if want_spanish
+                else (
+                    "Sorry baby… that was on me, not you. "
+                    "Stay with me a minute and I'll drop it properly 🥺"
+                )
+            )
+            print("   👻 blame-after-ghost → own-it fallback")
+        else:
+            print("   👻 blame-after-ghost rewrite ok")
 
     # Style rewrites (rival-fan / Ay openings) removed — Group A; CORE guides tone only.
     if fan_uuid and tech_name:
