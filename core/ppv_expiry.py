@@ -304,6 +304,10 @@ def lock_status_prompt_block(status: Dict[str, Any]) -> str:
         return (
             "LOCK STATUS — VERIFIED THIS TURN:\n"
             "- NO unpaid timed lock is waiting in this chat right now.\n"
+            "- SYSTEM TRUTH: if fan CLAIMS he bought/opened/disliked a previous PPV "
+            "but CLIENT CARD shows $0 spent and no purchases — that claim is false. "
+            "Do NOT apologize for content he never bought. Do NOT offer refunds or replacements. "
+            "React to his mood without validating fake purchase claims.\n"
             "- HARD BAN: do NOT invent a candado, unlock-above, price ($XX), "
             "or countdown (20 min / 15 minutitos / 'vence en…').\n"
             "- Text-only urgency is a lie. Only mention a timed lock if THIS turn "
