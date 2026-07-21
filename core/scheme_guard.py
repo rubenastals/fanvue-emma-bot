@@ -443,7 +443,7 @@ def paid_offer_reply_aligned(reply: str) -> bool:
     True if the creative reply matches attaching Emma's paid lock this turn.
 
     False when DeepSeek went another direction (e.g. asked for HIS face) —
-    code must not attach a PPV that contradicts the text.
+    text must be rewritten / forced; the attach itself is still committed.
     """
     text = (reply or "").strip()
     if not text:
@@ -451,6 +451,45 @@ def paid_offer_reply_aligned(reply: str) -> bool:
     if _ASK_HIS_MEDIA.search(text):
         return False
     return bool(_SELLS_HER_LOCK.search(text))
+
+
+def forced_paid_sell_line(
+    *,
+    price: float,
+    want_spanish: bool,
+    label: str = "",
+) -> str:
+    """
+    Deterministic sell bubble when creative text won't line up with a committed attach.
+    Code already chose the offer — never cancel the PPV over a soft phrase mismatch.
+    """
+    p = max(1, int(round(float(price or 0))))
+    hint = (label or "").strip().lower()
+    spicy = bool(
+        re.search(
+            r"(?i)\b(ass|culo|tits?|tetas?|pussy|thong|hilito|nude|desnud|four|cuatro)\b",
+            hint,
+        )
+    )
+    if want_spanish:
+        if spicy:
+            return (
+                f"Solo para ti… esta foto mía, ${p} — "
+                f"ábrela si de verdad quieres verme así"
+            )
+        return (
+            f"Solo para ti, por ${p} — "
+            f"esta foto queda bloqueada; no creas que me regalo a cualquiera"
+        )
+    if spicy:
+        return (
+            f"Just for you… this pic of me, ${p} — "
+            f"unlock it if you really want to see me like this"
+        )
+    return (
+        f"Just for you, ${p} — "
+        f"this photo stays locked; I don't give myself away to just anyone"
+    )
 
 
 def history_has_rival_fan(history_turns: Optional[List[Dict[str, Any]]]) -> bool:

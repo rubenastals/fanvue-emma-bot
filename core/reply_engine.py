@@ -923,7 +923,8 @@ def generate_emma_reply(
             want_spanish=want_spanish,
         )
 
-    # Sync gate: if code will attach a paid lock, reply must sell THAT — not ask for his face
+    # Committed sell: code chose a paid offer → attach is law. Text must follow.
+    # Rewrite once; if still off, force a deterministic sell line (never cancel PPV).
     if (
         offer
         and float(offer.get("price") or 0) > 0
@@ -954,6 +955,13 @@ def generate_emma_reply(
             media_attached=True,
             want_spanish=want_spanish,
         )
+        if not scheme_guard.paid_offer_reply_aligned(reply):
+            reply = scheme_guard.forced_paid_sell_line(
+                price=price,
+                want_spanish=want_spanish,
+                label=str(offer.get("label") or ""),
+            )
+            print("   SELL sync: still off — FORCED sell line (attach stays)")
 
     if fan_uuid:
         fan_memory.set_last_mode(fan_uuid, decision.mode, fan_handle=fan_handle)

@@ -1000,38 +1000,29 @@ def _handle_fan_chat_body(
             offer = None
         is_paid_offer = bool(offer and not is_free_offer)
 
-        # Sync: DeepSeek text and PPV attach must match. If she asked for HIS
-        # face / never sold the lock, do not drop a random candado on top.
-        # CRITICAL: if we drop the attach, also strip orphan $ talk — otherwise
-        # she ships "por $4" with no lock (worse than silence).
+        # Committed sell flow: once offer_selector chose a paid lock, ATTACH wins.
+        # Never cancel PPV because DeepSeek phrasing is slightly off — force text.
         if is_paid_offer:
             from core import scheme_guard as _sg
-            from core.reply_engine import (
-                _stated_prices as _prices_in,
-                _strip_wrong_prices as _strip_prices,
-            )
 
             if not _sg.paid_offer_reply_aligned(reply):
-                print(
-                    "   SELL sync: reply still ≠ lock direction — "
-                    "dropping PPV attach"
+                price = float(offer.get("price") or 0)
+                want_es = language.fan_wants_spanish(text or "", mem)
+                reply = _sg.forced_paid_sell_line(
+                    price=price,
+                    want_spanish=want_es,
+                    label=str(offer.get("label") or ""),
                 )
-                offer = None
-                is_paid_offer = False
-                is_free_offer = False
-                if _prices_in(reply):
-                    reply = _strip_prices(reply, real_price=None)
-                    reply = re.sub(r"\s*[—–-]\s*$", "", reply).strip()
-                    reply = re.sub(r"\bpor\s*[—–,]?\s*$", "", reply, flags=re.I).strip()
-                    bubbles = split_into_messages(
-                        reply,
-                        max_len=int(getattr(config, "BUBBLE_MAX_CHARS", 200) or 200),
-                        max_bubbles=max_bubbles,
-                        vary=True,
-                    )
-                    print(
-                        f"   💵 orphan-$ stripped after attach drop: {reply[:100]}"
-                    )
+                bubbles = split_into_messages(
+                    reply,
+                    max_len=int(getattr(config, "BUBBLE_MAX_CHARS", 200) or 200),
+                    max_bubbles=max_bubbles,
+                    vary=True,
+                )
+                print(
+                    f"   SELL sync: forced sell line ${price:.0f} — "
+                    f"PPV attach COMMITTED"
+                )
 
         # FREE L0: attach image WITH the first bubble so barge-in can't skip the gift
         # after Emma already teased it in text.
