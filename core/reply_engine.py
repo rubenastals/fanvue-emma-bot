@@ -337,7 +337,8 @@ def generate_emma_reply(
             lock_active = bool(ppv_status.get("active"))
     elif delivery_truth is not None:
         lock_active = bool(delivery_truth.get("ppv_unpaid"))
-    no_lock = lock_active is False
+    # Invent rails: treat unknown as "no waiting lock" (only True = real unpaid)
+    no_lock = lock_active is not True
     soft_support = bool(
         route_result
         and (
@@ -1012,7 +1013,7 @@ def generate_emma_reply(
             )
             print("   🔒 unseen-ppv rewrite → bluff fallback")
 
-    # Invented candado when LOCK STATUS=none → forced rewrite (same rail as delivery)
+    # Invented candado/$ when no real unpaid lock and nothing attaching
     if no_lock and not offer and scheme_guard.invented_lock_claim(
         reply, lock_active=False
     ):
@@ -1045,6 +1046,16 @@ def generate_emma_reply(
                 )
             )
             print("   🔒 invented-lock rewrite → safe fallback")
+
+    # Belt: SELL=NONE + no active lock → never ship a lone $ / € amount
+    if no_lock and not offer and _stated_prices(reply):
+        reply = re.sub(
+            r"(?:\$|€)\s*\d{1,4}|\d{1,4}\s*(?:€|\$|eur|euros?)",
+            "",
+            reply,
+        ).strip()
+        reply = re.sub(r"\s{2,}", " ", reply).strip()
+        print("   💵 invent belt: stripped $ with SELL=NONE / no lock")
 
     # Vault is photos only — never promise video/custom/grabar
     if scheme_guard.invented_video_claim(reply):
