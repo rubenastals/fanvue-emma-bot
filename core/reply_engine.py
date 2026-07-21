@@ -307,6 +307,10 @@ def generate_emma_reply(
             fan_memory.set_prefer_spanish(fan_uuid, pref, fan_handle=fan_handle)
             mem = fan_memory.get(fan_uuid)
         want_spanish = language.fan_wants_spanish(fan_message, mem)
+    print(
+        f"   lang: {'ES' if want_spanish else 'EN'} "
+        f"sticky={bool((mem or {}).get('prefer_spanish'))}"
+    )
 
     # Ensure the last turn is the current fan message exactly once
     turns = list(history_turns)
@@ -836,8 +840,12 @@ def generate_emma_reply(
 
     reply = _call(messages)
 
-    # If Spanglish / wrong language slipped through → one forced rewrite
+    # If Spanglish / wrong language slipped through → forced rewrite
     if language.is_mixed_or_wrong(reply, want_spanish=want_spanish):
+        print(
+            f"   lang rewrite: reply was wrong for "
+            f"{'ES' if want_spanish else 'EN'}"
+        )
         fix_msgs = messages + [
             {"role": "assistant", "content": reply},
             {
@@ -846,6 +854,20 @@ def generate_emma_reply(
             },
         ]
         reply = _call(fix_msgs)
+        # Still English while Spanish required → second hard rewrite
+        if want_spanish and language.is_mixed_or_wrong(reply, want_spanish=True):
+            fix_msgs = messages + [
+                {"role": "assistant", "content": reply},
+                {
+                    "role": "user",
+                    "content": (
+                        "REESCRIBE YA EN ESPAÑOL. Cero inglés. "
+                        "Misma idea, tono pícaro, español natural."
+                    ),
+                },
+            ]
+            reply = _call(fix_msgs)
+            print("   lang rewrite: second Spanish pass")
         # Still bad? last-resort strip Spanish tokens in English mode
         if (not want_spanish) and language.is_mixed_or_wrong(
             reply, want_spanish=False

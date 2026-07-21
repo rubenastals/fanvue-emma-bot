@@ -43,28 +43,51 @@ _SPANISH_HITS = re.compile(
     r"|[áéíóúñ¿¡]"
 )
 
+# Structural English only — NOT baby/babe/photo (fans use those in Spanish chats)
 _ENGLISH_HITS = re.compile(
     r"(?i)\b(the|you|your|what|when|where|this|that|have|with|just|from|"
-    r"unlock|photo|baby|babe|handsome|ignored|happens|"
-    r"how|much|does|don't|didn't|can't|won't|isn't|aren't)\b"
+    r"handsome|ignored|happens|how|much|does|don't|didn't|can't|won't|"
+    r"isn't|aren't|really|because|about|think|know|want|need|please|"
+    r"already|never|always|something|nothing|everything)\b"
 )
+
+# Reply-side English glue (catch full-EN answers when Spanish was required)
+_ENGLISH_REPLY_HITS = re.compile(
+    r"(?i)\b(the|you|your|what|when|where|this|that|have|with|just|from|"
+    r"i'?m|i'?ll|i'?ve|don'?t|can'?t|won'?t|isn'?t|"
+    r"baby|babe|handsome|really|because|about|think|know|want|need|"
+    r"please|already|never|always|something|unlock|photo|lock)\b"
+)
+
+
+def _strip_system_noise(text: str) -> str:
+    """Drop vision/system stubs so they don't flip language detection."""
+    t = text or ""
+    t = re.sub(
+        r"\[(?:fan sent a photo|attached photo)[^\]]*\]",
+        " ",
+        t,
+        flags=re.I,
+    )
+    t = re.sub(r"\(You can see it:[^)]*\)", " ", t, flags=re.I)
+    return t.strip()
 
 
 def _message_is_spanish(text: str) -> bool:
     """Heuristic: is this fan message written in Spanish?"""
-    es = len(_SPANISH_HITS.findall(text or ""))
-    en = len(_ENGLISH_HITS.findall(text or ""))
+    t = _strip_system_noise(text)
+    es = len(_SPANISH_HITS.findall(t))
+    en = len(_ENGLISH_HITS.findall(t))
     if es >= 1 and es >= en:
         return True
-    # Accent / ¿¡ alone is enough
-    if re.search(r"[áéíóúñ¿¡]", text or "", re.I) and en == 0:
+    if re.search(r"[áéíóúñ¿¡]", t or "", re.I) and en == 0:
         return True
     return False
 
 
 def _message_is_clearly_english(text: str) -> bool:
     """True only for clearly English turns (not ambiguous / short Spanish)."""
-    t = (text or "").strip()
+    t = _strip_system_noise(text)
     if not t:
         return False
     if _message_is_spanish(t):
@@ -78,9 +101,9 @@ def fan_wants_spanish(fan_message: str, mem: Optional[dict] = None) -> bool:
     """
     Emma's native language is English (~95% of fans).
     Mirror: Spanish message → Spanish; clear English → English.
-    Sticky prefer_spanish covers short/ambiguous turns (not a hard EN wipe).
+    Sticky prefer_spanish covers short/ambiguous turns.
     """
-    text = fan_message or ""
+    text = _strip_system_noise(fan_message or "")
     if _ASK_ENGLISH.search(text):
         return False
     if _ASK_SPANISH.search(text):
@@ -99,7 +122,7 @@ def update_language_pref(mem: dict, fan_message: str) -> Optional[bool]:
     Returns new prefer_spanish value if it should change, else None.
     Sticky follows how HE chats (for nudges/apologies).
     """
-    text = fan_message or ""
+    text = _strip_system_noise(fan_message or "")
     if _ASK_ENGLISH.search(text):
         return False
     if _ASK_SPANISH.search(text):
@@ -116,10 +139,15 @@ def is_mixed_or_wrong(text: str, *, want_spanish: bool) -> bool:
     if not text or not text.strip():
         return True
     es = len(_SPANISH_HITS.findall(text))
-    en = len(_ENGLISH_HITS.findall(text))
+    en = len(_ENGLISH_REPLY_HITS.findall(text))
     if want_spanish:
-        # Spanish reply with a lot of English glue = bad mix
-        return en >= 3 and es >= 1
+        # Pure English when Spanish required — the bug that let EN replies ship
+        if es == 0 and en >= 1:
+            return True
+        if es == 0 and re.search(r"[A-Za-z]{4,}", text or ""):
+            return True
+        # Heavy English glue over a thin Spanish crumb
+        return en >= 4 and es >= 1 and en > es
     # English mode: any clear Spanish hit is a failure
     return es >= 1
 
