@@ -34,6 +34,7 @@ from core import (
     convo_log,
     fan_memory,
     fan_vision,
+    language,
     lorebook,
     memory_extractor,
     offer_selector,
@@ -1072,7 +1073,7 @@ def _handle_fan_chat_body(
                         f"{offer['label']} (not marked sent)"
                     )
                     try:
-                        want_es = bool(mem.get("prefer_spanish"))
+                        want_es = language.fan_wants_spanish("", mem)
                         apology = (
                             "Uy… se me trabó al mandarla. Un segundo que lo arreglo 🥺"
                             if want_es
@@ -1094,7 +1095,7 @@ def _handle_fan_chat_body(
                 except Exception:
                     pass
                 try:
-                    want_es = bool(mem.get("prefer_spanish"))
+                    want_es = language.fan_wants_spanish("", mem)
                     apology = (
                         "Uy… se me trabó el chat un segundo. Dame un momento y te la dejo bien 🥺"
                         if want_es
@@ -1183,7 +1184,7 @@ def _handle_fan_chat_body(
                         f"{offer['label']} (not marked sent)"
                     )
                     try:
-                        want_es = bool(mem.get("prefer_spanish"))
+                        want_es = language.fan_wants_spanish("", mem)
                         apology = (
                             "Uy… se me trabó el candado. Dame un segundo y te lo dejo bien 🥺"
                             if want_es
@@ -1206,7 +1207,7 @@ def _handle_fan_chat_body(
                 except Exception:
                     pass
                 try:
-                    want_es = bool(mem.get("prefer_spanish"))
+                    want_es = language.fan_wants_spanish("", mem)
                     apology = (
                         "Uy… se me trabó al bloquearla. Un momento y te la dejo 🥺"
                         if want_es

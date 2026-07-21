@@ -358,9 +358,7 @@ def _send_generated(
 ) -> bool:
     mem = fan_memory.get(fan_uuid) or {}
     last_fan = _last_fan_text(messages, fan_uuid)
-    want_spanish = language.fan_wants_spanish(last_fan, mem) if last_fan else bool(
-        mem.get("prefer_spanish")
-    )
+    want_spanish = language.fan_wants_spanish(last_fan or "", mem)
 
     # Template path — no DeepSeek call needed for nudges
     nudge_style = style or kind

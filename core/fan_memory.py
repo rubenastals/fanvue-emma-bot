@@ -1073,9 +1073,14 @@ def render_block(fan_uuid: str) -> str:
         lines.append(f"- Rolling summary: {mem['summary']}")
 
     if mem.get("prefer_spanish"):
-        lines.append("- Language: Spanish preferred (full Spanish only)")
+        lines.append(
+            "- Language: he chats in Spanish → reply Spanish this turn "
+            "(Emma native = English; mirror only)"
+        )
     else:
-        lines.append("- Language: mirror him (ES→ES, else EN); never mix")
+        lines.append(
+            "- Language: Emma native English; mirror him (ES→ES, else EN); never mix"
+        )
 
     lines.append(
         f"- Status: {mem.get('status') or 'new'} | msgs: {mem.get('messages') or 0} | "

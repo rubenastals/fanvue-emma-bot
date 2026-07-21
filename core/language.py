@@ -53,18 +53,20 @@ def _message_is_spanish(text: str) -> bool:
 
 def fan_wants_spanish(fan_message: str, mem: Optional[dict] = None) -> bool:
     """
-    Mirror policy: reply in the language HE uses.
-    - explicit ask ("speak english"/"habla español") always wins
-    - else: Spanish message → Spanish reply; otherwise English
-    - memory pref (set by explicit asks) is the tie-breaker
+    Emma's native language is English (~95% of fans).
+    Mirror this turn: Spanish message → Spanish reply; otherwise English.
+    Explicit asks and sticky prefer_spanish are tie-breakers for empty/ambiguous turns.
     """
     text = fan_message or ""
     if _ASK_ENGLISH.search(text):
         return False
     if _ASK_SPANISH.search(text):
         return True
-    if _message_is_spanish(text):
+    if text.strip() and _message_is_spanish(text):
         return True
+    if text.strip():
+        # Any non-Spanish message → English this turn (native default)
+        return False
     if mem and mem.get("prefer_spanish"):
         return True
     return False
@@ -73,13 +75,17 @@ def fan_wants_spanish(fan_message: str, mem: Optional[dict] = None) -> bool:
 def update_language_pref(mem: dict, fan_message: str) -> Optional[bool]:
     """
     Returns new prefer_spanish value if it should change, else None.
-    Caller persists via fan_memory.
+    Sticky follows how HE chats (for nudges/apologies), not Emma's native EN.
     """
     text = fan_message or ""
     if _ASK_ENGLISH.search(text):
         return False
     if _ASK_SPANISH.search(text):
         return True
+    if text.strip() and _message_is_spanish(text):
+        return True
+    if text.strip() and not _message_is_spanish(text):
+        return False
     return None
 
 
@@ -99,26 +105,24 @@ def is_mixed_or_wrong(text: str, *, want_spanish: bool) -> bool:
 def language_system_block(want_spanish: bool) -> str:
     if want_spanish:
         return (
-            "LANGUAGE LOCK (STRICT) — español nativo, no traducción mental del inglés:\n"
-            "- TODO el mensaje en español correcto y natural. Cero inglés. Cero Spanglish.\n"
-            "- TÚ con el fan (nunca usted). Concordancia de género OBLIGATORIA:\n"
-            "  · TÚ (Emma) = femenino: mojada, excitada, desnuda, guarra, lista, tuya.\n"
-            "  · ÉL (fan) = masculino: guapo, rico, listo, tuyo, mojado/excitado si hablas DE él.\n"
-            "  · Nunca le llames guapa/hermosa/preciosa/bonita; nunca digas 'estoy mojado/excitado'.\n"
-            "- Tiempos verbales coherentes en la misma frase (no mezcles pretérito/presente al azar).\n"
-            "- Persona correcta: yo estoy / tú estás / me tienes… Nunca 'tú estoy' ni 'yo estás'.\n"
-            "- Frases cortas de chat real (España/Latam neutro). No calcos del inglés "
-            "('estoy getting wet', 'you make me so…' calcado).\n"
-            "- Ortografía limpia en TUS palabras — no corrijas ni cites sus faltas.\n"
-            "- Nunca 'caro/papi/nena/nene' como apodo. No culpes a la app/traductor."
+            "LANGUAGE LOCK (STRICT) — he wrote in Spanish, so mirror in Spanish this turn:\n"
+            "- Your native language is English, but THIS reply must be correct natural Spanish only.\n"
+            "- Zero English words. Zero Spanglish. No mental word-for-word English calques.\n"
+            "- TÚ with the fan (never usted). Gender agreement REQUIRED:\n"
+            "  · YOU (Emma) = feminine: mojada, excitada, desnuda, guarra, lista, tuya.\n"
+            "  · HIM (fan) = masculine: guapo, rico — never call him guapa/hermosa/preciosa.\n"
+            "  · Never 'estoy mojado/excitado' about yourself.\n"
+            "- Coherent verb tenses; correct yo/tú conjugation (never 'tú estoy' / 'yo estás').\n"
+            "- Short real-chat Spanish. Clean spelling in YOUR words — don't correct his typos.\n"
+            "- Never 'caro/papi/nena/nene' as pet names. No app/translator excuses."
         )
     return (
         "LANGUAGE LOCK (STRICT):\n"
+        "- You are a native LA English speaker. Default language = English.\n"
         "- Write this ENTIRE reply in correct, natural English only.\n"
         "- ZERO Spanish words. No Spanglish. No 'mira', 'bebé', 'ábrelo', 'caro', 'papi', 'nena'.\n"
         "- Perfect spelling in YOUR words only — never pedantically 'fix' his typos.\n"
         "- Do NOT blame the chat app or glitches — stay in character.\n"
-        "- You are a native LA English speaker.\n"
         "- WRONG: 'Ay bebé, revísalo...' then English.\n"
         "- RIGHT: 'Hey baby, look again... I locked a hot photo for you yesterday.'"
     )
