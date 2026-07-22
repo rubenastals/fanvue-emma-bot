@@ -230,9 +230,21 @@ def _hard_route(
                 r"spam|insist|pesad|mentir|enfad|cabre|molest|harta|"
                 r"deja de|para ya|basta|shut up|enough|"
                 r"no (me )?interes|no quiero|caro|expensive|"
-                r"masivo|presión|presion|venderme|vender"
+                r"masivo|presión|presion|venderme|vender|"
+                # Emotional / wants to talk — do NOT nag the unpaid lock
+                r"hablar|talk|prefieres\s+hablar|solo\s+vender|only\s+sell|"
+                r"qu[eé]\s+te\s+pas|what\s+happened|mam[aá]|familia|family|"
+                r"est[aá]s\s+bien|todo\s+bien|te\s+pas[oó]|dif[ií]cil|"
+                r"cuento|cu[eé]ntame|tell\s+me"
                 r")\b",
                 fan_message or "",
+            )
+            # Bare "si/ok/bien" after a check-in — reconnect, don't FOMO the lock
+            or bool(
+                re.fullmatch(
+                    r"(?i)\s*(s[ií]+|ok|okay|bien|yes|yeah|yep|vale)\s*[.!]?\s*",
+                    fan_message or "",
+                )
             )
         )
         if friction:
@@ -354,13 +366,13 @@ def _soft_active(facts: TurnFacts, mem: dict) -> Dict[str, bool]:
     elif facts.msgs < 3 and not facts.horny and not facts.buying:
         active["phase_hook"] = True
         # No free tease on first beats — welcome first (ask_free_first steals pack)
-    elif facts.horny or (facts.heated and facts.msgs >= 8):
-        # Genuinely hot — can close
+    elif facts.horny:
+        # Horny THIS message — can close. Heated+msgs alone is NOT a close.
         active["phase_close"] = True
         if never_gifted and free_ok and facts.msgs >= 3:
             active["ask_free_first"] = True
     else:
-        # Mid-chat without strong buy/heat signal — build desire first
+        # Mid-chat / warm-but-cold text — build desire; do not auto-PPV
         active["phase_pull"] = True
         if never_gifted and free_ok and facts.msgs >= 3:
             active["ask_free_first"] = True
@@ -432,6 +444,26 @@ def _decision_for_pack(
             return _decision(
                 MODE_TEASE,
                 reason,
+                allow_price=False,
+                allow_free_tease=free_ok,
+            )
+        # Pull / spiral without buy or horny = tease only (no cold PPV drop)
+        if pack_id in ("phase_pull", "phase_spiral", "tease_heat", "rapport") and not (
+            facts.buying or facts.horny or facts.ask_free
+        ):
+            return _decision(
+                MODE_TEASE,
+                reason,
+                allow_price=False,
+                allow_free_tease=free_ok,
+            )
+        # phase_close / lock_now still need a real lean-in this turn
+        if pack_id in ("phase_close", "lock_now") and not (
+            facts.buying or facts.horny
+        ):
+            return _decision(
+                MODE_TEASE,
+                reason + " (no buy/horny — tease, don't attach)",
                 allow_price=False,
                 allow_free_tease=free_ok,
             )

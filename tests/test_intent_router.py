@@ -45,7 +45,9 @@ def test_engacho_spiral():
         "quiero verte mojada y caliente",
         delivery_truth={},
     )
-    assert r.pack_id == "phase_spiral"
+    # Horny this turn → close / free tease, not a cold mid-chat pull
+    assert r.pack_id in ("phase_close", "ask_free_first", "lock_now")
+    assert r.facts.horny is True
 
 
 def test_engacho_pull_mid():
@@ -54,7 +56,8 @@ def test_engacho_pull_mid():
         "estoy duro pensando en ti",
         delivery_truth={},
     )
-    assert r.pack_id == "phase_pull"
+    assert r.pack_id in ("phase_close", "ask_free_first", "lock_now")
+    assert r.decision.allow_price or r.decision.allow_free_tease
 
 
 def test_ppv_unpaid_wins():
@@ -77,13 +80,14 @@ def test_missing_delivery():
 
 
 def test_close_after_free_heat():
+    # Warm + msgs alone is NOT enough to attach PPV (Juan cold-drop bug)
     r = route(
         _mem(messages=12, free_teases_sent=1, status="warm"),
         "jaja que rica",
         delivery_truth={"ppv_unpaid": False},
     )
-    assert r.pack_id in ("phase_close", "escalate_paid", "lock_now")
-    assert r.decision.allow_price is True
+    assert r.pack_id == "phase_pull"
+    assert r.decision.allow_price is False
 
 
 def test_price_objection():
