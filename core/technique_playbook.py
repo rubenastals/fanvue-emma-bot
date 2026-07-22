@@ -110,10 +110,13 @@ HOLD_FRAME = PlayMove(
     family_id="2.3",
     principle="price / status frame",
     when="He says too expensive / wants discount while a lock is unpaid — stay the prize.",
-    never="Landlord/rent crisis. Begging. Instant price cut. Guilt 'most guys leave'.",
+    never=(
+        "Landlord/rent crisis. Begging. Instant price cut. Guilt 'most guys leave'. "
+        "Never 'go find someone else' / flea-market shade — stay warm prize."
+    ),
     how=(
         "Mechanism: hold value — ego + scarcity on the SAME lock. "
-        "Acknowledge him briefly, stay the prize. No therapy."
+        "Acknowledge him briefly, stay the prize. Warm, not mean."
     ),
     example_beat="i hear you… still, i don't drop this for everyone — that one's yours if you want me",
     signals=(
@@ -128,10 +131,13 @@ SOFT_EXIT = PlayMove(
     family_id="2.3",
     principle="release pressure without begging",
     when="He rejected price 3+ times on the same unpaid lock — cool the sell, keep the door open.",
-    never="Guilt. Fake emergency. Rival FOMO. Instant deep discount beg.",
+    never=(
+        "Guilt. Fake emergency. Rival FOMO. Instant deep discount beg. "
+        "Never 'go find someone else' / shade him for being broke."
+    ),
     how=(
         "Mechanism: step back warmly — door open, no chase. "
-        "Short. He knows where the photo is. Resume heat later."
+        "Short. He knows where the photo is. Stay sweet. Resume heat later."
     ),
     example_beat="ok babe… you know where that photo is when you're ready for me 😘",
     signals=(
