@@ -777,8 +777,8 @@ def split_into_messages(
     if not parts:
         parts = _soft_slice(reply)
 
-    default_cap = min(2, int(getattr(config, "MAX_BUBBLES", 2) or 2))
-    hard_cap = max(1, min(2, max_bubbles if max_bubbles is not None else default_cap))
+    default_cap = int(getattr(config, "MAX_BUBBLES", 3) or 3)
+    hard_cap = max(1, max_bubbles if max_bubbles is not None else default_cap)
     if len(parts) > hard_cap:
         # Keep first N bubbles; if the last kept one is mid-clause, merge the
         # next fragment in (better a slightly long finished thought than a chop).

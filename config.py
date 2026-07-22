@@ -76,7 +76,7 @@ class Config:
     DEEPSEEK_DISABLE_THINKING = os.getenv("DEEPSEEK_DISABLE_THINKING", "1") == "1"
     # Per Fanvue bubble. Over-long replies are REWRITTEN short — not mid-cut with "…".
     BUBBLE_MAX_CHARS = int(os.getenv("BUBBLE_MAX_CHARS", "160"))
-    MAX_BUBBLES = int(os.getenv("MAX_BUBBLES", "2"))
+    MAX_BUBBLES = int(os.getenv("MAX_BUBBLES", "3"))
     # Soft total for the whole reply (triggers length rewrite before send).
     # Keep short/human, but room to finish a thought (was 160 → mid-sentence chops).
     REPLY_SOFT_MAX_CHARS = int(os.getenv("REPLY_SOFT_MAX_CHARS", "200"))
