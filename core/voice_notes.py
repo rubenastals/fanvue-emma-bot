@@ -15,7 +15,11 @@ from typing import Any, Dict, List, Optional
 
 from config import config
 from core import fan_memory, language
-from utils.elevenlabs_client import is_configured, synthesize_to_file
+from utils.elevenlabs_client import (
+    is_configured,
+    scrub_tts_stage_directions,
+    synthesize_to_file,
+)
 
 _HORNY = re.compile(
     r"(?i)\b("
@@ -628,7 +632,11 @@ def _generate_script(
         "If filthy/horny — breathy and dirty, still NEW words. "
         "15-35 words. Natural pauses with ... Sound spontaneous. "
         "NEVER mention photos, prices, PPV, unlocking, captions, or emojis. "
-        "Output ONLY spoken words. No stage directions, brackets, quotes, or emoji."
+        "Output ONLY words she would SAY OUT LOUD into the mic. "
+        "HARD BAN stage directions / delivery labels in ANY language — never write "
+        "bajito, suspiro, susurro, suave, whispers, sighs, soft, breathy, "
+        "[whispers], (suspiro), *sigh*, or similar. Those get read aloud and sound fake. "
+        "No brackets, parentheses stage notes, quotes, or emoji."
     )
     user = (
         f"Language: {lang}\n"
@@ -662,8 +670,8 @@ def _generate_script(
             )
             raw = (resp.choices[0].message.content or "").strip()
             raw = raw.strip("\"'")
-            raw = re.sub(r"\[.*?\]", "", raw).strip()
             raw = re.sub(r"[\U0001F300-\U0001FAFF]+", "", raw).strip()
+            raw = scrub_tts_stage_directions(raw)
             if not raw or len(raw) > max_chars:
                 continue
             if script_echoes_reply(raw, reply):
@@ -672,7 +680,7 @@ def _generate_script(
             return raw
     except Exception:
         pass
-    return _fallback_script(want_spanish, reply=reply)
+    return scrub_tts_stage_directions(_fallback_script(want_spanish, reply=reply))
 
 
 def _fallback_script(want_spanish: bool, reply: str = "") -> str:
@@ -792,7 +800,15 @@ def maybe_send(
         except Exception:
             pass
 
-        audio_path = synthesize_to_file(script)
+        script = scrub_tts_stage_directions(script)
+        if not script:
+            script = scrub_tts_stage_directions(
+                _fallback_script(want_spanish, reply=reply)
+            )
+        audio_path = synthesize_to_file(
+            script,
+            language_code="es" if want_spanish else "en",
+        )
         upload = fv.upload_file_to_vault(
             str(audio_path),
             name=f"voice-{fan_handle[:20]}-{int(time.time())}",
