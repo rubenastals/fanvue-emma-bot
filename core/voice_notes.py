@@ -726,12 +726,11 @@ def maybe_send(
             raise RuntimeError(f"upload missing mediaUuid: {upload!r}")
 
         time.sleep(float(getattr(config, "VOICE_NOTE_SEND_DELAY_SEC", 2.5) or 2.5))
-        # No caption / no emoji ? audio only
+        # Fanvue rejects empty text (400 too_small). Minimal quiet caption; audio is the beat.
         fv.send_media_message(
             fan_uuid,
             media_uuids=[media_uuid],
-            text="",
-            allow_empty_text=True,
+            text="…",
         )
         time.sleep(0.8)
         verified = fv.creator_media_in_chat(
