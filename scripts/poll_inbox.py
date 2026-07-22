@@ -37,7 +37,6 @@ from core import (
     language,
     lorebook,
     memory_extractor,
-    offer_selector,
     ppv_expiry,
     reengagement,
     vault_catalog,
