@@ -380,8 +380,20 @@ def _soft_active(facts: TurnFacts, mem: dict) -> Dict[str, bool]:
     if facts.fan_sent_media:
         active["react_fan_media"] = True
 
-    # Reject / "caro" / can't afford → 4-step objection script (beats generic pull)
-    if facts.recent_reject and not facts.recent_purchase:
+    # Reject / "caro" / can't afford → objection script (beats generic pull).
+    # Do NOT sticky-route when he's asking what's in the unpaid lock.
+    _ask_lock = bool(
+        re.search(
+            r"(?i)\b("
+            r"how\s+do\s+you\s+look|what\s+do\s+you\s+look\s+like|"
+            r"what.?s\s+in\s+(the|that)\s+(photo|pic)|"
+            r"what\s+are\s+you\s+wearing|describe\s+(the|that|your)\s+(photo|pic)|"
+            r"c[oó]mo\s+(est[aá]s|sales|te\s+ves)|qu[eé]\s+se\s+ve"
+            r")\b",
+            fan_message or "",
+        )
+    )
+    if facts.recent_reject and not facts.recent_purchase and not _ask_lock:
         active["price_objection"] = True
 
     if facts.ask_free and facts.frees_done >= 1:
