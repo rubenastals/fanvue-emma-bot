@@ -984,12 +984,21 @@ def apply_post_draft(
 
     # Style rewrites (rival-fan / Ay openings) removed — Group A; CORE guides tone only.
     if fan_uuid and tech_name:
+        from core import technique_policy as _tp
+
+        used_rival = _tp.is_rival_move(tech_name) or scheme_guard.rival_fan_claim(
+            reply
+        )
         fan_memory.record_technique(
             fan_uuid,
             tech_name,
             fan_handle=fan_handle or "",
-            used_rival_fan=False,
+            used_rival_fan=used_rival,
         )
+        if not _tp.reply_hits_move(reply, tech_name):
+            print(
+                f"   ⚠️ move-miss: assigned [{tech_name}] but reply lacks signals"
+            )
 
     # Price truth: strip wrong $ amounts — never another LLM call
     real_price = None

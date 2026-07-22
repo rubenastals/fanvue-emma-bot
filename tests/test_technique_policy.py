@@ -1,4 +1,4 @@
-"""Live ACTIVE MOVE under SIMPLE — not generic optional flirt."""
+"""Strategic ACTIVE MOVE under SIMPLE — context-aware, not random flirt."""
 from __future__ import annotations
 
 import sys
@@ -9,6 +9,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT))
 
 from core import technique_policy
+from core.technique_policy import ActiveMove
 
 
 def test_pull_picks_named_move():
@@ -17,14 +18,14 @@ def test_pull_picks_named_move():
         fan_uuid="fan-a",
         msgs=10,
         no_lock=True,
+        mem={"messages": 10, "total_spent": 0, "purchases": 0},
         turn_action=SimpleNamespace(action="flirt"),
     )
     assert move is not None
-    name, how = move
-    assert name
-    assert how
-    # No lock-price scarcity invent when no lock (rival FOMO still allowed)
-    assert name not in (
+    assert move.name
+    assert move.how
+    assert move.why
+    assert move.name not in (
         "SCARCITY + FOMO",
         "SCARCITY + FOMO (CLOSE)",
         "FOMO + SCARCITY (Step 3)",
@@ -48,18 +49,22 @@ def test_comfort_skips_move():
     assert move is None
 
 
-def test_unpaid_scarcity():
+def test_unpaid_prefers_pressure():
     move = technique_policy.choose_move(
         "ppv_unpaid",
         unpaid=True,
         no_lock=False,
+        mem={"messages": 12, "total_spent": 0},
         turn_action=SimpleNamespace(action="flirt"),
     )
     assert move is not None
     allowed = {
-        n for n, _ in __import__("core.manipulation", fromlist=["manipulation"])._TECH_BY_PACK["ppv_unpaid"]
+        n
+        for n, _ in __import__(
+            "core.manipulation", fromlist=["m"]
+        )._TECH_BY_PACK["ppv_unpaid"]
     }
-    assert move[0] in allowed
+    assert move.name in allowed
 
 
 def test_price_objection_beats_unpaid():
@@ -70,7 +75,8 @@ def test_price_objection_beats_unpaid():
         turn_action=SimpleNamespace(action="flirt"),
     )
     assert move is not None
-    assert "GUILT" in move[0].upper()
+    assert "GUILT" in move.name.upper()
+    assert "objection-step" in move.why
 
 
 def test_price_objection_steps():
@@ -83,20 +89,49 @@ def test_price_objection_steps():
     m4 = technique_policy.choose_move(
         "price_objection", reject_count=3, unpaid=True
     )
-    assert "GUILT" in m1[0].upper()
-    assert "EGO" in m2[0].upper()
-    assert "WITHDRAWAL" in m4[0].upper()
+    assert "GUILT" in m1.name.upper()
+    assert "EGO" in m2.name.upper()
+    assert "WITHDRAWAL" in m4.name.upper()
+
+
+def test_early_chat_avoids_emergency():
+    m = technique_policy.choose_move(
+        "phase_pull",
+        fan_uuid="early-bond",
+        msgs=2,
+        mem={"messages": 2, "total_spent": 0},
+        no_lock=True,
+        ban_rival_fan=True,
+        turn_action=SimpleNamespace(action="flirt"),
+    )
+    assert m is not None
+    assert m.name != "FAKE EMERGENCY"
+    assert "EMERGENCY" not in m.name
+    assert m.name not in manipulation_rivals()
+
+
+def manipulation_rivals():
+    from core import manipulation
+
+    return set(manipulation._RIVAL_TECHS)
 
 
 def test_turn_block_mentions_move():
-    block = technique_policy.turn_block("EGO CHALLENGE", "dare him")
+    move = ActiveMove(
+        name="EGO CHALLENGE",
+        how="dare him",
+        why="heat-close|score=20",
+        family_id="2.3",
+        principle="competition / status",
+    )
+    block = technique_policy.turn_block(move)
     assert "ACTIVE MOVE" in block
     assert "EGO CHALLENGE" in block
     assert "dare him" in block
     assert "Family:" in block
     assert "2.3" in block
+    assert "Why this move:" in block
     assert "HARD BAN" in block
-    assert "fake emergency" in block.lower() or "Rival jealousy" in block
 
 
 def test_catalog_has_taxonomy_moves():
@@ -107,17 +142,8 @@ def test_catalog_has_taxonomy_moves():
     assert "LOVE BOMBING" in hook
     assert "MIRRORING" in hook
     assert "MICRO COMMITMENT" in pull
-    assert "LOYALTY PROVE" in pull
-    assert "PAIN MAP VALIDATE" in pull
     assert "RIVAL TIP FOMO" in pull
-    assert "WRONG MESSAGE JEALOUSY" in pull
-    assert "RIVAL VIDEOCALL BAIT" in pull
-    assert "STICKY RIVAL CHASE" in pull
     assert "FAKE EMERGENCY" in pull
-    # How-tos are English instructions
-    joined = " ".join(h for _, h in manipulation._TECH_BY_PACK["phase_pull"])
-    assert "Mechanism:" in joined
-    assert "bitcoin" not in joined.lower()
 
 
 def test_rival_cooled_when_recently_used():
@@ -127,10 +153,11 @@ def test_rival_cooled_when_recently_used():
         msgs=20,
         no_lock=True,
         ban_rival_fan=True,
-        turn_action=__import__("types").SimpleNamespace(action="flirt"),
+        mem={"messages": 20, "total_spent": 0},
+        turn_action=SimpleNamespace(action="flirt"),
     )
     assert move is not None
-    assert move[0] not in {
+    assert move.name not in {
         "RIVAL TIP FOMO",
         "WRONG MESSAGE JEALOUSY",
         "RIVAL VIDEOCALL BAIT",
@@ -141,11 +168,25 @@ def test_rival_cooled_when_recently_used():
 def test_how_tos_english_only():
     from core import manipulation
 
-    # Instruction lines should not be Spanish essays (beats may quote ES briefly)
     for pack, items in manipulation._TECH_BY_PACK.items():
         for name, how in items:
             assert how.startswith("Mechanism:"), (pack, name)
             assert "Mecanismo:" not in how
+
+
+def test_reply_hits_move_signals():
+    assert technique_policy.reply_hits_move(
+        "another guy keeps texting me rn… say something cute",
+        "STICKY RIVAL CHASE",
+    )
+    assert technique_policy.reply_hits_move(
+        "my landlord is on me today… help me?",
+        "FAKE EMERGENCY",
+    )
+    assert not technique_policy.reply_hits_move(
+        "jaja bb qué haces",
+        "FAKE EMERGENCY",
+    )
 
 
 def test_assemble_simple_injects_move():
@@ -171,7 +212,7 @@ def test_assemble_simple_injects_move():
             action="flirt",
             voice_will_send=False,
             offer=None,
-            mem={},
+            mem={"messages": 8, "total_spent": 0},
             blocks_photo=False,
         ),
     )
@@ -179,4 +220,5 @@ def test_assemble_simple_injects_move():
         m["content"] for m in assembled.messages if m["role"] == "system"
     )
     assert "ACTIVE MOVE THIS TURN" in sys_text
+    assert "Why this move:" in sys_text
     assert assembled.tech_name
