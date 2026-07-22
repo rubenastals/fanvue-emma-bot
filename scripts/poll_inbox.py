@@ -819,7 +819,8 @@ def _handle_fan_chat_body(
 
         from core import voice_notes as _vn
 
-        # Keyword/score-based voice gate — no AI call
+        # Keyword/score-based voice gate — no AI call.
+        # Pass history so "pídemelo" → he complies → audio actually sends.
         voice_planned = _vn.plan_send(
             fan_message=text,
             mem=mem,
@@ -827,6 +828,7 @@ def _handle_fan_chat_body(
             pack_id=route_result.pack_id,
             unpaid=unpaid,
             media_sent_this_turn=False,
+            history_turns=turns,
         )
         if voice_planned[0]:
             print(f"   🎙️ voice planned: {voice_planned[1]} — no photo this turn")
@@ -1289,7 +1291,8 @@ def _handle_fan_chat_body(
                     unpaid=unpaid,
                     media_sent_this_turn=bool(free_sent or ppv_sent),
                     barged=barged,
-                    pre_planned=voice_planned if voice_planned[0] else None,
+                    pre_planned=voice_planned,
+                    history_turns=turns,
                 )
             except Exception as e:
                 print(f"   ⚠️ voice note error: {type(e).__name__}: {e}")

@@ -60,6 +60,33 @@ _ASK_VOICE = re.compile(
     r")\b"
 )
 
+# She already stalled with "ask me for it" / promised a voice note.
+# Require audio/voice context so photo "pídemela" doesn't force a random VN.
+_EMMA_OWED_VOICE = re.compile(
+    r"(?i)("
+    r"(?:p[ií]demel[oa]|ask\s+me\s+nicely).{0,100}"
+    r"(?:audio|voz|voice|grab|whisper|susurr)|"
+    r"(?:audio|voz|voice|grab|whisper|susurr).{0,100}"
+    r"(?:p[ií]demel[oa]|ask\s+me\s+nicely)|"
+    r"d[eé]jame\s+grabarte|"
+    r"give\s+me\s+a\s+sec.{0,40}(?:voice|audio|whisper)|"
+    r"voy\s+a\s+grabar(?:te|te\s+algo|un\s+audio)?|"
+    r"te\s+(?:grabo|mando|env[ií]o)\s+(?:un\s+)?(?:audio|voice)|"
+    r"i(?:'?ll| will)\s+(?:send|record|drop)\s+(?:you\s+)?(?:a\s+)?(?:voice|audio)|"
+    r"want\s+(?:me\s+to\s+)?(?:record|send)\s+(?:you\s+)?(?:a\s+)?(?:voice|audio)|"
+    r"quieres\s+(?:que\s+)?(?:te\s+)?(?:grabe|mande\s+(?:un\s+)?audio)"
+    r")"
+)
+
+_COMPLY_AFTER_VOICE_STALL = re.compile(
+    r"(?i)\b("
+    r"por\s*favor|please|vale|ok|okay|dale|venga|"
+    r"s[ií]+|manda|env[ií]|pasa|quiero|hazlo|vamos|"
+    r"audio|voz|voice|gr[aá]ba|"
+    r"ganas|gatas"
+    r")\b"
+)
+
 
 def _enabled() -> bool:
     return bool(getattr(config, "VOICE_NOTES_ENABLED", True)) and is_configured()
@@ -94,6 +121,40 @@ def fan_asked_voice(fan_message: str) -> bool:
     return bool(_ASK_VOICE.search(fan_message or ""))
 
 
+def _recent_assistant_text(
+    history_turns: Optional[List[Dict[str, Any]]], *, n: int = 4
+) -> str:
+    if not history_turns:
+        return ""
+    chunks: List[str] = []
+    seen = 0
+    for turn in reversed(history_turns):
+        if (turn.get("role") or "") != "assistant":
+            continue
+        chunks.append(str(turn.get("content") or ""))
+        seen += 1
+        if seen >= n:
+            break
+    return "\n".join(reversed(chunks))
+
+
+def emma_owed_voice(
+    history_turns: Optional[List[Dict[str, Any]]] = None,
+) -> bool:
+    """True if Emma just promised audio / asked him to beg for the voice note."""
+    emma = _recent_assistant_text(history_turns, n=4)
+    if not emma:
+        return False
+    # Must be about voice/audio OR a naked "pídemelo" while thread is on audio
+    if _EMMA_OWED_VOICE.search(emma):
+        return True
+    return False
+
+
+def fan_complied_for_voice(fan_message: str) -> bool:
+    return bool(_COMPLY_AFTER_VOICE_STALL.search(fan_message or ""))
+
+
 def should_send(
     *,
     fan_message: str,
@@ -104,21 +165,32 @@ def should_send(
     media_sent_this_turn: bool,
     barged: bool,
     apply_roll: bool = True,
+    history_turns: Optional[List[Dict[str, Any]]] = None,
 ) -> tuple[bool, str]:
     """Return (ok, reason) for logging."""
     if not _enabled():
         return False, "disabled or no API key"
     if barged:
         return False, "barge-in"
-    if unpaid or pack_id in _BLOCK_PACKS:
-        return False, "sell/objection/reengage block"
     if media_sent_this_turn:
         return False, "photo turn"
-    if int(mem.get("messages") or 0) < int(getattr(config, "VOICE_NOTES_MIN_MESSAGES", 8) or 8):
+
+    asked = fan_asked_voice(fan_message)
+    owed = emma_owed_voice(history_turns)
+    complied = fan_complied_for_voice(fan_message)
+    # She said "pídemelo" / promised audio → he complied → SEND. No beg loop.
+    # Free audio must not die behind an unpaid photo lock.
+    committed = asked or (owed and complied)
+
+    if not committed and (unpaid or pack_id in _BLOCK_PACKS):
+        return False, "sell/objection/reengage block"
+    if not committed and int(mem.get("messages") or 0) < int(
+        getattr(config, "VOICE_NOTES_MIN_MESSAGES", 8) or 8
+    ):
         return False, "too early in chat"
 
     mode = (getattr(decision, "mode", "") or "").lower()
-    if mode in ("hard_sell", "chill"):
+    if not committed and mode in ("hard_sell", "chill"):
         return False, f"mode={mode}"
 
     horny = _horny_score(fan_message)
@@ -128,7 +200,9 @@ def should_send(
 
     trigger = False
     reason = ""
-    if fan_asked_voice(fan_message):
+    if committed and owed and complied:
+        trigger, reason = True, "owed voice after stall (pídemelo→comply)"
+    elif asked:
         trigger, reason = True, "fan asked voice"
     elif reward:
         trigger, reason = True, "post-purchase reward"
@@ -142,7 +216,8 @@ def should_send(
     if not trigger:
         return False, "no key moment"
 
-    if apply_roll and not fan_asked_voice(fan_message):
+    # Never roll-miss a committed ask / owed close
+    if apply_roll and not committed:
         chance = float(getattr(config, "VOICE_NOTES_CHANCE", 0.55) or 0.55)
         if random.random() > chance:
             return False, f"roll miss ({reason})"
@@ -158,6 +233,7 @@ def plan_send(
     pack_id: str,
     unpaid: bool,
     media_sent_this_turn: bool,
+    history_turns: Optional[List[Dict[str, Any]]] = None,
 ) -> tuple[bool, str]:
     """Pre-reply check (includes roll) so text can react naturally before audio."""
     return should_send(
@@ -169,6 +245,7 @@ def plan_send(
         media_sent_this_turn=media_sent_this_turn,
         barged=False,
         apply_roll=True,
+        history_turns=history_turns,
     )
 
 
@@ -278,6 +355,7 @@ def maybe_send(
     media_sent_this_turn: bool,
     barged: bool,
     pre_planned: Optional[tuple[bool, str]] = None,
+    history_turns: Optional[List[Dict[str, Any]]] = None,
 ) -> bool:
     """
     Optionally generate + upload + send a voice note after text bubbles.
@@ -296,6 +374,7 @@ def maybe_send(
             unpaid=unpaid,
             media_sent_this_turn=media_sent_this_turn,
             barged=barged,
+            history_turns=history_turns,
         )
     if not ok:
         return False

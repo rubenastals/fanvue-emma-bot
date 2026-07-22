@@ -271,6 +271,21 @@ def ghost_media_promise(reply: str, *, media_attached: bool) -> bool:
     return bool(_GHOST_PROMISE.search(text))
 
 
+def strip_ghost_promise_phrases(reply: str) -> str:
+    """
+    Remove stall/prep clauses without replacing the whole coherent reply.
+    Prefer this over fallback_ghost_promise when the rest of the draft is fine.
+    """
+    text = (reply or "").strip()
+    if not text:
+        return text
+    cleaned = _GHOST_PROMISE.sub("", text)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    cleaned = re.sub(r"\s+([,.!?…])", r"\1", cleaned)
+    cleaned = re.sub(r"^[.…,\s]+", "", cleaned)
+    return cleaned.strip() or text
+
+
 def blame_after_ghost(reply: str, *, media_attached: bool) -> bool:
     """True when she gaslights / FOMO-blames him after nothing attached."""
     if media_attached:
@@ -881,6 +896,21 @@ def thread_beat_block(
         lines.append(
             "- You ALREADY asked (banned to repeat): "
             + " | ".join(f'"{q[:70]}"' for q in asked)
+        )
+
+    # Detect pídemelo / voice-stall loop from recent YOU lines
+    you_blob = " ".join(
+        str(t.get("content") or "")
+        for t in (history_turns or [])[-4:]
+        if (t.get("role") or "") == "assistant"
+    )
+    if re.search(
+        r"(?i)\b(p[ií]demel[oa]|ask\s+me\s+nicely|grab(o|arte)|voice\s+note|audio)\b",
+        you_blob,
+    ):
+        lines.append(
+            "- Voice/stall debt: if you already asked him to beg for audio/it, "
+            "do NOT ask again — deliver or move on. No pídemelo loop."
         )
 
     lines.append(
