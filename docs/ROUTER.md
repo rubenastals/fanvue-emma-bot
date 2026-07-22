@@ -19,10 +19,10 @@ Soft intent = regex (optional JSON if SOFT_CLASSIFY=1)
 Creativity  = DeepSeek final reply only (never owns protocol)
 SIMPLE turn = CORE(persona) + CARD + HISTORY + TURN facts + AUTHOR
 
-**Action-first (voice):** `open_commitment` in fan_memory is code-owned.
-Poller syncs commitment from the thread, chooses `ACTION=send_voice` *before*
-DeepSeek, then sends the note regardless of creative text. Prompt gets one
-short COMMITMENT line — no more “hope the model remembers 10 messages”.
+**Action-first (R5):** `plan_turn_action` in `core/turn_action.py` chooses ONE
+ACTION before DeepSeek: `send_voice` > `comfort` > `attach_ppv` > `attach_free`
+> `flirt`. Voice uses `open_commitment` in fan_memory. Prompt gets a short
+ACTION / COMMITMENT line — protocol is code, not Soft memory.
 ```
 
 When `SIMPLE_PROMPT=1` (production default):
