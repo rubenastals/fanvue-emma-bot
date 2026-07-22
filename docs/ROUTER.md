@@ -101,16 +101,19 @@ See [`packs/_index.json`](../packs/_index.json). Hard delivery/PPV gates still b
 Train / catch failures without opening real chats:
 
 ```bash
-python scripts/sim_mass.py                  # all scripted fans × 1 run
-python scripts/sim_mass.py -s new_horny_en --runs 3
+python scripts/sim_mass.py                  # scripted fans × 1 run
+python scripts/sim_mass.py --llm-fan        # REALISTIC: LLM plays the fan + score
+python scripts/sim_mass.py --llm-fan -a horny_buyer --runs 3
 python scripts/sim_mass.py --list
 python scripts/sim_mass.py --json out/sim.json
 ```
 
 Uses the **live** path (`assemble → DeepSeek → sanitize → scheme_guard` +
-`core/sim_detect.py`). Scripted fans in `core/sim_scenarios.py`. Add a scenario
-when you find a new failure mode — do **not** open throwaway Fanvue accounts
-to iterate captions / early romance / ENGLISH_ONLY.
+`core/sim_detect.py`). Prefer `--llm-fan` for training: DeepSeek-fast plays the
+subscriber (`core/sim_fan_llm.py`), can unlock/reject/send selfie/leave, then
+`core/sim_score.py` rates hook/human/sell (fail if avg &lt; 6). Scripted fans in
+`core/sim_scenarios.py` are for fast regression. Add an archetype/scenario when
+you find a new failure mode — do **not** open throwaway Fanvue accounts.
 
 Then: `scheme_check.py` / critic on real logs; unit matrix via `run_audit_matrix.py`.
 
