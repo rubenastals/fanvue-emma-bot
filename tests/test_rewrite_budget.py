@@ -48,7 +48,13 @@ def test_hard_lies_deterministic_no_llm_needed():
 
     # Bluff / invent lock / video / ghost / blame → fallbacks
     bluff = sg.fallback_purchase_bluff(want_spanish=True, lock_still_active=True)
-    assert "Mentiroso" in bluff or "no la has abierto" in bluff.lower()
+    # ENGLISH_ONLY → EN branch even if want_spanish=True
+    assert (
+        "Mentiroso" in bluff
+        or "no la has abierto" in bluff.lower()
+        or "liar" in bluff.lower()
+        or "haven't opened" in bluff.lower()
+    )
     assert sg.fallback_obeys_style_bans(bluff)
 
     no_lock = sg.fallback_no_lock(want_spanish=True)

@@ -1133,19 +1133,29 @@ def apply_post_draft(
         print("   style: stripped echo quotation marks")
 
     # Committed sell: code chose a paid offer → attach is law. Text must follow.
-    if (
-        offer
-        and float(offer.get("price") or 0) > 0
-        and int(offer.get("level") or 0) > 0
-        and not scheme_guard.paid_offer_reply_aligned(reply)
-    ):
+    if offer and float(offer.get("price") or 0) > 0 and int(offer.get("level") or 0) > 0:
         price = float(offer.get("price") or 0)
-        reply = scheme_guard.forced_paid_sell_line(
-            price=price,
-            want_spanish=want_spanish,
-            label=str(offer.get("label") or ""),
+        label = str(offer.get("label") or "")
+        robotic = bool(
+            re.search(
+                r"(?i)just\s+for\s+you.{0,40}this\s+pic\s+of\s+me|"
+                r"unlock\s+it\s+if\s+you\s+really\s+want\s+to\s+see\s+me|"
+                r"this\s+photo\s+stays\s+locked|"
+                r"i\s+don'?t\s+give\s+myself\s+away\s+to\s+just\s+anyone",
+                reply or "",
+            )
         )
-        print("   SELL sync: reply ≠ paid lock — FORCED sell line (no LLM rewrite)")
+        if robotic or not scheme_guard.paid_offer_reply_aligned(reply):
+            reply = scheme_guard.forced_paid_sell_line(
+                price=price,
+                want_spanish=want_spanish,
+                label=label,
+            )
+            print(
+                "   SELL sync: "
+                + ("robotic store caption" if robotic else "reply ≠ paid lock")
+                + " — FORCED filthy tease (no LLM rewrite)"
+            )
 
     if fan_uuid:
         fan_memory.set_last_mode(fan_uuid, decision.mode, fan_handle=fan_handle)
