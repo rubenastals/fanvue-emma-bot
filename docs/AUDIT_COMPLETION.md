@@ -15,32 +15,16 @@ Principle: **protocol = code**. DeepSeek only writes text for an ACTION the poll
 | A7 | `open_commitment` + action-first voice (v1) | ✅ |
 | A8 | Hard-block PPV while voice debt open | ✅ |
 | **R1** | **Dumb voice FSM** — open_voice → SEND (no rolls/packs/horny) | ✅ |
-<<<<<<< HEAD
-<<<<<<< HEAD
-| **R3** | **Quarantine dead brains** — banners + `core/quarantine.py` + autofix/docs | ✅ |
-=======
 | **R2** | **Cap rewrite cascade** — `MAX_CREATIVE_REWRITES=1`; hard lies → strip/fallback only | ✅ |
->>>>>>> origin/main
-=======
+| **R3** | **Quarantine dead brains** — banners + `core/quarantine.py` + autofix/docs | ✅ |
 | **R5** | **TurnAction resolver** — voice > comfort > attach_ppv/free > flirt before LLM | ✅ |
->>>>>>> origin/cursor/audit-r5-turn-action-resolver-c46b
+| **R6** | **Expanded audit matrix** — cross-seam tests + one-command runner | ✅ |
 
 ## Remaining (finish BEFORE polish)
 
 | # | Item | Why it matters |
 |---|------|----------------|
-<<<<<<< HEAD
-<<<<<<< HEAD
-| **R2** | Cap rewrite cascade — 1 creative call; only deterministic strips for hard lies | Rewrites wipe good replies / context (PR #9 if open) |
-=======
-| **R3** | Quarantine dead brains (`reply_v2`, fat `system_prompt`, unused STRATEGY essay) | Agents patch the wrong surface |
->>>>>>> origin/main
-=======
-| **R2** | Cap rewrite cascade — 1 creative call; only deterministic strips for hard lies | Rewrites wipe good replies / context (PR #9) |
-| **R3** | Quarantine dead brains (`reply_v2`, fat `system_prompt`, unused STRATEGY essay) | Agents patch the wrong surface (PR #10) |
->>>>>>> origin/cursor/audit-r5-turn-action-resolver-c46b
 | **R4** | Split `reply_engine` seams: assemble / generate / sanitize | God-object = every fix breaks another |
-| **R6** | Expand matrix tests alongside each R | Prevent regression while refactoring |
 
 ## Explicitly NOT doing now
 
@@ -52,19 +36,18 @@ Principle: **protocol = code**. DeepSeek only writes text for an ACTION the poll
 ## Order of work
 
 1. R1 (voice WHEN) ✅  
-<<<<<<< HEAD
-<<<<<<< HEAD
-2. R2 (rewrite cap) — see PR #9  
-3. R3 (quarantine) ✅  
-=======
 2. R2 (rewrite cap) ✅  
-3. R3 (quarantine)  
->>>>>>> origin/main
-4. R5 lite (action resolver skeleton)  
-5. R6 tests  
-6. R4 split (larger; after R1–R3 stable)
+3. R3 (quarantine) ✅  
+4. R5 lite (action resolver) ✅  
+5. R6 tests ✅  
+6. R4 split (larger; last)
 
-<<<<<<< HEAD
+## R2 notes
+
+- Config: `MAX_CREATIVE_REWRITES` (default `1`) — spent on lang / length / complete / grammar only.
+- Hard lies never call DeepSeek again: delivery, sell sync, wait timing, purchase bluff, invented lock/video, ghost stall, blame, wrong `$`, continuity question strip.
+- Helpers: `RewriteBudget`, `_fix_invented_wait_minutes`; tests in `tests/test_rewrite_budget.py`.
+
 ## R3 notes
 
 - Registry: `core/quarantine.py` (`QUARANTINE_MARKER` on each dead surface).
@@ -72,19 +55,6 @@ Principle: **protocol = code**. DeepSeek only writes text for an ACTION the poll
 - Autofix / TECHNIQUES / ROUTER / cursor rule point at `personas/emma.md` + code gates.
 - Tests: `tests/test_quarantine_dead_brains.py`.
 - Emergency paths (`SIMPLE=0`, `REPLY_V2=1`+`SIMPLE=0`, `LEAN=0`) kept importable.
-=======
-## R2 notes
-
-- Config: `MAX_CREATIVE_REWRITES` (default `1`) — spent on lang / length / complete / grammar only.
-- Hard lies never call DeepSeek again: delivery, sell sync, wait timing, purchase bluff, invented lock/video, ghost stall, blame, wrong `$`, continuity question strip.
-- Helpers: `RewriteBudget`, `_fix_invented_wait_minutes`; tests in `tests/test_rewrite_budget.py`.
->>>>>>> origin/main
-=======
-2. R2 (rewrite cap) — PR #9  
-3. R3 (quarantine) — PR #10  
-4. R5 lite (action resolver) ✅  
-5. R6 tests  
-6. R4 split (larger; after R1–R3 stable)
 
 ## R5 notes
 
@@ -92,4 +62,9 @@ Principle: **protocol = code**. DeepSeek only writes text for an ACTION the poll
 - Priority: `send_voice` > `comfort` > `attach_ppv` > `attach_free` > `flirt`
 - `poll_inbox` logs `ACTION=…` from one resolver; `generate_emma_reply(turn_action=…)`
 - Tests: `tests/test_turn_action.py`
->>>>>>> origin/cursor/audit-r5-turn-action-resolver-c46b
+
+## R6 notes
+
+- Runner: `python scripts/run_audit_matrix.py`
+- Matrix: `tests/test_regression_matrix.py` (+ suite modules listed in the runner)
+- Guards against Copilot-style anti-fixes: no blind history bumps, no fat-prompt lever, no multi-LLM rewrite cascade
