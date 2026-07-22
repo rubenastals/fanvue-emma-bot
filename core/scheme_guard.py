@@ -270,6 +270,35 @@ def invented_video_claim(reply: str) -> bool:
     return bool(_CLAIM_FAKE_VIDEO.search(text))
 
 
+def strip_echo_quotes(reply: str) -> str:
+    """
+    Remove theatrical quotation marks around echoed words
+    (e.g. "putilla"... → putilla...). Real WhatsApp rarely wraps insults in quotes.
+    Keeps apostrophes in contractions (don't / it's).
+    """
+    text = (reply or "").strip()
+    if not text:
+        return text
+    # Paired curly / guillemet / straight double quotes around a short span
+    prev = None
+    while prev != text:
+        prev = text
+        text = re.sub(
+            r'[“”«»"]([^“”«»"\n]{1,48})[“”«»"]',
+            r"\1",
+            text,
+        )
+    # Scare-quotes with straight single quotes: 'putilla' — not contractions
+    text = re.sub(
+        r"(?<![A-Za-zÁÉÍÓÚÜÑáéíóúüñ])'([^'\n]{2,40})'(?![A-Za-zÁÉÍÓÚÜÑáéíóúüñ])",
+        r"\1",
+        text,
+    )
+    text = re.sub(r"\s{2,}", " ", text)
+    text = re.sub(r"\s+([,…!?])", r"\1", text)
+    return text.strip()
+
+
 def rival_fan_claim(reply: str) -> bool:
     """True when reply uses the sticky 'otro fan me escribe' jealousy bit."""
     text = (reply or "").strip()

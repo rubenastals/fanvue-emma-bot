@@ -351,6 +351,7 @@ def _sanitize_reply(
     if ghost_free_ban:
         cleaned = _FALSE_GIFT_CLAIM.sub("", cleaned)
     cleaned = _strip_photo_script_dump(cleaned)
+    cleaned = scheme_guard.strip_echo_quotes(cleaned)
     cleaned = _thin_name_in_reply(
         cleaned,
         fan_name,
@@ -870,6 +871,12 @@ def apply_post_draft(
         media_attached=bool(offer),
         want_spanish=want_spanish,
     )
+
+    # No theatrical "quoted echo" of his insults/words — WhatsApp doesn't do that
+    before_q = reply
+    reply = scheme_guard.strip_echo_quotes(reply)
+    if reply != before_q:
+        print("   style: stripped echo quotation marks")
 
     # Committed sell: code chose a paid offer → attach is law. Text must follow.
     if (
