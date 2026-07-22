@@ -2,9 +2,10 @@
 Automatic re-engagement — hot/cold ladder + visto-gated victim.
 
 TIMING (no farewell / conversation left open):
-  1st nudge ≥ NUDGE_FIRST_MINUTES (default 7, hot and cold same gate)
-  2nd nudge ≥ NUDGE_SECOND_MINUTES (default 36), only if still silent
+  1st nudge ≥ NUDGE_FIRST_MINUTES (default 12, hot and cold same gate)
+  2nd nudge ≥ NUDGE_SECOND_MINUTES (default 45), only if still silent
   Max 2 mid-flow nudges per silence episode.
+  Silence clock = time since Emma's last message (fan must not have replied).
 
 Victim "me has olvidado" ONLY when Fanvue marks Emma's last msg isRead (visto)
 AND we are still inside VICTIM_AFTER_SEEN_MINUTES (default 60) of first visto detect.
@@ -27,14 +28,15 @@ from core import convo_log, fan_memory, language, persona_time
 from core.reply_engine import split_into_messages
 from core.turn_policy import TurnDecision
 
-NUDGE_HOT_MINUTES = int(os.getenv("NUDGE_HOT_MINUTES", "7"))
-NUDGE_COLD_MINUTES = int(os.getenv("NUDGE_COLD_MINUTES", "7"))
+# Respect silence: first nudge only after a real pause (not <1–2 min spam).
+NUDGE_HOT_MINUTES = int(os.getenv("NUDGE_HOT_MINUTES", "12"))
+NUDGE_COLD_MINUTES = int(os.getenv("NUDGE_COLD_MINUTES", "12"))
 NUDGE_FIRST_MINUTES = int(
     os.getenv("NUDGE_FIRST_MINUTES", str(max(NUDGE_HOT_MINUTES, NUDGE_COLD_MINUTES)))
 )
-NUDGE_SECOND_MINUTES = int(os.getenv("NUDGE_SECOND_MINUTES", "36"))
+NUDGE_SECOND_MINUTES = int(os.getenv("NUDGE_SECOND_MINUTES", "45"))
 if os.getenv("NUDGE_FIRST_MINUTES") and not os.getenv("NUDGE_COLD_MINUTES"):
-    NUDGE_COLD_MINUTES = int(os.getenv("NUDGE_FIRST_MINUTES", "5"))
+    NUDGE_COLD_MINUTES = int(os.getenv("NUDGE_FIRST_MINUTES", "12"))
 
 GOODMORNING_AFTER_HOURS = int(os.getenv("GOODMORNING_AFTER_HOURS", "14"))
 GOODMORNING_HOUR_START = int(os.getenv("GOODMORNING_HOUR_START", "8"))

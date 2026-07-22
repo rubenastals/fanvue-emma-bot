@@ -96,8 +96,9 @@ _MOVE_SIGNALS: Dict[str, Tuple[str, ...]] = {
         r"otro|miss)\b",
     ),
     "GUILT TRIP + RECIPROCITY": (
-        r"(?i)\b(opened\s+up|abr[ií]|silence|nada|hurt|duele|left\s+it|"
-        r"dejaste|after\s+everything|después\s+de)\b",
+        r"(?i)\b(opened\s+up|abr[ií]|taste|gusto|show\s+me|demuéstr|"
+        r"hurt|duele|left\s+it|dejaste|after\s+everything|después\s+de|"
+        r"don'?t\s+just\s+take|no\s+solo\s+tomar)\b",
     ),
     "GUILT TRIP + SCARCITY": (
         r"(?i)\b(taste|gusto|gratis|free|now\s+something|ahora\s+toca|real)\b",
@@ -267,14 +268,20 @@ def score_move(
             score -= 10
             why.append("too-early-for-pressure")
 
-    # Zero spender mid-chat → commitment / intermittent / soft guilt
+    # Zero spender mid-chat → commitment / intermittent (NOT silence-guilt)
     if sig["zero_spender"] and sig["msgs"] >= 4:
         if "MICRO COMMITMENT" in up or "INTERMITTENT" in up:
             score += 8
             why.append("zero-spender-hook")
-        if sig["frees"] >= 1 and "GUILT" in up:
-            score += 6
-            why.append("free-given-guilt")
+        # After a free tease: push reciprocity/loyalty — never "you're quiet"
+        # (live bug: GUILT fired mid-reply while he had JUST messaged).
+        if sig["frees"] >= 1:
+            if "LOYALTY" in up or "MICRO COMMITMENT" in up:
+                score += 6
+                why.append("free-given-reciprocity")
+            if "GUILT" in up:
+                score -= 8
+                why.append("penalize-midchat-silence-guilt")
 
     # Heat / buy intent → close pressure
     if sig["buying"] or sig["horny"] or action == "attach_ppv":
