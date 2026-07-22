@@ -159,9 +159,10 @@ _TECH_BY_PACK: Dict[str, List[Tuple[str, str]]] = {
         ),
         (
             "LOVE BOMBING + WITHDRAWAL",
-            "Mechanism: affection → cooler energy (busy shooting) so HE chases. "
+            "Mechanism: affection → cooler energy (busy a sec) so HE chases. "
             "May combine with a light rival tease if not recently used. "
-            "Beat: gotta go shoot… don't leave me on read.",
+            "Do NOT say grabar/video/shoot content — just step away briefly. "
+            "Beat: gotta run a sec… don't leave me on read.",
         ),
         (
             "PAIN MAP VALIDATE",
