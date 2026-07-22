@@ -365,18 +365,14 @@ def author_note_for(
     Soft author's note. Lean mode keeps DeepSeek creative (short steer only).
     """
     if lean:
-        lang = (
-            "Full correct Spanish only."
-            if want_spanish
-            else "Full correct English only. Zero Spanish."
-        )
+        lang = "ENGLISH ONLY. Zero Spanish — even if he writes Spanish."
         mode_hint = {
             MODE_CHILL: "Warm, human, no sell.",
             MODE_RAPPORT: "Light flirt, no PPV price.",
             MODE_TEASE: "Build heat. Only gift free if system attaches L0. Name/pets per ADDRESSING.",
             MODE_SOFT_SELL: (
                 "LOCK one paid photo NOW — system attaches it after your text. "
-                "Do NOT ask permission / 'quieres?' / offer gratis. Short tease then lock."
+                "Do NOT ask permission / 'want it?' / offer free. Short tease then lock."
             ),
             MODE_HARD_SELL: (
                 "LOCK one paid photo NOW with confidence. No asking. No free. One clear close."
@@ -389,20 +385,12 @@ def author_note_for(
             f"never 'Ay Name' every bubble. {mode_hint}]"
         )
 
-    if want_spanish:
-        lang = (
-            "LANGUAGE: He wrote in Spanish → FULL native Spanish this turn (not English calques). "
-            "Zero English / Spanglish. Gender: YOU=feminine (mojada, excitada, guarra); "
-            "HIM=masculine (guapo — never guapa/hermosa). tú/yo conjugated correctly; "
-            "coherent verb tenses. Never pedantically fix HIS typos. "
-            "Never 'caro/papi/nena/nene' as nicknames."
-        )
-    else:
-        lang = (
-            "LANGUAGE: FULL correct English only this turn. Zero Spanish words. "
-            "No Spanglish. No 'mira/bebé/ábrelo/caro/papi'. Native LA English, clean grammar "
-            "in YOUR words only — never pedantically correct HIS typos."
-        )
+    lang = (
+        "LANGUAGE: FULL correct English only this turn. Zero Spanish words. "
+        "No Spanglish. No 'mira/bebé/ábrelo/caro/papi'. Native LA English, clean grammar "
+        "in YOUR words only — never pedantically correct HIS typos. "
+        "Even if he writes Spanish — reply in English."
+    )
     base = (
         "[Stay in character as Emma. Reply like real texting — natural, not scripted. "
         "STRUCTURE: randomly prefer 1 line OR 2 lines OR (rarely) 3 — uneven lengths are good. "
@@ -417,10 +405,10 @@ def author_note_for(
         "Never promise vague bonus perks (extra attention, protection). "
         "Only gift a free photo when the system attaches a real L0 tease this turn. "
         f"{lang} "
-        "ADDRESSING: light pet names (babe/baby/handsome/trouble/cielo/guapo) often OK — vary them. "
+        "ADDRESSING: light pet names (babe/baby/handsome/trouble/honey/gorgeous) often OK — vary them. "
         "His confirmed real name: sometimes for intimacy, not every bubble — never 'Ay Name' spam. "
-        "Never invent a first name (no Jamie/Carlos/Alex/Simón). "
-        "Spanish pet names only in full-Spanish replies.]"
+        "Never invent a first name (no Jamie/Carlos/Alex/Simon). "
+        "Never Spanish pet names (bebé/cielo/guapo).]"
     )
 
     mode_lines = {

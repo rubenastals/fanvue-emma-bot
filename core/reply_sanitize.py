@@ -467,6 +467,8 @@ def _lang_fallback(
     history_turns: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """Short human line when lang cleanup empties the draft — never one sticky stamp."""
+    if getattr(config, "ENGLISH_ONLY", True):
+        want_spanish = False
     pool = _ES_LANG_FALLBACKS if want_spanish else _EN_LANG_FALLBACKS
     banned: set[str] = set()
     for turn in (history_turns or [])[-10:]:

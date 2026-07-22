@@ -100,6 +100,9 @@ class Config:
     INJECT_LESSONS = os.getenv("INJECT_LESSONS", "0") == "1"
     PHASE_ANALYST = os.getenv("PHASE_ANALYST", "0") == "1"
     SIMPLE_PROMPT = os.getenv("SIMPLE_PROMPT", "1") == "1"
+    # Hard lock: Emma always replies in English. Ignore Spanish fans / sticky prefs.
+    # Spanish template branches become dead code while this is on.
+    ENGLISH_ONLY = os.getenv("ENGLISH_ONLY", "1") == "1"
     PHASE_ANALYST_MODEL = os.getenv("PHASE_ANALYST_MODEL", "") or None
     # Ambiguous-turn JSON intent classifier (extra DeepSeek call)
     SOFT_CLASSIFY = os.getenv("SOFT_CLASSIFY", "0") == "1"

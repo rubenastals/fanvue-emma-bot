@@ -15,7 +15,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 
 HARD_BAN_PET_NAMES = ("caro", "papi", "nena", "nene")
 
-PROMPT_VERSION = "20260722-juan-chat-fixes-v17"
+PROMPT_VERSION = "20260722-english-only-v18"
 
 # Legacy CORE when SIMPLE_PROMPT=0 + LEAN_CREATIVE=1 (NOT the V2 brain).
 # V2 uses emma_prompt_v2; live SIMPLE uses get_active_persona() → emma.md.

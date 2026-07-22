@@ -1,14 +1,15 @@
 """
 Language lock for Emma replies.
 
-Mirror: Spanish fan message → Spanish reply; otherwise English.
-Explicit asks ("speak english" / "habla español") override and stick in memory.
-Never Spanglish.
+ENGLISH_ONLY (default): always English. Ignore Spanish fan messages and sticky prefs.
+Detection helpers remain so Spanglish drafts can still be stripped/rewritten to EN.
 """
 from __future__ import annotations
 
 import re
 from typing import Optional
+
+from config import config
 
 _ASK_SPANISH = re.compile(
     r"(?i)\b("
@@ -23,7 +24,7 @@ _ASK_ENGLISH = re.compile(
     r")\b"
 )
 
-# Content / flirt lexicon (reply mix checks + detection boost)
+# Content / flirt lexicon (reply mix checks + detection)
 _SPANISH_CONTENT = re.compile(
     r"(?i)\b("
     r"hola|mira|beb[eé]|cari[nñ]o|cielo|guapo|guapa|por\s*favor|porfavor|gracias|"
@@ -38,7 +39,6 @@ _SPANISH_CONTENT = re.compile(
     r"|[áéíóúñ¿¡]"
 )
 
-# Function words — catch normal Spanish outside flirt lexicon
 _SPANISH_STOPS = frozenset(
     """
     el la los las un una unos unas de del al que qué
@@ -61,7 +61,6 @@ _ENGLISH_STOPS = frozenset(
     """.split()
 )
 
-# Reply-side English glue (catch full-EN answers when Spanish required)
 _ENGLISH_REPLY_HITS = re.compile(
     r"(?i)\b(the|you|your|what|when|where|this|that|have|with|just|from|"
     r"i'?m|i'?ll|i'?ve|don'?t|can'?t|won'?t|isn'?t|"
@@ -70,11 +69,17 @@ _ENGLISH_REPLY_HITS = re.compile(
     r"okay|right|that's|sitting|excited)\b"
 )
 
-# Legacy alias used by some callers / tests
+# Legacy aliases
 _SPANISH_HITS = _SPANISH_CONTENT
 _ENGLISH_HITS = re.compile(
-    r"(?i)\b(" + "|".join(re.escape(w) for w in sorted(_ENGLISH_STOPS, key=len, reverse=True)) + r")\b"
+    r"(?i)\b("
+    + "|".join(re.escape(w) for w in sorted(_ENGLISH_STOPS, key=len, reverse=True))
+    + r")\b"
 )
+
+
+def english_only() -> bool:
+    return bool(getattr(config, "ENGLISH_ONLY", True))
 
 
 def _strip_system_noise(text: str) -> str:
@@ -108,10 +113,8 @@ def _message_is_spanish(text: str) -> bool:
     content_es = len(_SPANISH_CONTENT.findall(t))
     en = sum(1 for w in words if w in _ENGLISH_STOPS)
     es = stop_es + content_es
-    # Flirt lexicon hit is enough if not drowned by English
     if content_es >= 1 and es >= en:
         return True
-    # Normal prose: need a couple of Spanish function words
     return stop_es >= 2 and stop_es >= en
 
 
@@ -127,9 +130,11 @@ def _message_is_clearly_english(text: str) -> bool:
 
 def fan_wants_spanish(fan_message: str, mem: Optional[dict] = None) -> bool:
     """
-    Mirror the language HE uses.
-    Explicit ask wins; else Spanish message → Spanish; sticky prefer as tie-break.
+    Always False when ENGLISH_ONLY (live default).
+    Legacy mirror path kept only if ENGLISH_ONLY=0.
     """
+    if english_only():
+        return False
     text = _strip_system_noise(fan_message or "")
     if _ASK_ENGLISH.search(text):
         return False
@@ -146,8 +151,10 @@ def fan_wants_spanish(fan_message: str, mem: Optional[dict] = None) -> bool:
 
 def update_language_pref(mem: dict, fan_message: str) -> Optional[bool]:
     """
-    Persist sticky language from how he chats (and explicit asks).
+    Persist sticky language. Under ENGLISH_ONLY, always force English (False).
     """
+    if english_only():
+        return False
     text = _strip_system_noise(fan_message or "")
     if _ASK_ENGLISH.search(text):
         return False
@@ -162,6 +169,8 @@ def update_language_pref(mem: dict, fan_message: str) -> Optional[bool]:
 
 def is_mixed_or_wrong(text: str, *, want_spanish: bool) -> bool:
     """Detect Spanglish or wrong-language leakage."""
+    if english_only():
+        want_spanish = False
     if not text or not text.strip():
         return True
     es = len(_SPANISH_CONTENT.findall(text)) + sum(
@@ -169,15 +178,11 @@ def is_mixed_or_wrong(text: str, *, want_spanish: bool) -> bool:
     )
     en = len(_ENGLISH_REPLY_HITS.findall(text))
     if want_spanish:
-        # Pure English when Spanish required — must rewrite
         if es == 0 and en >= 1:
             return True
         if es == 0 and re.search(r"[A-Za-z]{4,}", text or ""):
             return True
         return en >= 4 and es >= 1 and en > es
-    # English required: accents / real Spanish = rewrite.
-    # A single cognate (foto, bebé) with English glue → strip in sanitize, don't
-    # burn the rewrite budget (that path was looping a sticky EN stamp live).
     if re.search(r"[áéíóúñ¿¡]", text or ""):
         return True
     if en >= 2 and es <= 1:
@@ -185,42 +190,44 @@ def is_mixed_or_wrong(text: str, *, want_spanish: bool) -> bool:
     return es >= 2
 
 
-def language_system_block(want_spanish: bool) -> str:
-    if want_spanish:
+def language_system_block(want_spanish: bool = False) -> str:
+    if english_only() or not want_spanish:
         return (
-            "LANGUAGE LOCK (STRICT):\n"
-            "- He wrote in Spanish → reply in FULL correct natural Spanish only.\n"
-            "- Zero English. Zero Spanglish.\n"
-            "- Gender: YOU=feminine (mojada, excitada, guarra); HIM=masculine (guapo).\n"
-            "- Clean spelling in YOUR words — never pedantically fix HIS typos.\n"
-            "- Never use 'caro/papi/nena/nene' as pet names."
+            "LANGUAGE LOCK (STRICT — ENGLISH ONLY):\n"
+            "- Reply in correct, natural American English only. Every turn.\n"
+            "- ZERO Spanish words. No Spanglish. No 'mira', 'bebé', 'ábrelo', "
+            "'joder', 'guapo', 'cielo', 'caro', 'papi', 'nena'.\n"
+            "- Even if HE writes in Spanish: answer in English. Do not mirror Spanish.\n"
+            "- Perfect spelling in YOUR words only — never pedantically 'fix' his typos.\n"
+            "- You are a native LA English speaker texting on WhatsApp.\n"
+            "- WRONG: 'Ay bebé, revísalo...' then English.\n"
+            "- RIGHT: 'Hey baby, look again... I locked a hot photo for you yesterday.'"
         )
     return (
         "LANGUAGE LOCK (STRICT):\n"
-        "- Write this ENTIRE reply in correct, natural English only.\n"
-        "- ZERO Spanish words. No Spanglish. No 'mira', 'bebé', 'ábrelo', 'caro', 'papi', 'nena'.\n"
-        "- Perfect spelling in YOUR words only — never pedantically 'fix' his typos.\n"
-        "- You are a native LA English speaker.\n"
-        "- WRONG: 'Ay bebé, revísalo...' then English.\n"
-        "- RIGHT: 'Hey baby, look again... I locked a hot photo for you yesterday.'"
+        "- He wrote in Spanish → reply in FULL correct natural Spanish only.\n"
+        "- Zero English. Zero Spanglish.\n"
+        "- Gender: YOU=feminine (mojada, excitada, guarra); HIM=masculine (guapo).\n"
+        "- Clean spelling in YOUR words — never pedantically fix HIS typos.\n"
+        "- Never use 'caro/papi/nena/nene' as pet names."
     )
 
 
-def rewrite_instruction(want_spanish: bool) -> str:
-    if want_spanish:
+def rewrite_instruction(want_spanish: bool = False) -> str:
+    if english_only() or not want_spanish:
         return (
-            "REESCRIBE tu último mensaje en español correcto y natural. "
-            "Cero inglés. Concordancia: tú=femenina; él=masculino (guapo). "
-            "Mismo tono pícaro; no corrijas sus faltas."
+            "Rewrite your last reply in correct English only. "
+            "No Spanish words at all. No Spanglish. Clean grammar in your words — "
+            "don't 'fix' his typos. Keep the same meaning and flirty tone. "
+            "Native American English. Even if he wrote in Spanish — English reply."
         )
     return (
-        "Rewrite your last reply in correct English only. "
-        "No Spanish words at all. No Spanglish. Clean grammar in your words — don't 'fix' his typos. "
-        "Keep the same meaning and flirty tone. Native American English."
+        "REESCRIBE tu último mensaje en español correcto y natural. "
+        "Cero inglés. Concordancia: tú=femenina; él=masculino (guapo). "
+        "Mismo tono pícaro; no corrijas sus faltas."
     )
 
 
-# Emma (female) using masculine self-agreement
 _BROKEN_SELF_MASC = re.compile(
     r"(?i)\b("
     r"(estoy|quedo|me\s+siento)\s+(mojado|excitado|desnudo|listo|abierto|guarro)|"
@@ -247,7 +254,9 @@ _BROKEN_PERSON = re.compile(
 
 
 def looks_broken_spanish(text: str) -> bool:
-    """Cheap detectors for gender/person slips."""
+    """Cheap detectors for gender/person slips (legacy; unused under ENGLISH_ONLY)."""
+    if english_only():
+        return False
     t = (text or "").strip()
     if not t:
         return False
@@ -260,10 +269,7 @@ def looks_broken_spanish(text: str) -> bool:
 
 def grammar_rewrite_instruction() -> str:
     return (
-        "REESCRIBE en español de WhatsApp: informal, natural, corto. "
-        "Arregla SOLO errores graves de género/persona "
-        "(Emma femenina; fan masculino: guapo) y conjugación yo/tú rota. "
-        "MANTÉN abreviaturas y tono chat (q, xq, tb, jaja, bb, …) — "
-        "NO lo conviertas en español de libro ni de atención al cliente. "
-        "Misma idea. Sin candados ni precios nuevos."
+        "Rewrite in informal WhatsApp English: natural, short. "
+        "Fix only broken grammar. Keep chat slang (u, rn, lol, babe…). "
+        "Same idea. No new locks or prices."
     )
