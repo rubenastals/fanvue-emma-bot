@@ -187,6 +187,29 @@ def _recent_reject(mem: dict, *, minutes: int = 90) -> bool:
         return False
 
 
+def _zero_spender(mem: dict) -> bool:
+    return int(mem.get("purchases") or 0) == 0 and float(
+        mem.get("total_spent") or 0
+    ) <= 0
+
+
+def _price_bruised(mem: dict) -> bool:
+    """
+    True when a $0 fan already pushed back on price or was pitched high.
+
+    Wider than the 90m reject window — complaining about $40 yesterday must
+    still block another $40 today.
+    """
+    if _recent_reject(mem, minutes=60 * 24 * 7):
+        return True
+    last = max(
+        float(mem.get("last_offer") or 0),
+        float(mem.get("last_ppv_price") or 0),
+    )
+    # Pitched mid/high and never bought → next attach must come down a rung
+    return _zero_spender(mem) and last >= 15.0
+
+
 def _theme_hits(text: str, label: str) -> int:
     text = (text or "").lower()
     label = (label or "").lower()
@@ -232,20 +255,26 @@ def candidate_offers(
         ]
     ).lower()
     rejected = _recent_reject(mem)
-    max_dirty = context_wants_max_dirty(fan_message, history_turns)
+    bruised = _price_bruised(mem)
+    # Emma-promise dirty is OK for buyers; $0 fans need HIM to ask hardcore.
+    fan_explicit_dirty = wants_max_dirty(fan_message)
+    max_dirty = (
+        fan_explicit_dirty
+        if _zero_spender(mem)
+        else context_wants_max_dirty(fan_message, history_turns)
+    )
 
-    # Hard commercial band: semantics may choose freely inside the correct
-    # rung, but cannot jump a brand-new buyer straight to L6/L7 —
-    # EXCEPT when he explicitly asks for the dirtiest she has.
+    # Commercial band:
+    #   $0 spenders → cheap L1–L2 first (convert), never open on $40
+    #   Explicit hardcore ask THIS turn → L5–L7 exception
+    #   After price pushback / high pitch that didn't convert → stay cheap
     if max_dirty:
         min_level, max_level = 5, 7
-    elif rejected and purchases == 0:
-        min_level, max_level = 1, max(2, min(3, (last_level - 1) or 2))
-    elif purchases == 0 and spent <= 0:
-        # Never open a paid close on soft L1/L2 for $0 fans (bait-and-switch feel)
-        min_level, max_level = 3, 5
+    elif _zero_spender(mem):
+        # Cheap convert ladder — L1/L2 only until he spends
+        min_level, max_level = 1, 2
     elif purchases < 2:
-        min_level, max_level = 3, 6
+        min_level, max_level = 2, 5
     elif spent < 50:
         min_level, max_level = 4, 7
     else:
@@ -261,6 +290,21 @@ def candidate_offers(
     if banded:
         items = banded
 
+    # Absolute ceiling for never-bought: no $40 / L6+ unless HE asked hardcore.
+    if _zero_spender(mem) and not fan_explicit_dirty:
+        cheap = [
+            i
+            for i in items
+            if int(i.get("level") or 0) <= 3 and float(i.get("price") or 0) < 15
+        ]
+        if cheap:
+            items = cheap
+        # After a high pitch / reject: must undercut the last price
+        if bruised and last_price > 0:
+            under = [i for i in items if float(i.get("price") or 0) < last_price]
+            if under:
+                items = under
+
     def score(item: dict) -> float:
         level = int(item.get("level") or 0)
         price = float(item.get("price") or 0)
@@ -274,18 +318,21 @@ def candidate_offers(
             value += min(price, 80) / 15
             return value
 
-        # Commercial ladder: premium first, soften after a recent rejection,
-        # escalate after purchases.
-        if rejected and purchases == 0:
-            target = max(1, min(3, (last_level - 1) if last_level else 2))
-            value += 7 - abs(level - target) * 2
+        # $0 / bruised: prefer CHEAP entry, not premium anchor
+        if _zero_spender(mem) or (rejected and purchases == 0):
+            target = 1 if (rejected or bruised or last_level == 0) else min(
+                2, max(1, last_level)
+            )
+            value += 8 - abs(level - target) * 2.5
             if last_price and price < last_price:
-                value += 3
-        elif purchases == 0:
-            target = 4 if last_level == 0 else min(5, max(3, last_level))
-            value += 7 - abs(level - target) * 1.7
-        elif purchases < 2:
-            target = min(6, max(4, last_level + 1))
+                value += 4
+            # Prefer lower price inside the band
+            value += (15 - min(price, 15)) / 5
+            value += float(item.get("score") or 0) / 10
+            return value
+
+        if purchases < 2:
+            target = min(5, max(2, last_level + 1 if last_level else 3))
             value += 7 - abs(level - target) * 1.5
         else:
             target = 6 if spent < 50 else 7
@@ -415,7 +462,11 @@ def choose_offer(
         "Never invent a UUID, product, price, video, custom, bundle, or description. "
         "Sell ONLY on a natural close: he clearly asks for the photo / unlock, "
         "or several hot exchanges AND he is leaning in hard. "
-        "If he asks for the dirtiest / 'más guarro', pick the HIGHEST level candidate. "
+        "If he EXPLICITLY asks for the dirtiest / 'más guarro' THIS message, "
+        "pick the HIGHEST level candidate. "
+        "If spent=0 / purchases=0: prefer the CHEAPEST L1/L2 candidate — "
+        "never open on $40 / L6 unless wants_max_dirty=true on the current message. "
+        "After recent_reject or a high last_offer that did not convert: stay cheap. "
         "Smalltalk, anger, spam complaints, price rejection, cold replies → do NOT sell. "
         "When in doubt, do NOT sell — reconnect beats a premature pitch. "
         'Schema: {"sell_now":true|false,"media_uuid":"uuid or null",'
@@ -500,8 +551,12 @@ def choose_offer(
         reason = f"owed-send override; selector said: {reason}"
         confidence = max(confidence, 0.95)
 
-    # Max-dirty (fan OR Emma's recent promise): never keep a soft L1/L2
-    if sell_now and max_dirty and candidates:
+    # Max-dirty escalate: $0 fans only when HE asked hardcore this turn.
+    # Emma promising "la más guarra" must not yank a never-buyer to $40.
+    allow_dirty_escalate = max_dirty and (
+        not _zero_spender(mem) or wants_max_dirty(fan_message)
+    )
+    if sell_now and allow_dirty_escalate and candidates:
         best = max(
             candidates,
             key=lambda i: (
@@ -520,10 +575,47 @@ def choose_offer(
         elif chosen is not None and int(chosen.get("level") or 0) < int(
             best.get("level") or 0
         ):
-            # Even L5 vs L7 — prefer the hardest when she promised "la más guarra"
             chosen = best
             reason = f"max-dirty escalate → L{best.get('level')} {str(best.get('label') or '')[:40]}"
             confidence = max(confidence, 0.9)
+
+    # Final belt: never-bought + no explicit hardcore → refuse $40 / L6+
+    if (
+        sell_now
+        and chosen
+        and _zero_spender(mem)
+        and not wants_max_dirty(fan_message)
+    ):
+        lvl = int(chosen.get("level") or 0)
+        price = float(chosen.get("price") or 0)
+        if lvl >= 6 or price >= 40:
+            cheap = [
+                i
+                for i in candidates
+                if int(i.get("level") or 0) <= 3
+                and float(i.get("price") or 0) < 15
+            ]
+            if cheap:
+                chosen = min(
+                    cheap,
+                    key=lambda i: (
+                        float(i.get("price") or 0),
+                        int(i.get("level") or 0),
+                    ),
+                )
+                reason = (
+                    f"zero-spend ceiling → L{chosen.get('level')} "
+                    f"${float(chosen.get('price') or 0):.0f}"
+                )
+                confidence = max(confidence, 0.9)
+            else:
+                return OfferChoice(
+                    False,
+                    None,
+                    "zero-spend: no cheap candidate (refusing $40 open)",
+                    1.0,
+                    "code",
+                )
 
     elapsed = time.monotonic() - started
     print(

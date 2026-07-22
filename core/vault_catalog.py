@@ -6,7 +6,7 @@ Override with FANVUE_MEDIA_MAP=/path/to/fanvue_media_map.json
 
 Ladder:
   L0 = free tease hooks (soft lingerie warm-up) — never paid, never repeat in-chat.
-  L1+ = locked PPV. First paid pitch still anchors mid/high (not L0/L1 bait).
+  L1+ = locked PPV. $0 spenders open CHEAP (L1–L2); climb after purchases.
 """
 from __future__ import annotations
 
@@ -16,8 +16,8 @@ from typing import Any, Dict, List, Optional
 
 from db import vault_store
 
-# First locked offer of a session aims here (then negotiate)
-_ANCHOR_LEVELS = (4, 5, 3, 6)  # prefer open-nude / fingers, then soft nude, then hardcore
+# First locked offer for never-buyers: cheap entry, then climb
+_ANCHOR_LEVELS = (1, 2, 3)
 
 
 def load_items() -> List[Dict[str, Any]]:
@@ -40,7 +40,7 @@ def _l0_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _pick_highest_price(pool: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Among pool, prefer higher price, then higher score (anchor high)."""
+    """Among pool, prefer higher price, then higher score (buyers / climb)."""
     if not pool:
         raise ValueError("empty pool")
     ranked = sorted(
@@ -134,34 +134,31 @@ def select_offer(
     # Ignore L0 when reading last_level for paid ladder
     if last_level <= 0:
         last_level = 0
-    offers_today = int(mem.get("offers_today") or 0)
     rejected_recently = bool(mem.get("last_reject_at"))
 
     low = (fan_message or "").lower()
-    wants_more_explicit = bool(
+    explicit_hardcore = bool(
         re.search(
-            r"\b(m[aá]s|more|harder|dirt|guarra|expl[ií]cit|todo|naked|desnuda|"
-            r"co[nñ]o|pussy|dildo|dedos)\b",
+            r"(?i)("
+            r"m[aá]s\s+guarr|lo\s+m[aá]s\s+(guarr|fuerte|expl[ií]cit)|"
+            r"dirtiest|nastiest|hardcore|full\s+nude"
+            r")",
             low,
         )
     )
 
     if max_level is None:
-        if purchases == 0 and spent <= 0 and offers_today == 0 and last_level == 0:
-            max_level = 5
-            min_level = 3
-        elif rejected_recently and purchases == 0:
-            min_level = 1
-            max_level = max(1, last_level - 1) if last_level else 2
-        elif purchases == 0 and spent <= 0:
-            min_level = 3 if wants_more_explicit else 2
-            max_level = 5 if wants_more_explicit else 4
-            if last_level:
-                min_level = max(min_level, min(4, last_level))
-                max_level = max(max_level, min(5, last_level + 1))
+        if purchases == 0 and spent <= 0:
+            if explicit_hardcore:
+                min_level, max_level = 5, 7
+            else:
+                # Cheap convert: lingerie / soft openers only
+                min_level, max_level = 1, 2
+                if rejected_recently:
+                    max_level = 2
         elif purchases < 2:
-            min_level = max(3, last_level)
-            max_level = min(6, max(4, last_level + 1))
+            min_level = max(2, last_level) if last_level else 2
+            max_level = min(5, max(3, last_level + 1 if last_level else 4))
         elif spent < 50:
             min_level = max(4, last_level)
             max_level = min(7, max(5, last_level + 1))
@@ -181,11 +178,20 @@ def select_offer(
     if not pool:
         pool = list(available)
 
-    if purchases == 0 and offers_today == 0 and last_level == 0:
+    # $0 openers: cheapest in band (not premium anchor)
+    if purchases == 0 and spent <= 0 and not explicit_hardcore:
         for lvl in _ANCHOR_LEVELS:
             band = [i for i in pool if i["level"] == lvl]
             if band:
-                return _pick_highest_price(band)
+                ranked = sorted(
+                    band,
+                    key=lambda i: (
+                        float(i["price"]),
+                        -int(i["score"]),
+                        int(i["level"]),
+                    ),
+                )
+                return ranked[0]
 
     if last_level and purchases > 0:
         climb = [i for i in pool if i["level"] >= last_level]
@@ -282,8 +288,9 @@ def catalog_summary_block(max_items: int = 12) -> str:
         "You NEVER attach media by writing titles, brackets, or '[send him…]' / '[Transmite…]'.",
         "Only the system can attach. If no free gift is attached this turn, do not pretend.",
         "L1+ = locked PPV.",
-        "SALES LADDER: first locked pitch = mid/high (L3–L5, pricey). "
-        "Do NOT open paid pitches with the cheapest lingerie. Anchor high, then negotiate down if he resists.",
+        "SALES LADDER: $0 / never-bought → cheap first (L1–L2). "
+        "Climb after he unlocks. Only jump to L5–L7 / $40+ if he EXPLICITLY asks "
+        "for the dirtiest / más guarro. After a price complaint, stay cheaper.",
     ]
     for lvl in sorted(by_lvl):
         tag = " (FREE tease)" if lvl == 0 else ""
