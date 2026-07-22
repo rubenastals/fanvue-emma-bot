@@ -19,6 +19,14 @@ def test_detects_live_silence_guilt():
     assert _SILENCE_REPROACH.search(live)
 
 
+def test_detects_poof_theyre_gone_loop():
+    live = (
+        "most guys don't even make it this far tbh... "
+        "I say something real and poof they're gone"
+    )
+    assert _SILENCE_REPROACH.search(live)
+
+
 def test_sanitize_replaces_silence_guilt():
     assembled = SimpleNamespace(
         messages=[],
@@ -52,7 +60,7 @@ def test_sanitize_replaces_silence_guilt():
     assert _SILENCE_REPROACH.search(out) is None
 
 
-def test_free_given_penalizes_guilt_move():
+def test_midchat_guilt_heavily_penalized():
     sig = {
         "msgs": 10,
         "zero_spender": True,
@@ -78,24 +86,52 @@ def test_free_given_penalizes_guilt_move():
         recent_fams=[],
         unpaid=False,
     )
-    assert "penalize-midchat-silence-guilt" in why_g
+    assert "ban-midchat-abandonment-guilt" in why_g
     assert "free-given-reciprocity" in why_l
     assert sc_loyal > sc_guilt
 
 
-def test_guilt_howto_bans_silence():
-    how = ""
-    for name, text in manipulation._TECH_BY_PACK.get("phase_pull", []):
-        if name == "GUILT TRIP + RECIPROCITY":
-            how = text
-            break
-    assert "HARD BAN" in how
-    assert "quiet" in how.lower() or "silent" in how.lower()
+def test_guilt_removed_from_phase_pull():
+    names = [n for n, _ in manipulation._TECH_BY_PACK.get("phase_pull", [])]
+    assert "GUILT TRIP + RECIPROCITY" not in names
+
+
+def test_sanitize_replaces_poof_gone():
+    assembled = SimpleNamespace(
+        messages=[],
+        decision=SimpleNamespace(mode="tease", pack_id="phase_pull"),
+        pack_id="phase_pull",
+        tech_name="LOYALTY PROVE",
+        phase_name="",
+        want_spanish=False,
+        fan_uuid=None,
+        fan_handle="tester",
+        fan_message="haha you're funny",
+        turns=[{"role": "user", "content": "haha you're funny"}],
+        offer=None,
+        ppv_status=None,
+        voice_will_send=False,
+        lock_active=False,
+        no_lock=True,
+        status_active=False,
+        unpaid_gate=False,
+        never_bought=True,
+        fan_saw_bluff=False,
+    )
+    reply = (
+        "most guys don't even make it this far tbh... "
+        "I say something real and poof they're gone"
+    )
+    out, _ = apply_post_draft(reply, assembled, call=MagicMock())
+    assert "poof" not in out.lower()
+    assert "make it this far" not in out.lower()
 
 
 if __name__ == "__main__":
     test_detects_live_silence_guilt()
+    test_detects_poof_theyre_gone_loop()
     test_sanitize_replaces_silence_guilt()
-    test_free_given_penalizes_guilt_move()
-    test_guilt_howto_bans_silence()
+    test_midchat_guilt_heavily_penalized()
+    test_guilt_removed_from_phase_pull()
+    test_sanitize_replaces_poof_gone()
     print("ok")

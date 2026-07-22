@@ -268,20 +268,16 @@ def score_move(
             score -= 10
             why.append("too-early-for-pressure")
 
-    # Zero spender mid-chat → commitment / intermittent (NOT silence-guilt)
+    # Zero spender mid-chat → commitment / intermittent (NOT abandonment-guilt)
     if sig["zero_spender"] and sig["msgs"] >= 4:
         if "MICRO COMMITMENT" in up or "INTERMITTENT" in up:
             score += 8
             why.append("zero-spender-hook")
-        # After a free tease: push reciprocity/loyalty — never "you're quiet"
-        # (live bug: GUILT fired mid-reply while he had JUST messaged).
+        # After a free tease: push reciprocity/loyalty — never "guys leave / quiet"
         if sig["frees"] >= 1:
             if "LOYALTY" in up or "MICRO COMMITMENT" in up:
                 score += 6
                 why.append("free-given-reciprocity")
-            if "GUILT" in up:
-                score -= 8
-                why.append("penalize-midchat-silence-guilt")
 
     # Heat / buy intent → close pressure
     if sig["buying"] or sig["horny"] or action == "attach_ppv":
@@ -312,6 +308,12 @@ def score_move(
         if "GUILT" in up or "EGO" in up or "FOMO" in up or "EMERGENCY" in up:
             score += 8
             why.append("objection-ladder")
+
+    # HARD: abandonment / "guys leave" guilt only for unpaid/objection — never
+    # mid-chat while he's actively writing (live loop: "poof they're gone").
+    if "GUILT" in up and not unpaid and not objection_live and eff_pack != "ppv_unpaid":
+        score -= 25
+        why.append("ban-midchat-abandonment-guilt")
         if "WITHDRAWAL" in up and sig["reject_step"] >= 3:
             score += 10
             why.append("objection-exit")

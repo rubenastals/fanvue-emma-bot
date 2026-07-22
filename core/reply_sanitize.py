@@ -441,28 +441,62 @@ _ES_LANG_FALLBACKS = (
     "ven aquí… háblame bien",
 )
 
-# Live reply path: fan JUST messaged — never accuse silence / going quiet.
-_SILENCE_REPROACH = re.compile(
+# Live reply path: fan JUST messaged — never abandonment / silence guilt loops.
+# Live loop: "most guys don't even make it this far… poof they're gone"
+_ABANDONMENT_GUILT = re.compile(
     r"(?i)("
+    r"most\s+guys?\s+don'?t|"
+    r"make\s+it\s+this\s+far|"
+    r"\bpoof\b|"
+    r"they'?re\s+gone|"
+    r"he'?s\s+gone|"
+    r"always\s+(leave|disappear|vanish|ghost)|"
+    r"guys?\s+(always\s+)?(leave|disappear|ghost|run)|"
+    r"everyone\s+(leaves|disappears|ghosts)|"
+    r"say\s+something\s+real\s+and|"
+    r"i\s+say\s+something\s+real|"
+    r"and\s+(then\s+)?(poof|they'?re\s+gone)|"
     r"you'?re?\s+(just\s+)?\.+\s*quiet|"
     r"you'?re?\s+(just\s+)?(quiet|silent|ignoring\s+me)|"
     r"(went|going|go)\s+quiet|"
     r"left\s+me\s+(on\s+read|hanging)|"
-    r"now\s+you'?re?\s+just\s*\.+\s*quiet|"
-    r"and\s+now\s+you'?re?\s+just\s*\.+\s*quiet|"
+    r"now\s+you'?re?\s+just\s*(\.|\…)+\s*quiet|"
+    r"and\s+now\s+you'?re?\s+just\s*(\.|\…)+\s*quiet|"
     r"te\s+quedaste\s+callad|"
     r"me\s+(has\s+)?dejado\s+(en\s+visto|colgad)|"
-    r"me\s+dejaste\s+(en\s+visto|colgad)|"
-    r"now\s+you'?re?\s+just\s*\.\.\.\s*quiet"
+    r"me\s+dejaste\s+(en\s+visto|colgad)"
     r")"
 )
+# Back-compat alias for tests / imports
+_SILENCE_REPROACH = _ABANDONMENT_GUILT
 
-_SILENCE_REPROACH_FALLBACKS = (
+_ABANDONMENT_FALLBACKS = (
     "aw that actually made me soft… say more",
     "hey i hear you… come closer",
     "ok that was cute… keep talking to me",
     "mm i like when you're honest like that",
+    "lol stop you're gonna make me blush… what else",
+    "come here… tell me that again",
 )
+_SILENCE_REPROACH_FALLBACKS = _ABANDONMENT_FALLBACKS
+
+
+def _recent_abandonment_guilt(
+    history_turns: Optional[List[Dict[str, Any]]], *, n: int = 5
+) -> bool:
+    """True if Emma already used abandonment-guilt in recent turns."""
+    if not history_turns:
+        return False
+    seen = 0
+    for turn in reversed(history_turns):
+        if (turn.get("role") or "") != "assistant":
+            continue
+        seen += 1
+        if _ABANDONMENT_GUILT.search(str(turn.get("content") or "")):
+            return True
+        if seen >= n:
+            break
+    return False
 
 # Extra Spanish crumbs to strip in EN mode before nuking the whole bubble
 _SPANISH_TOKEN_STRIP = re.compile(
@@ -993,14 +1027,27 @@ def apply_post_draft(
         max_extra=max(0, int(getattr(config, "MAX_CREATIVE_REWRITES", 1) or 0))
     )
 
-    # Fan JUST messaged this turn — never accuse "you're quiet / went silent"
-    if _SILENCE_REPROACH.search(reply or ""):
+    # Fan JUST messaged — never abandonment / "guys leave" / silence guilt
+    if _ABANDONMENT_GUILT.search(reply or ""):
         before_sg = reply
-        reply = random.choice(_SILENCE_REPROACH_FALLBACKS)
+        banned = {
+            _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
+        }
+        opts = [p for p in _ABANDONMENT_FALLBACKS if _norm_bubble(p) not in banned]
+        reply = random.choice(opts or list(_ABANDONMENT_FALLBACKS))
         print(
-            "   🔇 silence-guilt on active turn — replaced "
-            f"({before_sg[:48]!r} → {reply!r})"
+            "   🔇 abandonment-guilt on active turn — replaced "
+            f"({before_sg[:56]!r} → {reply!r})"
         )
+    elif _recent_abandonment_guilt(turns) and scheme_guard.too_similar_to_last_assistant(
+        reply, turns
+    ):
+        banned = {
+            _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
+        }
+        opts = [p for p in _ABANDONMENT_FALLBACKS if _norm_bubble(p) not in banned]
+        reply = random.choice(opts or list(_ABANDONMENT_FALLBACKS))
+        print("   🔇 abandonment-guilt loop (near-duplicate) — fresh engage line")
 
     # Soft: Spanglish / wrong language — may spend the one creative rewrite
     if language.is_mixed_or_wrong(reply, want_spanish=want_spanish):
