@@ -225,7 +225,11 @@ def _append_sent(
     level: Optional[int] = None,
     kind: str = "ppv",
 ) -> None:
-    """Idempotent: record UUID + ficha entry so this fan never gets it again."""
+    """
+    Idempotent: record UUID the fan has SEEN (free gift or purchased unlock).
+
+    Unpaid PPV pitches must NOT call this — he never saw the photo.
+    """
     if not media_uuid:
         return
     catalog = _catalog_lookup()
@@ -259,6 +263,36 @@ def _append_sent(
     mem["sent_content"] = content[-_MAX_SENT_CONTENT:]
 
 
+def _msg_fan_saw_media(msg: dict) -> bool:
+    """
+    True if this creator message put media the fan can actually see.
+
+    Free / unlocked → yes. Paid lock still unpaid → no (still sellable).
+    """
+    pricing = msg.get("pricing") or {}
+    priced = bool(pricing) or msg.get("price") not in (None, 0, "0", 0.0)
+    priced = priced or bool(
+        msg.get("isPaid")
+        or msg.get("isLocked")
+        or msg.get("locked")
+        or msg.get("ppv")
+        or msg.get("isPpv")
+        or msg.get("payToView")
+    )
+    if not priced:
+        return True
+    if msg.get("purchasedAt") or msg.get("unlockedAt"):
+        return True
+    if msg.get("purchased") is True or msg.get("isPurchased") is True:
+        return True
+    if msg.get("unlocked") is True or msg.get("isUnlocked") is True:
+        return True
+    status = str(
+        msg.get("purchaseStatus") or msg.get("lockStatus") or ""
+    ).lower()
+    return status in ("purchased", "unlocked", "paid", "opened")
+
+
 def merge_sent_from_chat(
     fan_uuid: str,
     messages: List[dict],
@@ -267,8 +301,9 @@ def merge_sent_from_chat(
     fan_handle: str = "",
 ) -> int:
     """
-    Scan Fanvue history for media Emma already sent; merge into the client card.
-    Truth source when memory lagged or a prior deploy forgot to record.
+    Scan Fanvue history for media the fan has SEEN; merge into the client card.
+
+    Unpaid PPV locks in chat are NOT marked sent — he never unlocked them.
     """
     if not messages or not creator_uuid:
         return 0
@@ -284,6 +319,8 @@ def merge_sent_from_chat(
     found: List[str] = []
     for msg in messages:
         if _sid(msg) != creator_uuid:
+            continue
+        if not _msg_fan_saw_media(msg):
             continue
         for uid in msg.get("mediaUuids") or []:
             if uid:
@@ -582,13 +619,7 @@ def set_last_offer(
         if level is not None:
             mem["last_offer_level"] = int(level)
         if media_uuid:
-            _append_sent(
-                mem,
-                media_uuid,
-                label=label or "",
-                level=level,
-                kind="ppv",
-            )
+            # Pitch only — do NOT mark sent. Fan has not seen unpaid PPV.
             mem["last_ppv_media_uuid"] = media_uuid
             mem["last_ppv_at"] = _now()
             mem["last_ppv_price"] = float(price) if price is not None else None
@@ -616,6 +647,95 @@ def set_last_offer(
         mem["price_defend_hits"] = 0
         mem["price_concede_done"] = False
         _put(fan_uuid, mem)
+
+
+def mark_ppv_purchased(
+    fan_uuid: str,
+    media_uuid: str,
+    *,
+    fan_handle: str = "",
+    label: str = "",
+    level: Optional[int] = None,
+    price: Optional[float] = None,
+) -> None:
+    """Fan unlocked a lock — NOW it counts as seen / not re-sellable."""
+    if not media_uuid:
+        return
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        _append_sent(
+            mem,
+            media_uuid,
+            label=label or str(mem.get("last_ppv_label") or ""),
+            level=level
+            if level is not None
+            else mem.get("last_offer_level"),
+            kind="ppv_purchased",
+        )
+        if price is not None and float(price) > 0:
+            # Spend/purchase counters if caller didn't already bump
+            pass
+        _put(fan_uuid, mem)
+
+
+def scrub_unseen_ppv_from_sent(
+    fan_uuid: str,
+    *,
+    fan_handle: str = "",
+) -> int:
+    """
+    Remove paid-catalog UUIDs from sent_* when the fan never bought.
+
+    Legacy bug: pitches were marked sent on attach. Returns how many UUIDs removed.
+    """
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        purchases = int(mem.get("purchases") or 0)
+        spent = float(mem.get("total_spent") or 0)
+        if purchases > 0 or spent > 0:
+            # Buyers: only drop pending open lock from sent if wrongly present
+            pending = (mem.get("last_ppv_media_uuid") or "").strip()
+            if not pending or not mem.get("last_ppv_pending"):
+                return 0
+            sent = list(mem.get("sent_media_uuids") or [])
+            before = len(sent)
+            catalog = _catalog_lookup()
+            item = catalog.get(pending) or {}
+            drop = {pending, item.get("media_uuid"), item.get("media_uuid_previous")}
+            drop = {u for u in drop if u}
+            sent = [u for u in sent if u not in drop]
+            mem["sent_media_uuids"] = sent
+            _put(fan_uuid, mem)
+            return max(0, before - len(sent))
+
+        catalog = _catalog_lookup()
+        paid_uids = set()
+        for it in catalog.values():
+            if int(it.get("level") or 0) >= 1:
+                if it.get("media_uuid"):
+                    paid_uids.add(it["media_uuid"])
+                if it.get("media_uuid_previous"):
+                    paid_uids.add(it["media_uuid_previous"])
+
+        sent = list(mem.get("sent_media_uuids") or [])
+        before = len(sent)
+        kept = [u for u in sent if u not in paid_uids]
+        mem["sent_media_uuids"] = kept
+        # Drop paid pitch rows from ficha; keep free gifts
+        content = [
+            c
+            for c in (mem.get("sent_content") or [])
+            if isinstance(c, dict)
+            and (
+                int(c.get("level") or 0) <= 0
+                or str(c.get("kind") or "") == "free"
+            )
+        ]
+        mem["sent_content"] = content[-_MAX_SENT_CONTENT:]
+        _put(fan_uuid, mem)
+        return max(0, before - len(kept))
 
 
 def set_pending_ppv_from_chat(
@@ -753,6 +873,20 @@ def reset_price_objection_step(fan_uuid: str, *, fan_handle: str = "") -> None:
         _put(fan_uuid, mem)
 
 
+_REAL_FAN_UUID = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.I,
+)
+
+
+def is_real_fan_uuid(fan_uuid: str) -> bool:
+    """Fanvue chat UUIDs only — skip test-fan-* junk that 400-loops expire."""
+    u = (fan_uuid or "").strip()
+    if not u or u.startswith("test-fan") or u.startswith("test_"):
+        return False
+    return bool(_REAL_FAN_UUID.match(u))
+
+
 def pending_ppv_candidates() -> List[tuple]:
     """
     Fans with a timed unpaid lock still tracked.
@@ -765,6 +899,10 @@ def pending_ppv_candidates() -> List[tuple]:
         return out
     for fid, mem in (all_mem or {}).items():
         if not isinstance(mem, dict):
+            continue
+        if mem.get("_deleted"):
+            continue
+        if not is_real_fan_uuid(str(fid)):
             continue
         # Explicit pending flag (preferred). Legacy: message uuid + expires still pending.
         pending = mem.get("last_ppv_pending")
