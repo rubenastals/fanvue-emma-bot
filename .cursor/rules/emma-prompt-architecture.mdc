@@ -30,6 +30,8 @@ AUTO_APPROVE_SOFT_LESSONS=0
 
 Hard money/media truth stays in **code** (`intent_router`, `offer_selector`, `poll_inbox`, `scheme_guard`). Creativity is DeepSeek; lies are caught by gates + guards.
 
+Live reply seams (R4): `reply_assemble.py` (TURN/prompt) → `reply_engine` draft → `reply_sanitize.py` (belts). Prefer fixing the seam that owns the bug — not the facade.
+
 ## Quarantined — do NOT patch for live fixes
 
 Registry: `core/quarantine.py`. Banner marker: `QUARANTINED — not the live SIMPLE brain`.

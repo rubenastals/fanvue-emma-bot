@@ -289,9 +289,11 @@ def test_prompt_layers_budget_and_order():
 
 def test_quarantine_markers_and_no_strategy_essay_call():
     assert not quarantine.missing_markers()
-    src = (_ROOT / "core" / "reply_engine.py").read_text(encoding="utf-8")
-    assert "strategy_block(" not in src
-    assert "truth_state" in src
+    facade = (_ROOT / "core" / "reply_engine.py").read_text(encoding="utf-8")
+    assemble = (_ROOT / "core" / "reply_assemble.py").read_text(encoding="utf-8")
+    assert "strategy_block(" not in facade
+    assert "strategy_block(" not in assemble
+    assert "truth_state" in assemble
     autofix = (_ROOT / "core" / "auto_fix.py").read_text(encoding="utf-8")
     assert "personas/emma.md" in autofix
     assert "Do NOT edit quarantined dead brains" in autofix
@@ -310,6 +312,19 @@ def test_audit_board_has_no_conflict_markers():
     assert ">>>>>>>" not in text
     assert "=======" not in text
     assert "R2" in text and "R5" in text
+
+
+def test_r4_reply_seams_exist():
+    """Facade stays thin; assemble / sanitize own the heavy logic."""
+    assert (_ROOT / "core" / "reply_assemble.py").is_file()
+    assert (_ROOT / "core" / "reply_sanitize.py").is_file()
+    assert (_ROOT / "core" / "reply_types.py").is_file()
+    facade = (_ROOT / "core" / "reply_engine.py").read_text(encoding="utf-8")
+    assert "assemble_emma_turn" in facade
+    assert "apply_post_draft" in facade
+    assert "def generate_emma_reply" in facade
+    # Facade should not still be the god-object
+    assert facade.count("\n") < 250
 
 
 if __name__ == "__main__":

@@ -155,7 +155,9 @@ Do NOT edit quarantined dead brains (they are not injected in production):
 
 Likely levers (in priority order):
 - personas/emma.md          (SIMPLE CORE persona — replace a rule; do not append forever)
-- core/reply_engine.py      (TURN assemble, sanitize, scheme belts)
+- core/reply_assemble.py    (TURN facts / prompt assemble — R4)
+- core/reply_sanitize.py    (post-draft belts / rewrite budget — R4)
+- core/reply_engine.py      (facade only — prefer assemble/sanitize for fixes)
 - core/scheme_guard.py      (deterministic hard-lie strip/fallback)
 - core/intent_router.py     / scripts/poll_inbox.py  (hard gates, commitments, attach)
 - core/language.py          (language detection / rewrite instruction)
