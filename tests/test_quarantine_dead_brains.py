@@ -37,12 +37,13 @@ def test_live_persona_is_emma_md_not_fat_system_prompt():
 
 
 def test_strategy_block_not_called_from_reply_engine():
-    src = (_ROOT / "core" / "reply_engine.py").read_text(encoding="utf-8")
-    # Must not call the offline essay helper; docstring may mention it as quarantined.
-    assert "strategy_block(" not in src
-    assert "from core.strategy_prompt import" not in src or "truth_state" in src
-    # truth_state IS the live path (imported / used)
-    assert "truth_state" in src
+    # R4: assemble owns TURN facts; facade must not call STRATEGY essay.
+    facade = (_ROOT / "core" / "reply_engine.py").read_text(encoding="utf-8")
+    assemble = (_ROOT / "core" / "reply_assemble.py").read_text(encoding="utf-8")
+    assert "strategy_block(" not in facade
+    assert "strategy_block(" not in assemble
+    # truth_state IS the live path (SIMPLE assemble)
+    assert "truth_state" in assemble
     ts = strategy_prompt.truth_state(lock_active=False)
     assert "NO lock" in ts or "candado" in ts.lower()
     essay = strategy_prompt.STRATEGY_BLOCK

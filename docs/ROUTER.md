@@ -160,7 +160,9 @@ Emma sees a loud **LOCK STATUS** every turn (active + ~minutes left, or none). P
 | `core/soft_classify.py` | Optional JSON classifier |
 | `core/packs.py` | Load/render one pack (legacy inject) |
 | `packs/*.md` | Situation rules (gates/logs under SIMPLE) |
-| `core/reply_engine.py` | Assemble + rewrite belts |
+| `core/reply_engine.py` | Facade: assemble → draft → sanitize |
+| `core/reply_assemble.py` | Prompt / HISTORY / TURN facts (R4) |
+| `core/reply_sanitize.py` | Post-draft belts / bubbles (R4) |
 | `core/scheme_guard.py` | Post-reply hard checks + safe fallbacks |
 | `scripts/poll_inbox.py` | Routes each fan turn |
 | `core/quarantine.py` | Dead-brain registry (audit R3) |

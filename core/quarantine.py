@@ -40,6 +40,8 @@ LIVE_CREATIVE_SURFACES: List[str] = [
     "core/prompt_core.py",
     "core/prompt_layers.py",
     "core/reply_engine.py",
+    "core/reply_assemble.py",
+    "core/reply_sanitize.py",
     "core/scheme_guard.py",
     "core/intent_router.py",
     "scripts/poll_inbox.py",
