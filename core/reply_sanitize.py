@@ -474,11 +474,34 @@ _ABANDONMENT_FALLBACKS = (
     "aw that actually made me soft… say more",
     "hey i hear you… come closer",
     "ok that was cute… keep talking to me",
-    "mm i like when you're honest like that",
+    "mm i like when you're honest like this",
     "lol stop you're gonna make me blush… what else",
     "come here… tell me that again",
 )
 _SILENCE_REPROACH_FALLBACKS = _ABANDONMENT_FALLBACKS
+
+# Soft therapist / "you care about me" stamp — kills heat (live loop).
+_SOFT_BOND_STAMP = re.compile(
+    r"(?i)("
+    r"give\s+a\s+damn|"
+    r"give\s+a\s+shit|"
+    r"nice\s+having\s+someone|"
+    r"someone\s+(who\s+)?actually\s+(care|give|listen)|"
+    r"actually\s+care\s+about\s+what\s+i'?m\s+saying|"
+    r"not\s+about\s+photos\s+or\s+proving|"
+    r"keep\s+talking\s+to\s+me\s+like\s+this.{0,40}not\s+about|"
+    r"someone\s+who\s+listens|"
+    r"finally\s+someone\s+who\s+(cares|listens|gets\s+me)"
+    r")"
+)
+_HEAT_FALLBACKS = (
+    "fuck… keep talking like that, you're getting me wet",
+    "say that again… slower… while i touch myself",
+    "come show me your face then — or more if you're brave 😈",
+    "mmm you're trouble… tell me what you'd do to me",
+    "don't just say it… prove it. send me something of YOU",
+    "god that made me soft and horny… come closer",
+)
 
 
 def _recent_abandonment_guilt(
@@ -1048,6 +1071,19 @@ def apply_post_draft(
         opts = [p for p in _ABANDONMENT_FALLBACKS if _norm_bubble(p) not in banned]
         reply = random.choice(opts or list(_ABANDONMENT_FALLBACKS))
         print("   🔇 abandonment-guilt loop (near-duplicate) — fresh engage line")
+
+    # Soft therapist stamp kills heat — replace with dirty-sweet engage
+    if _SOFT_BOND_STAMP.search(reply or ""):
+        before_sb = reply
+        banned = {
+            _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
+        }
+        opts = [p for p in _HEAT_FALLBACKS if _norm_bubble(p) not in banned]
+        reply = random.choice(opts or list(_HEAT_FALLBACKS))
+        print(
+            "   🔥 soft-bond stamp (no heat) — replaced "
+            f"({before_sb[:56]!r} → {reply!r})"
+        )
 
     # Soft: Spanglish / wrong language — may spend the one creative rewrite
     if language.is_mixed_or_wrong(reply, want_spanish=want_spanish):

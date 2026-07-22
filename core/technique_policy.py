@@ -245,6 +245,34 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
             low,
         )
     )
+    compliment = bool(
+        re.search(
+            r"(?i)\b("
+            r"pretty|beautiful|sexy|hot|gorgeous|stunning|cute|handsome|"
+            r"guapa|guapo|preciosa|bonita|rica|hermosa|linda|"
+            r"look\s+amazing|lok\s+super|you'?re\s+(so\s+)?(hot|sexy|pretty)"
+            r")\b",
+            low,
+        )
+    )
+    prove_ask = bool(
+        re.search(
+            r"(?i)\b(prove|demuestr|how\s+can\s+i\s+prove|what\s+do\s+you\s+want\s+me\s+to\s+do)\b",
+            low,
+        )
+    )
+    # Real emotional vent — only then PAIN MAP is OK
+    venting = bool(
+        re.search(
+            r"(?i)\b("
+            r"depressed|anxiety|lonely|divorce|broke|fired|died|funeral|"
+            r"suicid|hurt\s+inside|crying|cry\b|my\s+(ex|wife|mom)|"
+            r"depressed|triste|solo|sola|ansiedad|lloro|divorci"
+            r")\b",
+            low,
+        )
+    )
+    flirting = bool(horny or compliment or prove_ask)
     # Soft clarify / follow-up — not a crisis beat
     soft_clarify = bool(
         re.search(
@@ -255,7 +283,7 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
             r")",
             low,
         )
-    ) or (len(low) <= 28 and low.endswith("?"))
+    ) or (len(low) <= 28 and low.endswith("?") and not prove_ask)
     return {
         "spent": spent,
         "purchases": purchases,
@@ -267,6 +295,10 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
         "buying": buying,
         "price_push": price_push,
         "horny": horny,
+        "compliment": compliment,
+        "prove_ask": prove_ask,
+        "venting": venting,
+        "flirting": flirting,
         "soft_clarify": soft_clarify,
         "zero_spender": spent <= 0 and purchases <= 0,
     }
@@ -339,9 +371,13 @@ def score_move(
         if "MICRO COMMITMENT" in up or "INTERMITTENT" in up:
             score += 8
             why.append("zero-spender-hook")
-        # After a free tease: push reciprocity/loyalty — never "guys leave / quiet"
+        # After a free tease: heat + ask his pic when he's flirting; else soft commit
         if sig["frees"] >= 1:
-            if "LOYALTY" in up or "MICRO COMMITMENT" in up:
+            if sig.get("flirting"):
+                if up in ("HOT FLIRT", "ASK HIS PHOTO") or "LOVE BOMBING" in up:
+                    score += 8
+                    why.append("free-then-heat")
+            elif "LOYALTY" in up or "MICRO COMMITMENT" in up:
                 score += 6
                 why.append("free-given-reciprocity")
 
@@ -396,14 +432,35 @@ def score_move(
             score -= 20
             why.append("not-reward")
 
-    # Pain map only when we have card facts and he's not brand new
+    # Pain map ONLY when he's actually venting — never mid-flirt
+    # (live bug: PAIN MAP → "nice having someone give a damn" therapist loop)
     if "PAIN MAP" in up:
-        if sig["cardish"] and sig["msgs"] >= 6 and not sig["price_push"]:
-            score += 7
-            why.append("card-pain")
+        if sig.get("venting") and sig["cardish"] and sig["msgs"] >= 6:
+            score += 10
+            why.append("real-vent-pain")
         else:
-            score -= 6
-            why.append("no-pain-context")
+            score -= 20
+            why.append("pain-map-not-flirting")
+
+    # He's flirting / complimenting / asking how to prove → HEAT, not soft therapy
+    if sig.get("flirting"):
+        if up in ("HOT FLIRT", "ASK HIS PHOTO") or "LOVE BOMBING" in up:
+            score += 12
+            why.append("flirt-heat")
+        if up == "HOT FLIRT":
+            score += 4
+            why.append("hot-flirt-priority")
+        if sig.get("prove_ask") and (
+            up == "HOT FLIRT" or "MICRO COMMITMENT" in up or up == "ASK HIS PHOTO"
+        ):
+            score += 8
+            why.append("prove-with-heat")
+        if "LOYALTY" in up and not sig.get("prove_ask"):
+            score -= 10
+            why.append("loyalty-not-during-compliment")
+        if "PAIN MAP" in up or "GASLIGHTING" in up:
+            score -= 15
+            why.append("no-therapy-during-flirt")
 
     # Rival stronger when warm/spender or stuck zero after many msgs
     if name in manipulation._RIVAL_TECHS:
