@@ -14,11 +14,23 @@ from tenacity import (
 from config import config
 from api.fanvue_oauth import get_valid_access_token, refresh_if_expired_or_forced
 
+
+def _retryable_request_exc(exc: BaseException) -> bool:
+    """Retry transient network errors — never 4xx client/ghost-chat storms."""
+    if isinstance(exc, requests.HTTPError):
+        resp = getattr(exc, "response", None)
+        code = getattr(resp, "status_code", None) if resp is not None else None
+        if code is not None and 400 <= int(code) < 500:
+            return False
+        return True
+    return isinstance(exc, requests.exceptions.RequestException)
+
+
 _retry_policy = retry(
     reraise=True,
     stop=stop_after_attempt(4),
     wait=wait_exponential(multiplier=1, min=1, max=10),
-    retry=retry_if_exception_type(requests.exceptions.RequestException),
+    retry=_retryable_request_exc,
 )
 
 

@@ -61,8 +61,8 @@ from core.sim_score import score_chat
 
 
 def _sim_uuid(scenario_id: str, run: int) -> str:
-    # Stable-looking UUID namespace so memory stays isolated from real fans
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"emma-sim:{scenario_id}:{run}:{time.time_ns()}"))
+    # Non-Fanvue id so live poller never scans these (is_real_fan_uuid = False)
+    return f"test-fan-{uuid.uuid5(uuid.NAMESPACE_URL, f'emma-sim:{scenario_id}:{run}:{time.time_ns()}')}"
 
 
 def _run_turn(
