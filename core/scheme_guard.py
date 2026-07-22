@@ -607,13 +607,14 @@ def fallback_purchase_bluff(*, want_spanish: bool, lock_still_active: bool) -> s
 
 
 def fallback_no_lock(*, want_spanish: bool) -> str:
+    # Wording must NOT trip invented_lock_claim (no candado/unlock/waiting-lock).
     if want_spanish:
         return (
-            "Ahora mismo no tengo un candado esperándote. "
+            "Ahora mismo no tengo nada esperándote así. "
             "Cuéntame qué te pasa, estoy aquí 🥺"
         )
     return (
-        "I don't have a lock waiting for you right now. "
+        "I don't have anything waiting for you like that right now. "
         "Tell me what's going on — I'm here 🥺"
     )
 
@@ -621,24 +622,25 @@ def fallback_no_lock(*, want_spanish: bool) -> str:
 def fallback_photos_only(
     *, want_spanish: bool, real_price: Optional[float] = None
 ) -> str:
+    # Avoid video/grabar tokens — invented_video_claim would re-fire on the fallback.
     if real_price is not None:
         rp = float(real_price)
         if want_spanish:
             return (
-                f"De vídeo no… solo fotos 😏 Tienes UNA candada esperando — "
+                f"Solo fotos 😏 Tienes UNA candada esperando — "
                 f"${rp:.0f} y la abres, bebé."
             )
         return (
-            f"No video… photos only 😏 You have ONE lock waiting — "
+            f"Photos only 😏 You have ONE lock waiting — "
             f"${rp:.0f} and unlock it, babe."
         )
     if want_spanish:
         return (
-            "Vídeo no tengo 😏 Solo fotos en el vault — "
+            "Solo fotos en el vault 😏 "
             "dime qué te pone y te cierro una de verdad."
         )
     return (
-        "No video 😏 Photos only in the vault — "
+        "Photos only in the vault 😏 "
         "tell me what you want and I'll lock a real one."
     )
 
