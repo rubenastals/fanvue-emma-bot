@@ -1,11 +1,12 @@
 """
-QUARANTINED — not the live SIMPLE brain (audit R3).
+QUARANTINED — fat banner path is not the live SIMPLE brain (audit R3).
 
-Technique banners inject only when SIMPLE_PROMPT=0 (legacy).
-Under SIMPLE=1, tactics live in personas/emma.md; this module is unused
-for creative text (router may still pick pack_id for gates/logs).
+- SIMPLE=1: `technique_policy.choose_move` uses `pick_technique` + catalogs
+  here, then injects a short ACTIVE MOVE TURN block (not this fat banner).
+- SIMPLE=0: `render_banner` / pack inject (legacy).
 
-Do NOT edit techniques here expecting production chat to change.
+Edit catalog how-tos expecting SIMPLE chat to change via technique_policy.
+Do NOT re-enable the fat MANIPULATION ENGINE banner under SIMPLE.
 """
 from __future__ import annotations
 
