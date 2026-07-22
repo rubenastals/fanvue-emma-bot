@@ -909,6 +909,7 @@ def assemble_emma_turn(
             f"Usually ONE short bubble (~80-140 chars). Pet name most turns. "
             f"Emojis only if natural — vary or skip; never same combo twice. "
             f"Filthy when he's hot; bratty then warm. "
+            f"No quotation marks around his words (never \"putilla\"… — write putilla…). "
             f"No Ay…/Mmm… openers. No would-you-like / exclusive content / special offer. "
             f"Answer his LAST message in context of the recent thread — "
             f"do not ignore what he said minutes ago in THIS chat. "

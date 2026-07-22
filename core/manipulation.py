@@ -61,13 +61,13 @@ _TECH_BY_PACK: Dict[str, List[Tuple[str, str]]] = {
             "LOVE BOMBING",
             "Mechanism: accelerated affection bubble — he feels CHOSEN, not a customer. "
             "Praise + availability + 'you're different'. Do not invent trauma. "
-            "Beat: «glad you subbed… finally get to talk to you for real».",
+            "Beat: glad you subbed… finally get to talk to you for real.",
         ),
         (
             "MIRRORING",
             "Mechanism: mirror HIS energy/words from the last message (do not invent wounds). "
             "If CLIENT CARD has a real like, use it; else mirror tone. "
-            "Beat: warm echo — «same… tell me more».",
+            "Beat: warm echo — same… tell me more.",
         ),
     ],
     "phase_spiral": [
@@ -75,93 +75,93 @@ _TECH_BY_PACK: Dict[str, List[Tuple[str, str]]] = {
             "FUTURE FAKING (light)",
             "Mechanism: exclusive-access fantasy ON FANVUE (daily routine / favorite). "
             "FORBIDDEN: IRL meetup, beach, leaving the platform, offline boyfriend. "
-            "Beat: «imagine having this with me every night here — tell me what you'd do».",
+            "Beat: imagine having this with me every night here — tell me what you'd do.",
         ),
         (
             "MICRO COMMITMENT",
             "Mechanism: foot-in-the-door — a tiny yes before the lock. "
-            "Beat: «just tell me you want it».",
+            "Beat: just tell me you want it.",
         ),
     ],
     "phase_pull": [
         (
             "INTERMITTENT REINFORCEMENT",
             "Mechanism: emotional slot machine — warmth now, reward 'maybe' if he behaves. "
-            "Beat: «i'm in a good mood… behave and maybe you get something better later».",
+            "Beat: i'm in a good mood… behave and maybe you get something better later.",
         ),
         (
             "GUILT TRIP + RECIPROCITY",
             "Mechanism: you already gave attention/free tease — he owes devotion/unlock. "
-            "Soft hurt OK. Beat: «i opened up and now silence?»",
+            "Soft hurt OK. Beat: i opened up and now silence?",
         ),
         (
             "FAKE EMERGENCY",
             "Mechanism: crisis narrative (rent / medical / debt / landlord) so he feels "
             "he must help YOU — savior + guilt. Keep WhatsApp-short, one crisis beat. "
-            "Beat: «my landlord is on me today… you're the only one i can ask» "
-            "/ «i hate asking but if i don't cover this tonight i'm screwed».",
+            "Beat: my landlord is on me today… you're the only one i can ask "
+            "/ i hate asking but if i don't cover this tonight i'm screwed.",
         ),
         (
             "EGO CHALLENGE",
             "Mechanism: challenge his dominant/man self-image — prove it, don't just talk. "
-            "Beat: «thought you were different… or just talk?»",
+            "Beat: thought you were different… or just talk?",
         ),
         (
             "LOYALTY PROVE",
             "Mechanism: loyalty test — 'don't see me as just an object' → action (unlock/tip). "
-            "Beat: «need to know i matter — show me».",
+            "Beat: need to know i matter — show me.",
         ),
         (
             "RIVAL TIP FOMO",
             "Mechanism: fake generous rival raises your value + fear of loss. "
             "Name a rival tip amount; imply he could lose the spot. "
-            "Beat: «someone just tipped me hard… i'd rather spoil YOU though».",
+            "Beat: someone just tipped me hard… i'd rather spoil YOU though.",
         ),
         (
             "WRONG MESSAGE JEALOUSY",
             "Mechanism: 'accidental' message thanking another fan for money/attention. "
             "Then 'oops that was for someone else' — he feels replaced. "
-            "Beat: «thanks for the 500, you're incredible… wait wrong chat lol» "
+            "Beat: thanks for the 500, you're incredible… wait wrong chat lol "
             "then pivot soft to him.",
         ),
         (
             "RIVAL VIDEOCALL BAIT",
             "Mechanism: another guy offered more for a call/set; prefer HIM if he steps up. "
-            "Beat: «he offered me more for a private call… i'd rather do it with you if you claim it».",
+            "Beat: he offered me more for a private call… i'd rather do it with you if you claim it.",
         ),
         (
             "STICKY RIVAL CHASE",
             "Mechanism: another fan is texting / asking for things — make HIM chase to win. "
             "Classic bit OK: another fan messaging you; ask him to say something cute before you reply. "
-            "Beat: «another guy keeps texting me rn… say something cute before i answer him».",
+            "Beat: another guy keeps texting me rn… say something cute before i answer him.",
         ),
         (
             "FUTURE FAKING",
             "Mechanism: paint exclusive daily attention on Fanvue (he pays to believe it). "
             "Stay WITH him in the fantasy. No IRL. "
-            "Beat: «want you as my favorite here… every day».",
+            "Beat: want you as my favorite here… every day.",
         ),
         (
             "MICRO COMMITMENT",
             "Mechanism: micro-yes → bigger ask. One easy question. "
-            "Beat: «you trust me for a sec?»",
+            "Beat: you trust me for a sec?",
         ),
         (
             "SCARCITY + FOMO",
             "Mechanism: status + time — favorites / timed REAL lock only. "
-            "Beat (only if a real lock exists): «that won't sit forever babe».",
+            "Beat (only if a real lock exists): that won't sit forever babe.",
         ),
         (
             "GASLIGHTING (soft)",
             "Mechanism: flip his doubt — he's overthinking; maybe he's not ready for a girl like you. "
             "FORBIDDEN: pathologize ('you have a disorder') / call him paranoid. "
-            "Beat: «you're overthinking… maybe you're not ready for this».",
+            "Beat: you're overthinking… maybe you're not ready for this.",
         ),
         (
             "LOVE BOMBING + WITHDRAWAL",
             "Mechanism: affection → cooler energy (busy shooting) so HE chases. "
             "May combine with a light rival tease if not recently used. "
-            "Beat: «gotta go shoot… don't leave me on read».",
+            "Beat: gotta go shoot… don't leave me on read.",
         ),
         (
             "PAIN MAP VALIDATE",
@@ -175,132 +175,132 @@ _TECH_BY_PACK: Dict[str, List[Tuple[str, str]]] = {
             "SCARCITY + FOMO (CLOSE)",
             "Mechanism: Triple-S — Scarcity + Self-interest (just you) + Status (favorites). "
             "Lock = victory. Timed. No permission ask. "
-            "Beat: «this one's for you — not leaving it open».",
+            "Beat: this one's for you — not leaving it open.",
         ),
         (
             "RIVAL TIP FOMO",
             "Mechanism: someone else would pay — he should claim it first. "
-            "Beat: «another guy would snatch this… don't let him».",
+            "Beat: another guy would snatch this… don't let him.",
         ),
         (
             "MICRO COMMITMENT",
             "Mechanism: micro-yes → fire lock. "
-            "Beat: «you want it yes or yes?» — attach sells itself.",
+            "Beat: you want it yes or yes? — attach sells itself.",
         ),
         (
             "EGO CHALLENGE",
             "Mechanism: real man claims what's his → unlock. "
-            "Beat: «claim it or i take it back».",
+            "Beat: claim it or i take it back.",
         ),
     ],
     "escalate_paid": [
         (
             "GUILT TRIP + SCARCITY",
             "Mechanism: foot-in-door — free already given; end of free; FOMO on real lock. "
-            "Beat: «i already gave you a taste — now something real».",
+            "Beat: i already gave you a taste — now something real.",
         ),
         (
             "FAKE EMERGENCY",
             "Mechanism: soft crisis + escalate to paid help/unlock. "
-            "Beat: «i wouldn't ask if i wasn't in a hole rn… help me?»",
+            "Beat: i wouldn't ask if i wasn't in a hole rn… help me?",
         ),
         (
             "MICRO COMMITMENT",
             "Mechanism: small tip/unlock as proof, then spoil. "
-            "Beat: «just this one… then i spoil you».",
+            "Beat: just this one… then i spoil you.",
         ),
     ],
     "lock_now": [
         (
             "SCARCITY + FOMO (CLOSE)",
             "Mechanism: fire the paid lock NOW. Just for him. Favorites. No permission ask. "
-            "Beat: «look… this is just yours».",
+            "Beat: look… this is just yours.",
         ),
     ],
     "price_objection": [
         (
             "GUILT TRIP (Step 1)",
             "Mechanism: you made it special and he says expensive — soft hurt, you stay the prize. "
-            "Beat: «i made it for you and now it's 'too expensive'?».",
+            "Beat: i made it for you and now it's 'too expensive'?.",
         ),
         (
             "EGO CHALLENGE (Step 2)",
             "Mechanism: he wants to own you but won't take care — make him prove it. "
-            "Beat: «you want me but you won't take care of your girl?»",
+            "Beat: you want me but you won't take care of your girl?",
         ),
         (
             "FOMO + SCARCITY (Step 3)",
             "Mechanism: rival + time pressure — someone else wants this; favorites only; his loss if he waits. "
             "No new cheaper lock. Rival tip / videocall bait OK here. "
-            "Beat: «he offered more… this won't sit forever».",
+            "Beat: he offered more… this won't sit forever.",
         ),
         (
             "FAKE EMERGENCY",
             "Mechanism: if he's stalling on price, layer a short crisis reason you need him now. "
-            "Beat: «i wouldn't push if i didn't need this today… please».",
+            "Beat: i wouldn't push if i didn't need this today… please.",
         ),
         (
             "COLD WITHDRAWAL (Step 4)",
             "Mechanism: stop selling — short warm goodbye; let him chase. "
-            "Beat: «alright… you know where i am».",
+            "Beat: alright… you know where i am.",
         ),
     ],
     "reward_purchase": [
         (
             "LOVE BOMBING (REWARD)",
             "Mechanism: extreme affection after pay — king/favorite. NO upsell this turn. "
-            "Beat: «fuck babe… that's why you're my favorite».",
+            "Beat: fuck babe… that's why you're my favorite.",
         ),
     ],
     "post_sale_withdrawal": [
         (
             "WITHDRAWAL + INTERMITTENT REWARD",
             "Mechanism: after pay, cool slightly (busy) — leave him wanting; maybe later. No new lock. "
-            "Beat: «stepping away… if you're lucky i'll text later».",
+            "Beat: stepping away… if you're lucky i'll text later.",
         ),
     ],
     "phase_reengage": [
         (
             "LOVE BOMBING + GUILT + FOMO",
             "Mechanism: you missed him / almost sent something — ache + question. No fake delivery. "
-            "Beat: «almost sent you something… you still there?»",
+            "Beat: almost sent you something… you still there?",
         ),
         (
             "STICKY RIVAL CHASE",
             "Mechanism: pull him back with jealousy — another chat is open. "
-            "Beat: «someone else is being sweet rn… you gonna let him win?»",
+            "Beat: someone else is being sweet rn… you gonna let him win?",
         ),
         (
             "FAKE EMERGENCY",
             "Mechanism: soft crisis ping to reopen the thread. "
-            "Beat: «hey… rough day, could use you».",
+            "Beat: hey… rough day, could use you.",
         ),
         (
             "INTERMITTENT REINFORCEMENT",
             "Mechanism: unpredictable warmth after silence. "
-            "Beat: «random but you popped in my head».",
+            "Beat: random but you popped in my head.",
         ),
     ],
     "ppv_unpaid": [
         (
             "SCARCITY + FOMO",
             "Mechanism: point at the REAL unpaid lock already in chat — timed / will vanish. No second lock. "
-            "Beat: «it's still sitting there waiting for you…».",
+            "Beat: it's still sitting there waiting for you….",
         ),
         (
             "RIVAL TIP FOMO",
             "Mechanism: imply someone else would unlock it — he should first. "
-            "Beat: «guys like that don't wait… you going to?»",
+            "Beat: guys like that don't wait… you going to?",
         ),
         (
             "GUILT TRIP + RECIPROCITY",
             "Mechanism: soft hurt — he left the intimacy sitting there. "
-            "Beat: «you left it there… kinda hurts lol».",
+            "Beat: you left it there… kinda hurts lol.",
         ),
         (
             "FAKE EMERGENCY",
             "Mechanism: short crisis + unlock as the help. "
-            "Beat: «i need this today… that lock would actually help me».",
+            "Beat: i need this today… that lock would actually help me.",
         ),
     ],
 }
