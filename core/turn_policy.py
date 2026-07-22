@@ -26,13 +26,15 @@ MODE_HARD_SELL = "hard_sell"
 # buying intent (he wants media) but creative must redirect to a PHOTO offer.
 _BUYING = (
     r"\b(unlock|buy|pay|price|how much|cu[aá]nto|precio|quiero ver|"
-    r"show me|let me see|content|locked|ppv|"
-    r"v[ií]deo|video|clip|custom|"  # intent only → close a PHOTO, never promise film
+    r"show me|let me see|locked|ppv|"
+    # intent only → close a PHOTO, never promise film. No bare "content"
+    # (was matching loose chat and forcing closes).
+    r"v[ií]deo|video|clip|custom|"
     r"env[ií]a(me|la|lo|mela)?|m[aá]nda(me|la|mela)?|"
-    r"ense[nñ][aá](me|mela|rmela)?|muestr[aá](me|mela)|"
+    r"ense[nñ]?[aá](me|mela|rmela)?|muestr[aá](me|mela)|"  # eseñame typo
     r"por\s*favor|please|no\s+me\s+dejes(\s+con)?|"
     r"(p[aá]sa(me|la|mela)?|quiero|m[aá]ndame|env[ií]ame).{0,20}"
-    r"(foto|pic|pics|photo|teta|tetas|culo|ass|boob|v[ií]deo|video|clip)|"
+    r"(foto|pic|pics|photo|teta|tetas|tetitas|culo|ass|boob|v[ií]deo|video|clip)|"
     r"(foto|pic|pics|photo).{0,12}(por ?favor|ya|ahora)|"
     r"tic\s*tac|ya\s*est[aá]|d[oó]nde\s+est[aá]\s+(la\s+)?foto)\b|"
     r"s[ií]+\s*quiero|lo quiero|dale\b|"
@@ -62,7 +64,7 @@ _WANT_ANOTHER = (
 _HORNY = (
     r"\b(hard|horny|wet|cock|dick|pussy|fuck|cum|stroke|jerk|"
     r"duro|caliente|mojada|polla|follar|correr|"
-    r"tetas?|tetasa|boobs?|culo|ass|senos?|pechos?|lamerlas)\b"
+    r"tetitas?|tetas?|tetasa|boobs?|culo|ass|senos?|pechos?|lamerlas)\b"
 )
 _REJECT = (
     r"\b(too expensive|caro|expensive|can'?t|no money|later|maybe later|"

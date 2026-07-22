@@ -52,10 +52,22 @@ _DIRECT_BUY = re.compile(
     r"unlock|buy|pay|how much|cu[aá]nto\s+(cuesta|cuesta|es)|precio|"
     r"show me|let me see|quiero ver(la|lo)?|"
     r"m[aá]nda(me|la|mela)|env[ií]a(me|la|mela)|p[aá]sa(me|la|mela)|"
-    r"ense[nñ][aá](me|mela|rmela)?|muestr[aá](me|mela)|"
+    r"ense[nñ]?[aá](me|mela|rmela)?|muestr[aá](me|mela)|"  # eseñame typo OK
     r"por\s*favor|please|"
     r"no\s+me\s+dejes(\s+con)?"
     r")\b"
+)
+# Clarifying her content / cold check-ins — NEVER a PPV close
+_CLARIFY_NO_SELL = re.compile(
+    r"(?i)("
+    r"^\s*(pero\s+)?(fotos?|pics?|photos?)\s+para\s+m[ií]\s*\??\s*$|"
+    r"^\s*a\s+grabar\s*\??\s*$|"
+    r"^\s*c[oó]mo\s*\??\s*$|"
+    r"^\s*(s[ií]+|ok|okay|bien|yes|yeah)\s*[.!]?\s*$|"
+    r"no\s+te\s+ibas\s+a\s+grabar|"
+    r"prefieres\s+hablar|solo\s+vender|only\s+sell|"
+    r"qu[eé]\s+te\s+pas[oó]|what\s+happened"
+    r")"
 )
 # NEVER bare \bno\b — matches "no me dejes con las ganas" and kills closes
 _REJECT = re.compile(
@@ -424,6 +436,25 @@ def choose_offer(
         return OfferChoice(False, None, "objection/vent: reconnect first", 1.0, "code")
     if _REJECT.search(fan_message or "") and not direct:
         return OfferChoice(False, None, "current message rejects sale", 1.0, "code")
+    if _CLARIFY_NO_SELL.search((fan_message or "").strip()):
+        return OfferChoice(
+            False,
+            None,
+            "clarify/cold check-in — not a PPV close",
+            1.0,
+            "code",
+        )
+    # $0 fans: no AI sell without a clear ask this turn (stops cold drops)
+    if _zero_spender(mem) and not direct and not max_dirty:
+        horny_now = bool(getattr(facts, "horny", False))
+        if not horny_now:
+            return OfferChoice(
+                False,
+                None,
+                "zero-spender needs clear ask/horny this turn",
+                1.0,
+                "code",
+            )
     # Right after a lock vanished — reconnect first. No new PPV for ~10 min,
     # even on "enséñamela" (that was the extreme that felt spammy).
     # Only exception: he explicitly wants the dirtiest shot again.
@@ -543,6 +574,22 @@ def choose_offer(
             facts=facts,
             reason="selector returned invalid/non-whitelisted UUID",
         )
+    # Code veto: AI must not cold-drop on clarify / zero-spender without ask
+    if sell_now and _CLARIFY_NO_SELL.search((fan_message or "").strip()):
+        sell_now = False
+        chosen = None
+        reason = f"clarify veto; selector said: {reason}"
+    if (
+        sell_now
+        and _zero_spender(mem)
+        and not direct
+        and not max_dirty
+        and not bool(getattr(facts, "horny", False))
+    ):
+        sell_now = False
+        chosen = None
+        reason = f"zero-spender veto (no clear ask); selector said: {reason}"
+
     if direct and not sell_now:
         chosen = candidates[0]
         sell_now = True
