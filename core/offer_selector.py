@@ -49,7 +49,10 @@ _THEMES = {
 # Clear ask for THIS photo — keep narrow so "dale/video" don't force random PPVs
 _DIRECT_BUY = re.compile(
     r"(?i)\b("
-    r"unlock|buy|pay|how much|cu[aá]nto\s+(cuesta|cuesta|es)|precio|"
+    r"unlock|buy|pay|"
+    # "how much time?" must NOT match — only price asks
+    r"how\s+much\s+(is|does|do|for|to)|"
+    r"cu[aá]nto\s+(cuesta|cuesta|es|vale)|precio|"
     r"show me|let me see|quiero ver(la|lo)?|"
     r"m[aá]nda(me|la|mela)|env[ií]a(me|la|mela)|p[aá]sa(me|la|mela)|"
     r"ense[nñ]?[aá](me|mela|rmela)?|muestr[aá](me|mela)|"  # eseñame typo OK

@@ -199,15 +199,19 @@ def pick_playbook_move(
 
     # 2) Unpaid lock / price objection — ladder (not eternal HOLD FRAME)
     if unpaid or pid in ("ppv_unpaid", "price_objection"):
-        price_fight = bool(
-            sig.get("price_push") or pid == "price_objection" or reject >= 1
-        )
+        # "how do you look in the photo?" → filthy describe, NEVER discount/soft-exit
+        if sig.get("ask_lock_tease"):
+            return SELL_LOCK, "unpaid-describe-tease"
+        # Price fight = this msg pushes price, OR sticky price_objection pack.
+        # Bare reject_step on ppv_unpaid alone must NOT force HOLD forever
+        # (that made "how do you look?" → "i don't do discounts").
+        price_fight = bool(sig.get("price_push") or pid == "price_objection")
         if price_fight:
             hold_streak = sum(1 for t in recent[-4:] if t == "HOLD FRAME")
             if reject >= 3 or hold_streak >= 2:
                 return SOFT_EXIT, "objection-soft-exit"
             return HOLD_FRAME, "unpaid-price-push"
-        # First attach / unpaid tease — filthy girlfriend, not store scarcity
+        # Unpaid tease — filthy girlfriend pointing at THAT lock
         return SELL_LOCK, "unpaid-lock"
 
     # 3) Soft / shy — bond early, then graduate to heat (don't stall forever)

@@ -70,6 +70,32 @@ def test_soft_exit_after_hold_frame_streak():
     assert "soft-exit" in why
 
 
+def test_ask_how_you_look_is_sell_lock_not_hold():
+    move, why = pb.pick_playbook_move(
+        pack_id="ppv_unpaid",
+        sig={
+            "msgs": 14,
+            "reject_step": 2,
+            "price_push": False,
+            "ask_lock_tease": True,
+        },
+        unpaid=True,
+        recent_techs=["HOLD FRAME", "HOLD FRAME"],
+    )
+    assert move.name == "SELL LOCK"
+    assert "describe" in why
+
+
+def test_reject_step_alone_does_not_force_hold():
+    move, why = pb.pick_playbook_move(
+        pack_id="ppv_unpaid",
+        sig={"msgs": 14, "reject_step": 2, "price_push": False},
+        unpaid=True,
+        recent_techs=["HOLD FRAME"],
+    )
+    assert move.name == "SELL LOCK"
+
+
 def test_shy_graduates_to_heat_after_rapport():
     move = technique_policy.choose_move(
         "phase_pull",

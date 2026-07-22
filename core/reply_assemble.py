@@ -695,6 +695,26 @@ def assemble_emma_turn(
 
     unpaid_gate = bool(delivery_truth and delivery_truth.get("ppv_unpaid"))
     status_active = bool(ppv_status and ppv_status.get("active"))
+    # Fan asking what's IN the unpaid lock — filthy describe, not price frame
+    if (unpaid_gate or status_active) and re.search(
+        r"(?i)\b("
+        r"how\s+do\s+you\s+look|what\s+do\s+you\s+look\s+like|"
+        r"what.?s\s+in\s+(the|that)\s+(photo|pic)|"
+        r"what\s+are\s+you\s+wearing|describe\s+(the|that|your)\s+(photo|pic)|"
+        r"c[oó]mo\s+(est[aá]s|sales|te\s+ves)|qu[eé]\s+se\s+ve"
+        r")\b",
+        fan_message or "",
+    ):
+        label = str((ppv_status or {}).get("label") or "").strip()
+        label_bit = f' ("{label}")' if label else ""
+        turn_blocks.append(
+            "LOCK TEASE ASK — CRITICAL:\n"
+            f"- He asked how you look / what's in the unpaid lock{label_bit}.\n"
+            "- ANSWER with a short filthy WhatsApp describe of THAT photo "
+            "(pose, body, vibe) + light unlock nudge.\n"
+            "- HARD BAN this turn: discounts, 'i hear you', soft-exit, "
+            "'when you're ready', price lectures."
+        )
     # Friction path: unpaid exists but router chose reconnect — no unlock nag
     soft_unpaid = bool(
         (unpaid_gate or status_active)

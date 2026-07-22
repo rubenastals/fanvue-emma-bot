@@ -244,6 +244,21 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
             low,
         )
     )
+    # Asking what's IN the unpaid lock — tease/describe, not price fight
+    ask_lock_tease = bool(
+        re.search(
+            r"(?i)\b("
+            r"how\s+do\s+you\s+look|what\s+do\s+you\s+look\s+like|"
+            r"how\s+do\s+u\s+look|how\s+are\s+you\s+(looking|posed)|"
+            r"what.?s\s+in\s+(the|that)\s+(photo|pic|lock)|"
+            r"what\s+(is|does)\s+(the|that)\s+(photo|pic)|"
+            r"what\s+are\s+you\s+wearing|describe\s+(the|that|your)\s+(photo|pic|lock)|"
+            r"c[oó]mo\s+(est[aá]s|sales|te\s+ves)|qu[eé]\s+se\s+ve|"
+            r"qu[eé]\s+hay\s+en\s+(la|esa)\s+foto|c[oó]mo\s+est[aá]s\s+en\s+(la|esa)"
+            r")\b",
+            low,
+        )
+    )
     horny = bool(
         re.search(
             r"(?i)\b(hard|horny|cock|dick|pussy|fuck|cum|mojad|caliente|polla)\b",
@@ -310,6 +325,7 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
         "cardish": cardish,
         "buying": buying,
         "price_push": price_push,
+        "ask_lock_tease": ask_lock_tease,
         "horny": horny,
         "compliment": compliment,
         "prove_ask": prove_ask,
