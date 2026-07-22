@@ -23,14 +23,23 @@ _BANNED_ALWAYS = re.compile(
     r"(?i)(?:\s*[,.]?\s*)\b(caro|papi|nena|nene)\b\.?"
 )
 # Stage-direction brackets DeepSeek may copy from history labels — never shown to fan.
+# Includes [Voice Note: (breathy, soft)] — that leak screams "bot".
 _STAGE_BRACKETS = re.compile(
     r"\s*\["
     r"(?:image locked|photo locked|locked image|paid photo lock|voice note attached|"
+    r"voice\s*notes?|"
     r"you locked|you sent a|fan sent a|SYSTEM[: ]|Transmite|envi[oó]|you can send|"
     r"whispers?|sighs?|chuckles?|exhales?|moans?|laughs?|breathes?|pauses?|gasps?)"
     r"[^\]]*\]",
     re.I,
 )
+# TTS stage paren anywhere: (breathy, soft) / (whispering)
+_VOICE_PAREN_DIR = re.compile(
+    r"(?i)\(\s*(?:breathy|soft|whisper\w*|sensual|moan\w*|intimate|"
+    r"low|quiet|filthy)[^)]{0,40}\)"
+)
+# Unbracketed / partial: Voice Note: … or [Voice Note:
+_VOICE_NOTE_LABEL = re.compile(r"(?i)\[?\s*voice\s*notes?\s*:")
 # Spanish nicknames — strip only in English mode (Spanglish leak).
 _BANNED_SPANISH_IN_ENGLISH = re.compile(
     r"(?i)(?:\s*[,.]?\s*)\b("
@@ -322,6 +331,34 @@ def _strip_photo_script_dump(text: str) -> str:
     return "\n".join(kept).strip()
 
 
+def looks_like_voice_script_dump(text: str) -> bool:
+    """True if draft dumps TTS/stage meta into chat (exposes the bot)."""
+    if not text:
+        return False
+    if _VOICE_NOTE_LABEL.search(text):
+        return True
+    if _VOICE_PAREN_DIR.search(text):
+        return True
+    return False
+
+
+def strip_voice_stage_leaks(text: str) -> str:
+    """Remove [Voice Note:…] / (breathy, soft) stage crumbs from chat text."""
+    if not text:
+        return text
+    cleaned = _STAGE_BRACKETS.sub("", text)
+    # Unbracketed Voice Note: (breathy, soft) leftover after bracket strip
+    cleaned = re.sub(
+        r"(?i)\s*voice\s*notes?\s*:\s*(?:\([^)]{0,60}\)\s*)?",
+        "",
+        cleaned,
+    )
+    cleaned = _VOICE_PAREN_DIR.sub("", cleaned)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r" +([,.!?…])", r"\1", cleaned)
+    return cleaned.strip()
+
+
 def _sanitize_reply(
     text: str,
     *,
@@ -332,13 +369,19 @@ def _sanitize_reply(
     media_attached: bool = False,
     paid_lock: bool = False,
     ghost_free_ban: bool = False,
+    voice_will_send: bool = False,
 ) -> str:
     """Strip banned pet names + thin name spam + false delivery claims."""
     if not text:
         return text
+    # Voice script leak: audio will carry the spoken beat — never paste TTS stage into chat
+    if voice_will_send and looks_like_voice_script_dump(text):
+        from core import voice_notes as _vn_dump
+
+        return _vn_dump.forced_voice_close_line(want_spanish=want_spanish)
     cleaned = _BANNED_ALWAYS.sub("", text)
     # Strip any stage-direction brackets copied from history (e.g. [image locked])
-    cleaned = _STAGE_BRACKETS.sub("", cleaned)
+    cleaned = strip_voice_stage_leaks(cleaned)
     if not want_spanish:
         cleaned = _BANNED_SPANISH_IN_ENGLISH.sub("", cleaned)
     # Past-tense "already sent" is always fake at generation time (media goes AFTER text).
@@ -1064,6 +1107,24 @@ def apply_post_draft(
     ):
         print("   🎙️ voice-beg loop in draft — forcing close line (no pídemelo)")
         reply = _vn_loop.forced_voice_close_line(want_spanish=want_spanish)
+
+    # Never paste "[Voice Note: (breathy, soft)] …" into chat — bot tell
+    if looks_like_voice_script_dump(reply):
+        if voice_will_send:
+            print("   🎙️ voice-script dump in chat — forced close (audio speaks)")
+            reply = _vn_loop.forced_voice_close_line(want_spanish=want_spanish)
+        else:
+            before_vn = reply
+            reply = strip_voice_stage_leaks(reply)
+            if reply != before_vn:
+                print("   🎙️ stripped Voice Note / TTS stage label from chat")
+            if not (reply or "").strip():
+                reply = _vn_loop.forced_voice_close_line(want_spanish=want_spanish)
+    else:
+        stripped_vn = strip_voice_stage_leaks(reply)
+        if stripped_vn != (reply or "").strip():
+            reply = stripped_vn
+            print("   🎙️ stripped residual voice stage crumbs")
 
     # Continuity: strip repeated trailing questions — no LLM rewrite
     if scheme_guard.continuity_loop(reply, turns):

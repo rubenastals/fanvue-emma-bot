@@ -95,6 +95,7 @@ def _call_creative(assembled: AssembledTurn, msgs: List[Dict[str, str]]) -> str:
             and int(offer.get("level") or 0) > 0
         ),
         ghost_free_ban=assembled.ghost_free_ban,
+        voice_will_send=bool(assembled.voice_will_send),
     )
 
 

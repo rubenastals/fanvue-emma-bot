@@ -825,7 +825,9 @@ def assemble_emma_turn(
             "Just continue the conversation normally. Do NOT announce it, promote it, or say "
             "'I recorded something' / 'listen to this' / 'I have something for you'. "
             "HARD BAN this turn: 'pídemelo', 'ask me nicely', asking him again to beg — "
-            "he already asked / complied. The audio is coming. Your text is a normal reply."
+            "he already asked / complied. The audio is coming. Your text is a short normal reply. "
+            "NEVER write '[Voice Note:…]', 'Voice Note:', '(breathy, soft)', or any TTS/stage "
+            "direction in chat — and do NOT paste the spoken audio script into the bubble."
         )
     else:
         turn_blocks.append(
