@@ -1664,13 +1664,15 @@ def poll_once(fv: FanvueConnector, processed: set, creator_uuid: str) -> int:
         for fid, mem in (fan_memory_store.load_all() or {}).items():
             if not _looks_like_uuid(fid) or fid in seen or fid == creator_uuid:
                 continue
-            if not isinstance(mem, dict):
+            if not isinstance(mem, dict) or mem.get("_deleted"):
                 continue
             if int(mem.get("messages") or 0) < 1:
                 continue
-            # Skip blocked handles from memory scan too
+            # Skip blocked / offline-sim handles from memory scan
             mem_handle = (mem.get("handle") or "").lower().lstrip("@")
             if mem_handle in blocked_handles:
+                continue
+            if fan_memory.is_junk_fan_handle(mem_handle):
                 continue
             seen.add(fid)
             candidates.append(
@@ -1693,6 +1695,8 @@ def poll_once(fv: FanvueConnector, processed: set, creator_uuid: str) -> int:
         blocked_handles = getattr(config, "BLOCKED_HANDLES", []) or []
         if fan_handle.lower().lstrip("@") in blocked_handles:
             continue
+        if fan_memory.is_junk_fan_handle(fan_handle):
+            continue
         if any(fan_uuid.startswith(b) or b == fan_uuid for b in blocked_handles):
             continue
         # Double-reply guard: skip if Emma just replied to this fan very recently
@@ -1704,9 +1708,20 @@ def poll_once(fv: FanvueConnector, processed: set, creator_uuid: str) -> int:
                 fv, processed, creator_uuid, fan_uuid, fan_handle
             )
         except Exception as e:
+            err = f"{type(e).__name__}: {e}"
+            # Ghost chats from offline sims / deleted threads — drop + don't spam traceback
+            if "404" in err and "Conversation not found" in err:
+                print(f"   👻 ghost chat @{fan_handle} — soft-delete, skip")
+                try:
+                    fan_memory.soft_delete_fan(
+                        fan_uuid, reason="conversation_not_found"
+                    )
+                except Exception:
+                    pass
+                continue
             import traceback
 
-            print(f"   ❌ handle @{fan_handle} failed: {type(e).__name__}: {e}")
+            print(f"   ❌ handle @{fan_handle} failed: {err}")
             traceback.print_exc()
 
     return handled
@@ -1790,14 +1805,28 @@ def main():
                     mem["handle"] = mem.get("handle") or "patient-guineafowl-495"
                     _fms.set_fan(rid, mem)
                     print("   lean: client card → Ruben (confirmed)")
-                # Drop junk test fans that break purge/list (invalid UUIDs)
+                # Drop junk test/sim fans that 404-storm the poll loop
                 for junk_id, junk_mem in list((_fms.load_all() or {}).items()):
-                    if junk_id.count("-") < 4 or len(junk_id) < 32:
-                        try:
-                            _fms.set_fan(junk_id, {"_deleted": True, "handle": ""})
-                        except Exception:
-                            pass
-                        print(f"   lean: drop junk fan entry {junk_id[:24]!r}")
+                    handle = ""
+                    if isinstance(junk_mem, dict):
+                        handle = str(junk_mem.get("handle") or "")
+                    bad_id = junk_id.count("-") < 4 or len(junk_id) < 32
+                    bad_handle = fan_memory.is_junk_fan_handle(handle)
+                    if not bad_id and not bad_handle:
+                        continue
+                    try:
+                        _fms.set_fan(
+                            junk_id,
+                            {
+                                "_deleted": True,
+                                "handle": "",
+                                "messages": 0,
+                                "_delete_reason": "lean_sim_or_invalid",
+                            },
+                        )
+                    except Exception:
+                        pass
+                    print(f"   lean: drop junk fan entry {junk_id[:24]!r} @{handle}")
         except Exception as e:
             print(f"   ⚠️ lean reset skipped: {e}")
     else:

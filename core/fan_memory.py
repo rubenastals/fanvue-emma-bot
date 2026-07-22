@@ -887,6 +887,38 @@ def is_real_fan_uuid(fan_uuid: str) -> bool:
     return bool(_REAL_FAN_UUID.match(u))
 
 
+def is_junk_fan_handle(handle: str) -> bool:
+    """Offline sim / test handles must never enter the live poll loop."""
+    h = (handle or "").strip().lower().lstrip("@")
+    if not h:
+        return False
+    return (
+        h.startswith("sim_")
+        or h.startswith("sim-")
+        or h.startswith("test-fan")
+        or h.startswith("test_")
+        or h.startswith("sim_llm")
+    )
+
+
+def soft_delete_fan(fan_uuid: str, *, reason: str = "") -> None:
+    """Drop a ghost fan from memory so poll stops scanning it."""
+    if not fan_uuid:
+        return
+    try:
+        fan_memory_store.set_fan(
+            fan_uuid,
+            {
+                "_deleted": True,
+                "handle": "",
+                "messages": 0,
+                "_delete_reason": (reason or "ghost")[:80],
+            },
+        )
+    except Exception:
+        pass
+
+
 def pending_ppv_candidates() -> List[tuple]:
     """
     Fans with a timed unpaid lock still tracked.
