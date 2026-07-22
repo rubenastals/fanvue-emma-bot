@@ -412,12 +412,15 @@ _SELLS_HER_LOCK = re.compile(
     r"precio|"
     r"abre(lo|la)?|"
     r"(esta|esta)\s+foto|"
-    r"mir(a|alo|ala)\s+(esto|esta)|"
+    r"mir(a|alo|ala)\s+(esto|esta|how)|"
+    r"look\s+how\s+(filthy|nasty|slutty|whorey)|"
     r"te\s+(la|lo)\s+(dejo|mando|env[ií]o)\s+(aqu[ií]|locked|bloquead)|"
     r"verme\s+as[ií]|en\s+cuatro|hilito|thong|tetas?|culo|pussy|"
     r"esta\s+foto\s+m[ií]a|foto\s+m[ií]a|m[aá]s\s+guarra|"
     r"solo\s+para\s+ti|just\s+for\s+you|only\s+for\s+you|"
-    r"no\s+creas\s+que\s+me\s+regalo|not\s+giv(ing|e)\s+myself\s+away"
+    r"no\s+creas\s+que\s+me\s+regalo|not\s+giv(ing|e)\s+myself\s+away|"
+    r"slut|whore|filthy|nasty|perra|guarra|"
+    r"see\s+me\s+like\s+this|if\s+you\s+(wanna|want\s+to)\s+see"
     r")\b|"
     r"(?:\$|€)\s*\d{1,4}|"
     r"\d{1,4}\s*(?:\$|€|eur|euros?|d[oó]lares?|dollars?|bucks?)"
@@ -640,35 +643,50 @@ def forced_paid_sell_line(
 ) -> str:
     """
     Deterministic sell bubble when creative text won't line up with a committed attach.
-    Code already chose the offer — never cancel the PPV over a soft phrase mismatch.
+    Filthy WhatsApp tease — never robotic 'Just for you… unlock it if…' sales copy.
     """
+    import random
+
     p = max(1, int(round(float(price or 0))))
     hint = (label or "").strip().lower()
     spicy = bool(
         re.search(
-            r"(?i)\b(ass|culo|tits?|tetas?|pussy|thong|hilito|nude|desnud|four|cuatro)\b",
+            r"(?i)\b(ass|culo|tits?|tetas?|pussy|thong|hilito|nude|desnud|four|cuatro|"
+            r"boob|nipple|bent|doggy)\b",
             hint,
         )
     )
     if _want_es(want_spanish):
         if spicy:
-            return (
-                f"Solo para ti… esta foto mía, ${p} — "
-                f"ábrela si de verdad quieres verme así"
-            )
-        return (
-            f"Solo para ti, por ${p} — "
-            f"esta foto queda bloqueada; no creas que me regalo a cualquiera"
-        )
+            opts = [
+                f"mira qué perra salgo aquí… ${p} si quieres verme así",
+                f"qué guarra estoy en esta… ${p} y es tuya",
+                f"salgo hecha una puta aquí jaja… ${p} ábrela",
+                f"mira el culo que te dejé… ${p} 😈",
+            ]
+        else:
+            opts = [
+                f"mira cómo salgo… ${p} solo pa ti",
+                f"esta está rica… ${p} si te atreves",
+                f"te dejé algo rico… ${p} 😈",
+            ]
+        return random.choice(opts)
     if spicy:
-        return (
-            f"Just for you… this pic of me, ${p} — "
-            f"unlock it if you really want to see me like this"
-        )
-    return (
-        f"Just for you, ${p} — "
-        f"this photo stays locked; I don't give myself away to just anyone"
-    )
+        opts = [
+            f"look how filthy i look in this… ${p} if you wanna see",
+            f"fuck i look like such a slut here… ${p} 😈",
+            f"caught myself looking like a whore for you… ${p}",
+            f"this one's nasty… ${p} unlock if you can handle it",
+            f"look at me bent like this… ${p} babe",
+        ]
+    else:
+        opts = [
+            f"look how i came out in this one… ${p} 😈",
+            f"got something filthy for you… ${p}",
+            f"this one's only for you… ${p} open it",
+            f"you're gonna lose it when you see this… ${p}",
+        ]
+    return random.choice(opts)
 
 
 # Deterministic post-rewrite fallbacks. Must obey persona hard bans:

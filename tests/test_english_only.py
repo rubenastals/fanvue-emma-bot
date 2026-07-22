@@ -38,8 +38,11 @@ def test_voice_close_english():
     line = vn.forced_voice_close_line(want_spanish=True)
     assert "Ven aquí" not in line
     assert "for you" in line.lower() or "come here" in line.lower()
-    assert "Just for you" in sg.forced_paid_sell_line(price=9, want_spanish=True)
-    assert "Solo para ti" not in sg.forced_paid_sell_line(price=9, want_spanish=True)
+    line = sg.forced_paid_sell_line(price=9, want_spanish=True, label="tits")
+    assert "$9" in line
+    assert "Solo para ti" not in line
+    assert "Just for you… this pic of me" not in line
+    assert sg.paid_offer_reply_aligned(line)
 
 
 if __name__ == "__main__":
