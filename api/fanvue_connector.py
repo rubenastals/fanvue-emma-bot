@@ -99,8 +99,8 @@ class FanvueConnector:
     ) -> dict:
         """
         Send unlocked (free) vault media — omit price so Fanvue does not lock it.
-        Photos default to a tiny placeholder emoji if text is empty (Fanvue media-only
-        quirks). Voice notes pass allow_empty_text=True for no caption.
+        Fanvue requires text length >= 1. Photos default to a placeholder emoji;
+        allow_empty_text uses a quiet ellipsis (API no longer accepts "").
         """
         uuids = [u for u in (media_uuids or []) if u]
         if not uuids:
@@ -111,11 +111,11 @@ class FanvueConnector:
             raise ValueError(f"free media preflight failed: {e}") from e
 
         body = (text if text is not None else "").strip()
-        if not body and not allow_empty_text:
-            body = "😏"
+        if not body:
+            body = "…" if allow_empty_text else "😏"
         payload: dict = {
             "mediaUuids": [chosen],
-            "text": body[:500] if body else "",
+            "text": body[:500],
         }
         return self._request(
             "POST",

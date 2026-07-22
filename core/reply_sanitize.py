@@ -846,7 +846,7 @@ def apply_post_draft(
         )
         fixed = rw.spend(
             "lang",
-            _call,
+            call,
             messages
             + [
                 {"role": "assistant", "content": reply},
@@ -1012,14 +1012,14 @@ def apply_post_draft(
     # Length / complete: deterministic trim first; LLM only if budget remains
     reply = _rewrite_if_too_long(
         reply,
-        call=_call,
+        call=call,
         messages=messages,
         want_spanish=want_spanish,
         budget=rw,
     )
     reply = _ensure_complete_reply(
         reply,
-        call=_call,
+        call=call,
         messages=messages,
         want_spanish=want_spanish,
         budget=rw,
@@ -1046,7 +1046,7 @@ def apply_post_draft(
     if want_spanish and language.looks_broken_spanish(reply):
         fixed = rw.spend(
             "grammar",
-            _call,
+            call,
             messages
             + [
                 {"role": "assistant", "content": reply},
