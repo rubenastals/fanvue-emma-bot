@@ -4,8 +4,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
-
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT))
 
@@ -55,7 +53,9 @@ def test_sanitize_replaces_silence_guilt():
         fan_saw_bluff=False,
     )
     reply = "because I actually opened up and now you're just... quiet? 💔"
-    out, _ = apply_post_draft(reply, assembled, call=MagicMock())
+    out, _ = apply_post_draft(
+        reply, assembled, call=lambda _m: "hey i hear you… come closer"
+    )
     assert "quiet" not in out.lower()
     assert _SILENCE_REPROACH.search(out) is None
 
@@ -122,7 +122,9 @@ def test_sanitize_replaces_poof_gone():
         "most guys don't even make it this far tbh... "
         "I say something real and poof they're gone"
     )
-    out, _ = apply_post_draft(reply, assembled, call=MagicMock())
+    out, _ = apply_post_draft(
+        reply, assembled, call=lambda _m: "come here… tell me that again"
+    )
     assert "poof" not in out.lower()
     assert "make it this far" not in out.lower()
 

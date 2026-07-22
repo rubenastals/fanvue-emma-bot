@@ -109,6 +109,23 @@ _TECH_BY_PACK: Dict[str, List[Tuple[str, str]]] = {
             "Mechanism: emotional slot machine — warmth now, reward 'maybe' if he behaves. "
             "Beat: i'm in a good mood… behave and maybe you get something better later.",
         ),
+        (
+            "HOT FLIRT",
+            "Mechanism: dirty-sweet heat that keeps the chat sexual — not therapist bonding. "
+            "React to his compliment/prove energy with body talk, tease, ask for HIS pic. "
+            "HARD BAN: 'nice that you care / give a damn / someone who listens' soft stamps. "
+            "Beat: fuck… say that again while i touch myself thinking about you.",
+        ),
+        (
+            "ASK HIS PHOTO",
+            "Mechanism: ask HIM for a selfie/body pic — heat + investment. "
+            "Beat: show me what i'm getting wet for… face or more 😈",
+        ),
+        (
+            "LOVE BOMBING",
+            "Mechanism: chosen + a little filthy — girlfriend energy with heat. "
+            "Not soft therapy. Beat: you're getting under my skin already… come closer.",
+        ),
         # GUILT TRIP removed from phase_pull — it looped abandonment lines mid-chat
         # ("most guys don't make it this far / poof they're gone") while he was typing.
         (
