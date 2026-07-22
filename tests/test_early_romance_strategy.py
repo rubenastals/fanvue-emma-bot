@@ -75,6 +75,9 @@ def test_choose_move_early_forces_hook_catalog():
     )
     assert move is not None
     assert move.name in {
+        "BOND",
+        "HEAT",
+        "ASK PIC",
         "LOVE BOMBING",
         "HOT FLIRT",
         "ASK HIS PHOTO",
@@ -87,7 +90,7 @@ def test_choose_move_early_forces_hook_catalog():
 
 
 def test_later_can_pick_darker_from_pull():
-    """After early window, phase_pull catalog is available again."""
+    """After early window, mid-chat still stays in the slim playbook (no dark)."""
     assert EARLY_ROMANCE_MAX_MSGS == 8
     mem = {
         "messages": 12,
@@ -105,11 +108,16 @@ def test_later_can_pick_darker_from_pull():
         unpaid=False,
     )
     assert move is not None
-    # Should not be forced into phase_hook-only set exclusively —
-    # just assert choose doesn't crash and returns a pull catalog name
-    pull_names = {n for n, _ in manipulation._TECH_BY_PACK["phase_pull"]}
-    hook_names = {n for n, _ in manipulation._TECH_BY_PACK["phase_hook"]}
-    assert move.name in pull_names or move.name in hook_names
+    assert move.name in {
+        "BOND",
+        "HEAT",
+        "ASK PIC",
+        "SELL LOCK",
+        "HOLD FRAME",
+        "REWARD",
+    }
+    assert "GUILT" not in move.name.upper()
+    assert "EMERGENCY" not in move.name.upper()
 
 
 if __name__ == "__main__":

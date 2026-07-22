@@ -115,16 +115,22 @@ def _run_turn(
         and float(offer.get("price") or 0) > 0
         and int(offer.get("level") or 0) > 0
     )
+    tech = assembled.tech_name or ""
     fails = detect_reply_failures(
         final,
         pack_id=assembled.pack_id,
         lock_active=assembled.lock_active,
         media_attached=bool(offer),
-        technique=assembled.tech_name or "",
+        technique=tech,
         msgs_before=max(0, msgs_before),
         paid_offer=paid,
         draft=draft,
     )
+    move_hit: Optional[bool] = None
+    if tech:
+        from core.technique_policy import reply_hits_move
+
+        move_hit = bool(reply_hits_move(final, tech))
 
     return {
         "fan": fan_message,
@@ -132,6 +138,7 @@ def _run_turn(
         "reply": final,
         "pack_id": assembled.pack_id,
         "technique": assembled.tech_name,
+        "move_hit": move_hit,
         "mode": getattr(decision, "mode", None),
         "offer": bool(offer),
         "paid": paid,
@@ -212,6 +219,9 @@ def run_scenario(scenario: dict, *, run_idx: int = 0) -> Dict[str, Any]:
     hard = sum(int(t.get("hard_fails") or 0) for t in turns_out)
     soft = sum(int(t.get("soft_fails") or 0) for t in turns_out)
     warns = sum(int(t.get("warns") or 0) for t in turns_out)
+    hit_n = sum(1 for t in turns_out if t.get("move_hit") is True)
+    miss_n = sum(1 for t in turns_out if t.get("move_hit") is False)
+    assigned = hit_n + miss_n
     return {
         "scenario_id": sid,
         "handle": handle,
@@ -222,6 +232,9 @@ def run_scenario(scenario: dict, *, run_idx: int = 0) -> Dict[str, Any]:
         "hard_fails": hard,
         "soft_fails": soft,
         "warns": warns,
+        "move_hits": hit_n,
+        "move_misses": miss_n,
+        "move_hit_rate": round(hit_n / assigned, 3) if assigned else None,
         "ok": hard == 0,
         "mode": "scripted",
         "score": None,
@@ -449,6 +462,10 @@ def run_llm_archetype(
     hard = sum(int(t.get("hard_fails") or 0) for t in turns_out)
     soft = sum(int(t.get("soft_fails") or 0) for t in turns_out)
     warns = sum(int(t.get("warns") or 0) for t in turns_out)
+    hit_n = sum(1 for t in turns_out if t.get("move_hit") is True)
+    miss_n = sum(1 for t in turns_out if t.get("move_hit") is False)
+    assigned = hit_n + miss_n
+    hit_rate = round(hit_n / assigned, 3) if assigned else None
 
     print("\n  scoring chat…")
     score = score_chat(
@@ -466,6 +483,8 @@ def run_llm_archetype(
     print(f"  verdict: {score.get('verdict')}")
     if score.get("killers"):
         print(f"  killers: {', '.join(score['killers'])}")
+    if assigned:
+        print(f"  move-hit: {hit_n}/{assigned} ({hit_rate})")
 
     avg = float(score.get("avg") or 0)
     return {
@@ -481,6 +500,9 @@ def run_llm_archetype(
         "hard_fails": hard,
         "soft_fails": soft,
         "warns": warns,
+        "move_hits": hit_n,
+        "move_misses": miss_n,
+        "move_hit_rate": hit_rate,
         "ok": hard == 0 and avg >= 6.0 and not left,
         "mode": "llm-fan",
         "score": score,
@@ -598,6 +620,17 @@ def main() -> int:
     hard_total = sum(r["hard_fails"] for r in reports)
     soft_total = sum(r["soft_fails"] for r in reports)
     warn_total = sum(r.get("warns") or 0 for r in reports)
+    hit_total = sum(int(r.get("move_hits") or 0) for r in reports)
+    miss_total = sum(int(r.get("move_misses") or 0) for r in reports)
+    assigned_total = hit_total + miss_total
+    hit_rate = round(hit_total / assigned_total, 3) if assigned_total else None
+    # Per-technique miss breakdown (train signal)
+    miss_by_tech: Dict[str, int] = {}
+    for r in reports:
+        for t in r.get("turns") or []:
+            if t.get("move_hit") is False:
+                name = str(t.get("technique") or "?")
+                miss_by_tech[name] = miss_by_tech.get(name, 0) + 1
     ok_n = sum(1 for r in reports if r["ok"])
     unlocked_n = sum(1 for r in reports if r.get("unlocked"))
     unlock_buys = sum(int(r.get("unlocked_count") or 0) for r in reports)
@@ -615,8 +648,16 @@ def main() -> int:
         f"hard={hard_total} soft={soft_total} warn={warn_total} "
         f"unlocked_chats={unlocked_n} buys={unlock_buys} turns={turns_played}"
         + (f" avg_score={sum(avgs)/len(avgs):.1f}" if avgs else "")
+        + (
+            f" move_hit={hit_total}/{assigned_total} ({hit_rate})"
+            if assigned_total
+            else ""
+        )
         + f" | {elapsed:.1f}s"
     )
+    if miss_by_tech:
+        top = sorted(miss_by_tech.items(), key=lambda x: -x[1])[:8]
+        print("  move-miss by tech: " + ", ".join(f"{n}={c}" for n, c in top))
     for r in reports:
         flag = "OK" if r["ok"] else "FAIL"
         sc = r.get("score") or {}
@@ -628,6 +669,8 @@ def main() -> int:
                 f"buys={r.get('unlocked_count') or 0} "
                 f"t={r.get('turns_played')}/{r.get('max_turns')}"
             )
+        if r.get("move_hit_rate") is not None:
+            extra += f" hit={r.get('move_hit_rate')}"
         print(
             f"  [{flag}] {r['scenario_id']} run={r['run']} "
             f"hard={r['hard_fails']} soft={r['soft_fails']} "
@@ -644,6 +687,10 @@ def main() -> int:
             "hard_fails": hard_total,
             "soft_fails": soft_total,
             "warns": warn_total,
+            "move_hits": hit_total,
+            "move_misses": miss_total,
+            "move_hit_rate": hit_rate,
+            "move_miss_by_tech": miss_by_tech,
             "unlocked": unlocked_n,
             "buys": unlock_buys,
             "turns_played": turns_played,

@@ -1,4 +1,4 @@
-"""Strategic ACTIVE MOVE under SIMPLE — context-aware, not random flirt."""
+"""Strategic ACTIVE MOVE under SIMPLE — playbook WHEN tree."""
 from __future__ import annotations
 
 import sys
@@ -25,11 +25,14 @@ def test_pull_picks_named_move():
     assert move.name
     assert move.how
     assert move.why
-    assert move.name not in (
-        "SCARCITY + FOMO",
-        "SCARCITY + FOMO (CLOSE)",
-        "FOMO + SCARCITY (Step 3)",
-    )
+    assert move.name in {
+        "BOND",
+        "HEAT",
+        "ASK PIC",
+        "SELL LOCK",
+        "HOLD FRAME",
+        "REWARD",
+    }
 
 
 def test_cooling_skips_move():
@@ -49,7 +52,7 @@ def test_comfort_skips_move():
     assert move is None
 
 
-def test_unpaid_prefers_pressure():
+def test_unpaid_prefers_sell_lock():
     move = technique_policy.choose_move(
         "ppv_unpaid",
         unpaid=True,
@@ -58,16 +61,10 @@ def test_unpaid_prefers_pressure():
         turn_action=SimpleNamespace(action="flirt"),
     )
     assert move is not None
-    allowed = {
-        n
-        for n, _ in __import__(
-            "core.manipulation", fromlist=["m"]
-        )._TECH_BY_PACK["ppv_unpaid"]
-    }
-    assert move.name in allowed
+    assert move.name in {"SELL LOCK", "HOLD FRAME"}
 
 
-def test_price_objection_beats_unpaid():
+def test_price_objection_holds_frame():
     move = technique_policy.choose_move(
         "price_objection",
         unpaid=True,
@@ -75,12 +72,11 @@ def test_price_objection_beats_unpaid():
         turn_action=SimpleNamespace(action="flirt"),
     )
     assert move is not None
-    assert "SCARCITY" in move.name.upper() or "FOMO" in move.name.upper()
+    assert move.name == "HOLD FRAME"
     assert "GUILT" not in move.name.upper()
-    assert "objection-step" in move.why
 
 
-def test_price_objection_steps():
+def test_price_objection_stays_hold_frame():
     m1 = technique_policy.choose_move(
         "price_objection", reject_count=0, unpaid=True
     )
@@ -90,10 +86,9 @@ def test_price_objection_steps():
     m4 = technique_policy.choose_move(
         "price_objection", reject_count=3, unpaid=True
     )
-    assert "SCARCITY" in m1.name.upper() or "FOMO" in m1.name.upper()
-    assert "GUILT" not in m1.name.upper()
-    assert "EGO" in m2.name.upper()
-    assert "WITHDRAWAL" in m4.name.upper()
+    assert m1 and m1.name == "HOLD FRAME"
+    assert m2 and m2.name == "HOLD FRAME"
+    assert m4 and m4.name == "HOLD FRAME"
 
 
 def test_early_chat_avoids_emergency():
@@ -110,6 +105,7 @@ def test_early_chat_avoids_emergency():
     assert m.name != "FAKE EMERGENCY"
     assert "EMERGENCY" not in m.name
     assert m.name not in manipulation_rivals()
+    assert m.name in {"BOND", "HEAT", "ASK PIC"}
 
 
 def manipulation_rivals():
@@ -120,19 +116,17 @@ def manipulation_rivals():
 
 def test_turn_block_mentions_move():
     move = ActiveMove(
-        name="EGO CHALLENGE",
-        how="dare him",
-        why="heat-close|score=20",
+        name="HOLD FRAME",
+        how="stay the prize",
+        why="objection",
         family_id="2.3",
-        principle="competition / status",
+        principle="price / status frame",
     )
     block = technique_policy.turn_block(move)
     assert "ACTIVE MOVE" in block
-    assert "EGO CHALLENGE" in block
-    assert "dare him" in block
-    assert "Family:" in block
-    assert "2.3" in block
-    assert "Why this move:" in block
+    assert "HOLD FRAME" in block
+    assert "WHEN:" in block
+    assert "NEVER:" in block
     assert "HARD BAN" in block
 
 
@@ -189,6 +183,10 @@ def test_reply_hits_move_signals():
         "jaja bb qué haces",
         "FAKE EMERGENCY",
     )
+    assert technique_policy.reply_hits_move(
+        "fuck… you're getting me warm just reading that",
+        "HEAT",
+    )
 
 
 def test_assemble_simple_injects_move():
@@ -222,5 +220,5 @@ def test_assemble_simple_injects_move():
         m["content"] for m in assembled.messages if m["role"] == "system"
     )
     assert "ACTIVE MOVE THIS TURN" in sys_text
-    assert "Why this move:" in sys_text
+    assert "WHEN:" in sys_text or "Why this move:" in sys_text
     assert assembled.tech_name
