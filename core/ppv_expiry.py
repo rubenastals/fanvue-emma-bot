@@ -597,10 +597,26 @@ def run_pass(fv: "FanvueConnector", creator_uuid: str) -> int:
         msg_uuid = (mem.get("last_ppv_message_uuid") or "").strip()
         media_uuid = (mem.get("last_ppv_media_uuid") or "").strip()
 
+        if not fan_memory.is_real_fan_uuid(fan_uuid):
+            fan_memory.clear_pending_ppv(
+                fan_uuid, fan_handle=handle, reason="junk_fan_uuid"
+            )
+            print(f"   PPV expire: drop junk fan {fan_uuid[:24]!r}")
+            continue
         try:
             msgs = fv.get_messages(fan_uuid, size=40)
         except Exception as e:
+            err = str(e)
             print(f"   ⚠️ PPV expire fetch @{handle}: {e}")
+            # Invalid test UUIDs / gone fans — stop retrying every poll
+            if (
+                "invalid_format" in err
+                or "Invalid userUuid" in err
+                or "404" in err
+            ):
+                fan_memory.clear_pending_ppv(
+                    fan_uuid, fan_handle=handle, reason="expire_fetch_invalid"
+                )
             continue
 
         unpaid = list_unpaid_locks(msgs, creator_uuid)

@@ -171,9 +171,14 @@ def _recently_expired(mem: dict, *, minutes: int = 8) -> bool:
 
 
 def _blocked(mem: dict) -> set:
-    return set(mem.get("sent_media_uuids") or []) | set(
+    """Seen media (free/purchased) + failed + currently open unpaid lock."""
+    blocked = set(mem.get("sent_media_uuids") or []) | set(
         mem.get("failed_media_uuids") or []
     )
+    # Open unpaid pitch: don't stack the same UUID again this episode
+    if mem.get("last_ppv_pending") and mem.get("last_ppv_media_uuid"):
+        blocked.add(str(mem["last_ppv_media_uuid"]))
+    return blocked
 
 
 def _recent_reject(mem: dict, *, minutes: int = 90) -> bool:

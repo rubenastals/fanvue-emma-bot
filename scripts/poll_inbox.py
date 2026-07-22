@@ -530,13 +530,26 @@ def _handle_fan_chat_body(
             )
         except Exception as e:
             print(f"   ⚠️ fanvue insights refresh: {type(e).__name__}: {e}")
-        # Sync media Emma already sent in Fanvue history → client card (no repeats)
+        # Sync media the fan has SEEN (free / purchased). Unpaid PPV ≠ sent.
         synced = fan_memory.merge_sent_from_chat(
             fan_uuid, messages, creator_uuid, fan_handle=fan_handle
         )
         if synced:
-            print(f"   sent-sync: +{synced} media uuid(s) from chat history")
+            print(f"   sent-sync: +{synced} seen media uuid(s) from chat history")
             mem = fan_memory.get(fan_uuid) or mem
+        # One-shot hygiene: strip legacy unpaid pitches wrongly marked sent
+        try:
+            scrubbed = fan_memory.scrub_unseen_ppv_from_sent(
+                fan_uuid, fan_handle=fan_handle
+            )
+            if scrubbed:
+                print(
+                    f"   sent-scrub: freed {scrubbed} unpaid PPV uuid(s) "
+                    "(still sellable — never purchased)"
+                )
+                mem = fan_memory.get(fan_uuid) or mem
+        except Exception as e:
+            print(f"   ⚠️ sent-scrub: {type(e).__name__}: {e}")
 
         # API delivery truth for last free (and aliases) — stops "I sent it" / re-gift lies
         delivery_truth: dict = {"free_in_chat": None, "ppv_unpaid": False}
@@ -592,9 +605,23 @@ def _handle_fan_chat_body(
                     f"{(ppv_status.get('label') or '')[:40]} ({ppv_status.get('ago')})"
                 )
                 try:
+                    bought_uid = (
+                        ppv_status.get("media_uuid")
+                        or mem.get("last_ppv_media_uuid")
+                        or ""
+                    )
+                    if bought_uid:
+                        fan_memory.mark_ppv_purchased(
+                            fan_uuid,
+                            bought_uid,
+                            fan_handle=fan_handle,
+                            label=str(ppv_status.get("label") or ""),
+                            price=ppv_status.get("price"),
+                        )
                     fan_memory.clear_pending_ppv(
                         fan_uuid, fan_handle=fan_handle, reason="purchased"
                     )
+                    mem = fan_memory.get(fan_uuid) or mem
                 except Exception:
                     pass
             elif ppv_status.get("active"):

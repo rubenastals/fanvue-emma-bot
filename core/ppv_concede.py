@@ -119,20 +119,13 @@ def _concede_blocked_uuids(mem: dict) -> set:
     """
     UUIDs to skip when picking a concede alt.
 
-    Never-bought fans: allow RE-pitch of L1–L2 that were offered but never
-    unlocked (sent_media_uuids is full of expired pitches). Only block the
-    currently open expensive lock.
+    sent_media_uuids = seen only (free / purchased). Unpaid pitches are not
+    in that set. Still skip the currently open expensive lock.
     """
-    current = {
-        u
-        for u in (
-            mem.get("last_ppv_media_uuid"),
-        )
-        if u
-    }
-    if int(mem.get("purchases") or 0) == 0 and float(mem.get("total_spent") or 0) <= 0:
-        return current
-    return set(mem.get("sent_media_uuids") or []) | current
+    blocked = set(mem.get("sent_media_uuids") or [])
+    if mem.get("last_ppv_media_uuid"):
+        blocked.add(str(mem["last_ppv_media_uuid"]))
+    return blocked
 
 
 def pick_cheaper_offer(

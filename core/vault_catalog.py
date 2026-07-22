@@ -25,9 +25,13 @@ def load_items() -> List[Dict[str, Any]]:
 
 
 def _already_sent(mem: dict) -> set:
+    """Media the fan has SEEN (or failed) — unpaid pitches are not included."""
     sent = set(mem.get("sent_media_uuids") or [])
     failed = set(mem.get("failed_media_uuids") or [])
-    return sent | failed
+    blocked = sent | failed
+    if mem.get("last_ppv_pending") and mem.get("last_ppv_media_uuid"):
+        blocked.add(str(mem["last_ppv_media_uuid"]))
+    return blocked
 
 
 def _paid_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
