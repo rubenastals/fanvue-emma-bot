@@ -676,13 +676,15 @@ def generate_emma_reply(
             "VOICE NOTE THIS TURN: An audio file attaches after your text — naturally, no intro. "
             "Just continue the conversation normally. Do NOT announce it, promote it, or say "
             "'I recorded something' / 'listen to this' / 'I have something for you'. "
-            "The audio speaks for itself. Your text is just a normal reply to him."
+            "HARD BAN this turn: 'pídemelo', 'ask me nicely', asking him again to beg — "
+            "he already asked / complied. The audio is coming. Your text is a normal reply."
         )
     else:
         turn_blocks.append(
             "AUDIO THIS TURN: NO voice note is being sent. "
             "Do NOT say you recorded something, do NOT tease 🎙️, do NOT promise audio delivery. "
-            "If he asks for audio, flirt and imply you might — but never claim you sent or are sending one now."
+            "If he asks for audio, flirt and imply you might — but never claim you sent or are sending one now. "
+            "Do NOT loop 'pídemelo / ask me for it' if you already asked that in the recent thread."
         )
 
     if not lean:
@@ -1137,37 +1139,51 @@ def generate_emma_reply(
             )
             print("   📷 invented-video rewrite → photos-only fallback")
 
-    # Ghost "dame un segundo / te preparo / mira lo que te tengo" with nothing attaching
-    if scheme_guard.ghost_media_promise(reply, media_attached=bool(offer)):
-        fix_msgs = messages + [
-            {"role": "assistant", "content": reply},
-            {
-                "role": "user",
-                "content": (
-                    "REWRITE HARD: You promised/stalled sending a photo ('dame un segundo', "
-                    "'te preparo', 'voy a mandar', 'mira lo que te tengo') but NOTHING "
-                    "attaches this turn. Remove every send/prep promise. Flirt dirty or "
-                    "push a REAL lock only if LOCK STATUS says one exists — never fake preparation."
-                    if not want_spanish
-                    else (
-                        "REESCRIBE DURO: Prometiste/retrasaste una foto ('dame un segundo', "
-                        "'te preparo', 'voy a mandar', 'mira lo que te tengo') pero este turno "
-                        "NO se adjunta nada. Quita toda promesa de envío/preparación. Flirtea "
-                        "guarro o empuja un candado REAL solo si LOCK STATUS lo confirma — "
-                        "nunca finjas preparar."
-                    )
-                ),
-            },
-        ]
-        reply = _call(fix_msgs)
-        if scheme_guard.ghost_media_promise(reply, media_attached=False):
-            reply = scheme_guard.fallback_ghost_promise(want_spanish=want_spanish)
-            print("   👻 ghost-promise rewrite → no-stall fallback")
+    # Voice note counts as an attach — don't ghost-rewrite "dame un segundo" when audio comes
+    _media_this_turn = bool(offer) or bool(voice_will_send)
+
+    # Ghost stall with nothing attaching: strip phrases first; only hard-fallback if still dirty
+    if scheme_guard.ghost_media_promise(reply, media_attached=_media_this_turn):
+        stripped = scheme_guard.strip_ghost_promise_phrases(reply)
+        if not scheme_guard.ghost_media_promise(stripped, media_attached=False):
+            reply = stripped
+            print("   👻 ghost-promise: stripped stall (kept coherent reply)")
         else:
-            print("   👻 ghost-promise rewrite ok")
+            fix_msgs = messages + [
+                {"role": "assistant", "content": reply},
+                {
+                    "role": "user",
+                    "content": (
+                        "REWRITE HARD: You promised/stalled sending a photo ('dame un segundo', "
+                        "'te preparo', 'voy a mandar', 'mira lo que te tengo') but NOTHING "
+                        "attaches this turn. Remove every send/prep promise. Keep the rest of "
+                        "your coherent flirt — do not restart the conversation."
+                        if not want_spanish
+                        else (
+                            "REESCRIBE DURO: Prometiste/retrasaste una foto ('dame un segundo', "
+                            "'te preparo', 'voy a mandar') pero este turno NO se adjunta nada. "
+                            "Quita la promesa de envío. Conserva el flirteo coherente — no reinicies."
+                        )
+                    ),
+                },
+            ]
+            reply = _call(fix_msgs)
+            if scheme_guard.ghost_media_promise(reply, media_attached=False):
+                # Last resort: strip again; only then replace whole reply
+                stripped2 = scheme_guard.strip_ghost_promise_phrases(reply)
+                if stripped2 and not scheme_guard.ghost_media_promise(
+                    stripped2, media_attached=False
+                ):
+                    reply = stripped2
+                    print("   👻 ghost-promise: strip after rewrite")
+                else:
+                    reply = scheme_guard.fallback_ghost_promise(want_spanish=want_spanish)
+                    print("   👻 ghost-promise rewrite → no-stall fallback")
+            else:
+                print("   👻 ghost-promise rewrite ok")
 
     # Never gaslight / FOMO-blame him when nothing attached this turn
-    if scheme_guard.blame_after_ghost(reply, media_attached=bool(offer)):
+    if scheme_guard.blame_after_ghost(reply, media_attached=_media_this_turn):
         fix_msgs = messages + [
             {"role": "assistant", "content": reply},
             {
@@ -1175,13 +1191,12 @@ def generate_emma_reply(
                 "content": (
                     "REWRITE HARD: You blamed HIM or claimed you already sent / he missed "
                     "his chance, but NOTHING attaches this turn. Own the miss briefly, "
-                    "no glitch story, no 'se te fue la oportunidad'. Soft flirt only."
+                    "no glitch story. Keep the rest of your coherent message if possible."
                     if not want_spanish
                     else (
-                        "REESCRIBE DURO: Culpaste a ÉL o dijiste que ya lo enviaste / se le "
-                        "fue la oportunidad, pero este turno NO se adjunta nada. Asume el "
-                        "fallo en breve, sin glitch inventado ni 'se te fue la oportunidad'. "
-                        "Solo flirteo suave."
+                        "REESCRIBE DURO: Culpaste a ÉL o dijiste que ya lo enviaste, pero este "
+                        "turno NO se adjunta nada. Asume el fallo en breve. Conserva el resto "
+                        "coherente si puedes."
                     )
                 ),
             },
