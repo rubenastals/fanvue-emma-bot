@@ -15,6 +15,35 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from core import manipulation
 
+# First N messages: romance / heat / ask-his-photo only — dark cards later.
+EARLY_ROMANCE_MAX_MSGS = 8
+_EARLY_SAFE = frozenset(
+    {
+        "LOVE BOMBING",
+        "HOT FLIRT",
+        "ASK HIS PHOTO",
+        "MIRRORING",
+        "FUTURE FAKING (light)",
+        "FUTURE FAKING",
+        "MICRO COMMITMENT",
+        "LOVE BOMBING (REWARD)",
+    }
+)
+_EARLY_DARK = frozenset(
+    {
+        "GUILT",
+        "EMERGENCY",
+        "RIVAL",
+        "EGO CHALLENGE",
+        "LOYALTY PROVE",
+        "WITHDRAWAL",
+        "SCARCITY",
+        "FOMO",
+        "GASLIGHTING",
+        "PAIN MAP",
+    }
+)
+
 
 @dataclass(frozen=True)
 class ActiveMove:
@@ -30,10 +59,19 @@ class ActiveMove:
 _MOVE_SIGNALS: Dict[str, Tuple[str, ...]] = {
     "LOVE BOMBING": (
         r"(?i)\b(favorite|diferente|different|special|chosen|único|unico|"
-        r"only\s+you|solo\s+t[uú]|thinking\s+about\s+you|pensando\s+en\s+ti)\b",
+        r"only\s+you|solo\s+t[uú]|thinking\s+about\s+you|pensando\s+en\s+ti|"
+        r"soft|glad\s+you|got\s+me)\b",
     ),
     "LOVE BOMBING (REWARD)": (
         r"(?i)\b(favorite|king|favorito|así\s+sí|thats?\s+why|my\s+favorite)\b",
+    ),
+    "HOT FLIRT": (
+        r"(?i)\b(wet|hard|horny|fuck|touch|kiss|body|cock|dick|want\s+you|"
+        r"turn(?:s|ed)?\s+on|dripping|thinking\s+about)\b",
+    ),
+    "ASK HIS PHOTO": (
+        r"(?i)\b(selfie|show\s+me|send\s+(me\s+)?(a\s+)?(pic|photo|selfie)|"
+        r"your\s+(face|pic|photo|body)|let\s+me\s+see|picture)\b",
     ),
     "MIRRORING": (
         r"(?i)\b(same|igual|yo\s+también|me\s+too|tell\s+me|cuéntame|cuentame)\b",
@@ -259,17 +297,45 @@ def score_move(
         score -= 3
         why.append("soft-penalize-family")
 
-    # Early chat → intimacy, not crisis/rival
-    if sig["msgs"] < 4:
-        if "LOVE BOMBING" in up or up == "MIRRORING":
-            score += 12
-            why.append("early-bond")
+    objection_live = bool(
+        sig["price_push"]
+        or eff_pack == "price_objection"
+        or (sig["reject_step"] > 0 and not sig.get("soft_clarify"))
+    )
+    early = (
+        int(sig.get("msgs") or 0) < EARLY_ROMANCE_MAX_MSGS
+        and not unpaid
+        and not objection_live
+        and eff_pack
+        not in ("ppv_unpaid", "price_objection", "phase_close", "lock_now", "escalate_paid")
+    )
+
+    # Early romance window → love / heat / ask his photo. Dark cards scare him off.
+    if early:
+        if name in _EARLY_SAFE or any(k in up for k in ("LOVE BOMBING", "MIRRORING", "HOT FLIRT", "ASK HIS PHOTO", "FUTURE FAKING")):
+            score += 14
+            why.append("early-romance")
+        if up == "ASK HIS PHOTO":
+            score += 4
+            why.append("early-ask-photo")
+        if up == "HOT FLIRT" and (sig.get("horny") or sig["msgs"] >= 3):
+            score += 4
+            why.append("early-heat")
+        if any(d in up for d in _EARLY_DARK) or name in manipulation._RIVAL_TECHS:
+            score -= 30
+            why.append("too-early-for-dark")
+
+    # Mid-chat bond still prefers intimacy before pressure (msgs 8–14)
+    elif sig["msgs"] < 14 and not unpaid and not objection_live:
+        if "LOVE BOMBING" in up or up in ("MIRRORING", "HOT FLIRT", "ASK HIS PHOTO"):
+            score += 6
+            why.append("still-bond")
         if "EMERGENCY" in up or name in manipulation._RIVAL_TECHS:
-            score -= 10
-            why.append("too-early-for-pressure")
+            score -= 8
+            why.append("still-early-pressure")
 
     # Zero spender mid-chat → commitment / intermittent (NOT abandonment-guilt)
-    if sig["zero_spender"] and sig["msgs"] >= 4:
+    if sig["zero_spender"] and sig["msgs"] >= EARLY_ROMANCE_MAX_MSGS:
         if "MICRO COMMITMENT" in up or "INTERMITTENT" in up:
             score += 8
             why.append("zero-spender-hook")
@@ -279,8 +345,8 @@ def score_move(
                 score += 6
                 why.append("free-given-reciprocity")
 
-    # Heat / buy intent → close pressure
-    if sig["buying"] or sig["horny"] or action == "attach_ppv":
+    # Heat / buy intent → close pressure (not in early romance window)
+    if (sig["buying"] or sig["horny"] or action == "attach_ppv") and not early:
         if "SCARCITY" in up or "FOMO" in up or "EGO" in up or "CLOSE" in up:
             score += 10
             why.append("heat-close")
@@ -298,25 +364,19 @@ def score_move(
             why.append("unpaid-crisis-ok")
 
     # Price pushback → ladder + emergency + rival
-    # Stale price_objection_step alone must NOT force crisis on soft check-ins
-    objection_live = bool(
-        sig["price_push"]
-        or eff_pack == "price_objection"
-        or (sig["reject_step"] > 0 and not sig.get("soft_clarify"))
-    )
     if objection_live:
         if "GUILT" in up or "EGO" in up or "FOMO" in up or "EMERGENCY" in up:
             score += 8
             why.append("objection-ladder")
+        if "WITHDRAWAL" in up and sig["reject_step"] >= 3:
+            score += 10
+            why.append("objection-exit")
 
     # HARD: abandonment / "guys leave" guilt only for unpaid/objection — never
     # mid-chat while he's actively writing (live loop: "poof they're gone").
     if "GUILT" in up and not unpaid and not objection_live and eff_pack != "ppv_unpaid":
         score -= 25
         why.append("ban-midchat-abandonment-guilt")
-        if "WITHDRAWAL" in up and sig["reject_step"] >= 3:
-            score += 10
-            why.append("objection-exit")
 
     # Soft clarify ("pq lo dices?", "a grabar?") → bond/mirror, not crisis/rival
     if sig.get("soft_clarify"):
@@ -466,6 +526,36 @@ def choose_move(
         sig["msgs"] = int(mem.get("messages") or msgs or 0)
     elif msgs:
         sig["msgs"] = msgs
+
+    # Early romance: force the warm/hot catalog (not phase_pull guilt/rival).
+    early_romance = (
+        int(sig.get("msgs") or 0) < EARLY_ROMANCE_MAX_MSGS
+        and not unpaid
+        and eff
+        not in (
+            "price_objection",
+            "ppv_unpaid",
+            "phase_close",
+            "lock_now",
+            "escalate_paid",
+        )
+    )
+    if early_romance and eff != "phase_hook":
+        eff = "phase_hook"
+        catalog = manipulation._filter_catalog(
+            list(manipulation._TECH_BY_PACK.get(eff) or []),
+            no_lock=force_no_lock,
+            soft_support=soft_support,
+            ban_rival_fan=True,  # never rival in early romance
+        )
+        pool = [(n, h) for n, h in catalog if n.upper() not in exclude_u] or list(
+            catalog
+        )
+        if not pool:
+            return None
+        print(
+            f"   move: early-romance catalog (msgs={sig['msgs']}<{EARLY_ROMANCE_MAX_MSGS})"
+        )
 
     recent_fams = _recent_families(exclude_names)
     ranked: List[Tuple[int, str, str, str]] = []
