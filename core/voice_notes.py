@@ -197,14 +197,57 @@ def voice_delivered_recently(
     history_turns: Optional[List[Dict[str, Any]]] = None,
     *,
     n: int = 24,
+    mem: Optional[dict] = None,
 ) -> bool:
-    """True if a voice note already appears in recent chat history."""
+    """True if a voice note was already delivered (history marker or mem clock)."""
+    if _mem_voice_fresh(mem):
+        return True
     if not history_turns:
         return False
     for turn in history_turns[-n:]:
         if _VOICE_DELIVERED.search(str(turn.get("content") or "")):
             return True
     return False
+
+
+def _mem_voice_fresh(mem: Optional[dict]) -> bool:
+    """True if we successfully sent audio within VOICE_NOTES_COOLDOWN_HOURS."""
+    if not mem:
+        return False
+    ts = _parse_iso(mem.get("last_voice_at"))
+    if not ts:
+        return False
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    hours = float(getattr(config, "VOICE_NOTES_COOLDOWN_HOURS", 6) or 6)
+    return datetime.now(timezone.utc) - ts < timedelta(hours=hours)
+
+
+def _normalize_spoken(text: str) -> str:
+    t = (text or "").lower()
+    t = re.sub(r"[\U0001F300-\U0001FAFF]+", " ", t)
+    t = re.sub(r"[^\w\s]", " ", t, flags=re.UNICODE)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
+def script_echoes_reply(script: str, reply: str) -> bool:
+    """True if the voice script is basically reading the text bubble aloud."""
+    a = _normalize_spoken(script)
+    b = _normalize_spoken(reply)
+    if not a or not b:
+        return False
+    # Shared long prefix / containment (the live bug: verbatim replay)
+    prefix = min(48, len(a), len(b))
+    if prefix >= 24 and (a[:prefix] in b or b[:prefix] in a):
+        return True
+    if len(a) >= 20 and (a in b or b in a):
+        return True
+    ta, tb = set(a.split()), set(b.split())
+    if len(ta) < 4 or len(tb) < 4:
+        return False
+    overlap = len(ta & tb) / len(ta | tb)
+    return overlap >= 0.55
 
 
 def thread_voice_debt(
@@ -289,6 +332,10 @@ def _open_voice_state(
 
     True if DB commitment, thread debt, Emma stall, or fan asked (now/recent).
     No rolls, packs, or horny scores — those only apply to opportunistic sends.
+
+    After a successful send (mem last_voice_at fresh), stale thread asks do NOT
+    reopen debt — only a new ask this turn does. Fanvue history rarely has our
+    local VOICE NOTE markers, so mem clock is the real delivery signal.
     """
     db_voice = isinstance(mem.get("open_commitment"), dict) and (
         (mem.get("open_commitment") or {}).get("type") == "voice"
@@ -296,6 +343,13 @@ def _open_voice_state(
     if db_voice:
         hits = int((mem.get("open_commitment") or {}).get("hits") or 0)
         return True, f"DB commitment=voice hits={hits}"
+
+    # Delivery already happened → ignore stale "asked in thread" / old stalls
+    if _mem_voice_fresh(mem) or voice_delivered_recently(history_turns, n=24):
+        if fan_asked_voice(fan_message):
+            return True, "fan asked voice this turn (post-delivery)"
+        return False, ""
+
     debt, debt_why = thread_voice_debt(history_turns, lookback=20)
     if debt:
         return True, f"thread debt ({debt_why})"
@@ -430,12 +484,16 @@ def sync_commitment_from_thread(
     if _FAN_REJECT_VOICE.search(fan_message or ""):
         fan_memory.clear_commitment(fan_uuid, ctype="voice", fan_handle=fan_handle)
         return None
-    if voice_delivered_recently(history_turns, n=24):
+    mem = mem or fan_memory.get(fan_uuid) or {}
+    # Successful send clears debt. Stale thread asks must not reopen it.
+    if voice_delivered_recently(history_turns, n=24, mem=mem) and not fan_asked_voice(
+        fan_message
+    ):
         fan_memory.clear_commitment(fan_uuid, ctype="voice", fan_handle=fan_handle)
         return None
 
     open_voice, open_why = _open_voice_state(
-        mem or fan_memory.get(fan_uuid) or {},
+        mem,
         history_turns,
         fan_message,
     )
@@ -468,6 +526,11 @@ def voice_blocks_photo(
     c = mem.get("open_commitment")
     if isinstance(c, dict) and c.get("type") == "voice":
         return True, "DB commitment=voice"
+    # Audio already landed — don't keep blocking photos on stale thread asks
+    if voice_delivered_recently(history_turns, n=24, mem=mem):
+        if fan_asked_voice(fan_message):
+            return True, "fan asked voice this turn (post-delivery)"
+        return False, ""
     debt, debt_why = thread_voice_debt(history_turns, lookback=20)
     if debt:
         return True, f"thread voice debt ({debt_why})"
@@ -552,14 +615,17 @@ def _generate_script(
 
     api_key = (getattr(config, "DEEPSEEK_API_KEY", "") or "").strip()
     if not api_key:
-        return _fallback_script(want_spanish)
+        return _fallback_script(want_spanish, reply=reply)
 
     lang = "Spanish" if want_spanish else "English"
     system = (
         "You write a short spoken voice-note script for Emma (dirty girlfriend). "
-        "CRITICAL: continue the SAME beat as Emma's last text ? same mood, topic, energy. "
-        "If her text apologized, cooled down, or talked about spam/pressure ? soft intimate "
-        "voice, NOT a random porn script. If her text is already filthy/horny ? breathy and dirty. "
+        "HARD BAN: do NOT read, repeat, paraphrase, or finish Emma's text bubble. "
+        "He already READ that message — the audio must be a NEW whispered beat "
+        "(breath, confession, dirty aside, tease) that continues the mood without "
+        "recycling her typed words. "
+        "If her text apologized / cooled down — soft intimate, not random porn. "
+        "If filthy/horny — breathy and dirty, still NEW words. "
         "15-35 words. Natural pauses with ... Sound spontaneous. "
         "NEVER mention photos, prices, PPV, unlocking, captions, or emojis. "
         "Output ONLY spoken words. No stage directions, brackets, quotes, or emoji."
@@ -568,28 +634,41 @@ def _generate_script(
         f"Language: {lang}\n"
         f"Trigger: {trigger_reason}\n"
         f"He just said: {(fan_message or '')[:280]}\n"
-        f"Emma's text THIS turn (match this vibe): {(reply or '')[:320]}\n"
-        "Write the voice note that belongs with THAT text ? not a generic dirty line."
+        f"Emma ALREADY typed (do NOT say this again): {(reply or '')[:320]}\n"
+        "Write a DIFFERENT voice note — same vibe, zero recycled phrasing."
     )
     client = OpenAI(
         api_key=api_key,
         base_url=getattr(config, "DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
     )
+    max_chars = int(getattr(config, "VOICE_NOTE_MAX_CHARS", 320) or 320)
     try:
-        resp = client.chat.completions.create(
-            model=getattr(config, "DEEPSEEK_FAST_MODEL", None) or getattr(config, "DEEPSEEK_MODEL", "deepseek-v4-pro"),
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            max_tokens=90,
-            temperature=0.7,
-        )
-        raw = (resp.choices[0].message.content or "").strip()
-        raw = raw.strip('"\'')
-        raw = re.sub(r"\[.*?\]", "", raw).strip()
-        raw = re.sub(r"[\U0001F300-\U0001FAFF]+", "", raw).strip()
-        if raw and len(raw) <= int(getattr(config, "VOICE_NOTE_MAX_CHARS", 320) or 320):
+        for attempt in range(2):
+            extra = ""
+            if attempt:
+                extra = (
+                    "\nRETRY: your last draft echoed her text. "
+                    "Invent a new spoken aside. Zero shared phrases."
+                )
+            resp = client.chat.completions.create(
+                model=getattr(config, "DEEPSEEK_FAST_MODEL", None)
+                or getattr(config, "DEEPSEEK_MODEL", "deepseek-v4-pro"),
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user + extra},
+                ],
+                max_tokens=90,
+                temperature=0.85 if attempt else 0.75,
+            )
+            raw = (resp.choices[0].message.content or "").strip()
+            raw = raw.strip("\"'")
+            raw = re.sub(r"\[.*?\]", "", raw).strip()
+            raw = re.sub(r"[\U0001F300-\U0001FAFF]+", "", raw).strip()
+            if not raw or len(raw) > max_chars:
+                continue
+            if script_echoes_reply(raw, reply):
+                print("   🎙️ script rejected: echoed text bubble")
+                continue
             return raw
     except Exception:
         pass
