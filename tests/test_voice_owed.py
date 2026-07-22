@@ -47,12 +47,7 @@ def test_should_send_owed_bypasses_unpaid():
             history_turns=history,
         )
         assert ok, why
-        assert (
-            "owed" in why
-            or "pídemelo" in why
-            or "beg-loop" in why
-            or "stall" in why
-        ), why
+        assert "FSM open_voice" in why or "send" in why, why
     finally:
         vn._enabled = ok_orig  # type: ignore
 

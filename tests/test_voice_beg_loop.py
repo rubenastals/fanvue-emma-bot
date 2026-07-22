@@ -49,7 +49,7 @@ def test_kill_beg_loop_forces_send():
             history_turns=history,
         )
         assert ok, why
-        assert "beg-loop" in why or "owed" in why or "thread" in why
+        assert "FSM open_voice" in why or "open_voice" in why, why
     finally:
         vn._enabled = orig  # type: ignore
 

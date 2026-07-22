@@ -279,6 +279,35 @@ def forced_voice_close_line(*, want_spanish: bool) -> str:
     return "Come here a sec… this one's just for you"
 
 
+def _open_voice_state(
+    mem: dict,
+    history_turns: Optional[List[Dict[str, Any]]],
+    fan_message: str,
+) -> tuple[bool, str]:
+    """
+    Dumb FSM input: is a voice note owed right now?
+
+    True if DB commitment, thread debt, Emma stall, or fan asked (now/recent).
+    No rolls, packs, or horny scores — those only apply to opportunistic sends.
+    """
+    db_voice = isinstance(mem.get("open_commitment"), dict) and (
+        (mem.get("open_commitment") or {}).get("type") == "voice"
+    )
+    if db_voice:
+        hits = int((mem.get("open_commitment") or {}).get("hits") or 0)
+        return True, f"DB commitment=voice hits={hits}"
+    debt, debt_why = thread_voice_debt(history_turns, lookback=20)
+    if debt:
+        return True, f"thread debt ({debt_why})"
+    if fan_asked_voice(fan_message):
+        return True, "fan asked voice this turn"
+    if fan_asked_voice_in_thread(history_turns, n=16):
+        return True, "fan asked voice in recent thread"
+    if emma_owed_voice(history_turns):
+        return True, "emma voice stall"
+    return False, ""
+
+
 def should_send(
     *,
     fan_message: str,
@@ -291,7 +320,15 @@ def should_send(
     apply_roll: bool = True,
     history_turns: Optional[List[Dict[str, Any]]] = None,
 ) -> tuple[bool, str]:
-    """Return (ok, reason) for logging."""
+    """
+    WHEN to send a voice note — FSM, not prompt intelligence.
+
+    Committed path (open voice):
+      open_voice + fan msg not reject → SEND
+      Ignores unpaid / pack / mode / roll / horny.
+
+    Opportunistic path (no debt): rare reward/heat only, still uses roll.
+    """
     if not _enabled():
         return False, "disabled or no API key"
     if barged:
@@ -301,35 +338,23 @@ def should_send(
     if _FAN_REJECT_VOICE.search(fan_message or ""):
         return False, "fan rejected audio"
 
-    asked = fan_asked_voice(fan_message)
-    asked_thread = fan_asked_voice_in_thread(history_turns, n=12)
-    owed = emma_owed_voice(history_turns)
-    complied = fan_complied_for_voice(fan_message)
-    debt, debt_why = thread_voice_debt(history_turns, lookback=20)
-    # Durable DB commitment (action-first protocol) — survives prompt amnesia
-    db_voice = isinstance(mem.get("open_commitment"), dict) and (
-        (mem.get("open_commitment") or {}).get("type") == "voice"
-    )
+    open_voice, open_why = _open_voice_state(mem, history_turns, fan_message)
 
-    # Hard commit: DB debt, current ask, OR open thread debt + comply
-    committed = bool(
-        (db_voice and (complied or asked or asked_thread))
-        or asked
-        or (owed and complied)
-        or (debt and complied)
-        or (debt and asked_thread and not _FAN_REJECT_VOICE.search(fan_message or ""))
-        or (asked_thread and complied and owed)
-    )
+    # --- COMMITTED FSM: owed → send on this fan turn ---
+    if open_voice:
+        # Any non-reject fan message closes the debt (por favor / dale / ok / …)
+        return True, f"FSM open_voice → send ({open_why})"
 
-    if not committed and (unpaid or pack_id in _BLOCK_PACKS):
+    # --- Opportunistic only (no debt): keep rare; never the pídemelo path ---
+    if unpaid or pack_id in _BLOCK_PACKS:
         return False, "sell/objection/reengage block"
-    if not committed and int(mem.get("messages") or 0) < int(
+    if int(mem.get("messages") or 0) < int(
         getattr(config, "VOICE_NOTES_MIN_MESSAGES", 8) or 8
     ):
         return False, "too early in chat"
 
     mode = (getattr(decision, "mode", "") or "").lower()
-    if not committed and mode in ("hard_sell", "chill"):
+    if mode in ("hard_sell", "chill"):
         return False, f"mode={mode}"
 
     horny = _horny_score(fan_message)
@@ -339,17 +364,7 @@ def should_send(
 
     trigger = False
     reason = ""
-    if db_voice and (complied or asked or asked_thread):
-        trigger, reason = True, "DB commitment=voice → ACTION send_voice"
-    elif debt and (complied or asked or asked_thread):
-        trigger, reason = True, f"kill beg-loop ({debt_why})"
-    elif owed and complied:
-        trigger, reason = True, "owed voice after stall (pídemelo→comply)"
-    elif asked:
-        trigger, reason = True, "fan asked voice"
-    elif asked_thread and owed:
-        trigger, reason = True, "fan asked voice in thread + emma stall"
-    elif reward:
+    if reward:
         trigger, reason = True, "post-purchase reward"
     elif horny >= 2:
         trigger, reason = True, f"very horny fan ({horny} hits)"
@@ -361,8 +376,7 @@ def should_send(
     if not trigger:
         return False, "no key moment"
 
-    # Never roll-miss a committed ask / owed / debt close
-    if apply_roll and not committed:
+    if apply_roll:
         chance = float(getattr(config, "VOICE_NOTES_CHANCE", 0.55) or 0.55)
         if random.random() > chance:
             return False, f"roll miss ({reason})"
@@ -420,27 +434,18 @@ def sync_commitment_from_thread(
         fan_memory.clear_commitment(fan_uuid, ctype="voice", fan_handle=fan_handle)
         return None
 
-    debt, debt_why = thread_voice_debt(history_turns, lookback=20)
-    asked = fan_asked_voice(fan_message)
-    asked_thread = fan_asked_voice_in_thread(history_turns, n=12)
-    owed = emma_owed_voice(history_turns)
-
-    if not (asked or asked_thread or owed or debt):
+    open_voice, open_why = _open_voice_state(
+        mem or fan_memory.get(fan_uuid) or {},
+        history_turns,
+        fan_message,
+    )
+    if not open_voice:
         return fan_memory.get_commitment(fan_uuid)
-
-    if asked:
-        src = "fan_ask"
-    elif debt:
-        src = f"thread_debt:{debt_why}"[:80]
-    elif owed:
-        src = "emma_stall"
-    else:
-        src = "thread_ask"
 
     return fan_memory.set_commitment(
         fan_uuid,
         ctype="voice",
-        source=src,
+        source=open_why[:80],
         fan_handle=fan_handle,
         bump=True,
     )
