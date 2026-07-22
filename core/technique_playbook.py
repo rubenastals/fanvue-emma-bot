@@ -41,7 +41,11 @@ BOND = PlayMove(
     example_beat="glad you're here… something about you already got me soft",
     signals=(
         r"(?i)\b(favorite|diferente|different|special|chosen|glad\s+you|"
-        r"got\s+me\s+soft|thinking\s+about\s+you|only\s+you)\b",
+        r"got\s+me\s+soft|thinking\s+about\s+you|only\s+you|"
+        r"miss(?:ed)?\s+you|here\s+with\s+me|like\s+you|into\s+you|"
+        r"lov(?:e|ing)\s+it|hooked|smiling|cute[rn]?|cuter|"
+        r"sweet|soft\s+for|already\s+got\s+me|"
+        r"talk\s+to\s+me|tell\s+me\s+(about|more)|your\s+day)\b",
     ),
 )
 
@@ -91,8 +95,9 @@ SELL_LOCK = PlayMove(
     ),
     example_beat="that one's still sitting there… fuck i look filthy in it",
     signals=(
-        r"(?i)\b(still\s+(there|sitting|waiting)|unlock|lock|waiting\s+for\s+you|"
-        r"open\s+it|claim\s+it|filthy|slut|\$\s*\d+)\b",
+        r"(?i)\b(still\s+(there|sitting|waiting|locked|yours)|"
+        r"unlock(?:ed|ing)?|lock(?:ed|s)?|waiting\s+for\s+you|"
+        r"open\s+it|claim\s+it|filthy|slut|\$\s*\d+|too\s+good\s+in\s+it)\b",
     ),
 )
 
@@ -128,7 +133,8 @@ REWARD = PlayMove(
         r"(?i)\b(favorite|king|favorito|that'?s\s+why|my\s+favorite|"
         r"you\s+did\s+it|proud|spoil|yours\s+now|good\s+boy|"
         r"love\s+that|for\s+(buying|unlocking|me)|soaked|"
-        r"hearing\s+you|my\s+favorite\s+person)\b",
+        r"hearing\s+you|my\s+favorite\s+person|"
+        r"unlock(?:ed|ing)|just\s+unlocked|made\s+me\s+feel)\b",
     ),
 )
 
