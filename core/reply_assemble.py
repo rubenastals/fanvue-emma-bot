@@ -592,11 +592,16 @@ def assemble_emma_turn(
             ) or bool(ppv_status and ppv_status.get("active")),
             cooling=cooling,
             soft_unpaid=soft_unpaid,
+            mem=mem,
+            fan_message=fan_message or "",
         )
         if move:
-            tech_name, tech_how = move
-            turn_blocks.append(technique_policy.turn_block(tech_name, tech_how))
-            print(f"   move: {tech_name} (pack={pack_id})")
+            tech_name = move.name
+            turn_blocks.append(technique_policy.turn_block(move))
+            print(
+                f"   move: {move.name} fam={move.family_id or '-'} "
+                f"why={move.why} (pack={pack_id})"
+            )
         if recent_emojis:
             turn_blocks.append(
                 f"EMOJI BAN — you used these recently: {recent_emojis}. "

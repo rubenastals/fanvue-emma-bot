@@ -220,7 +220,7 @@ def check_reply(
             }
         )
 
-    # Technique presence is soft — only note if technique set and reply is tiny generic
+    # Technique presence is soft — thin reply or no angle signal
     if technique and len(text) < 8:
         errs.append(
             {
@@ -229,6 +229,23 @@ def check_reply(
                 "what": f"technique={technique} but reply too thin to execute it",
             }
         )
+    elif technique:
+        try:
+            from core import technique_policy as _tp
+
+            if not _tp.reply_hits_move(text, technique):
+                errs.append(
+                    {
+                        "rule": "SCHEME",
+                        "severity": 1,
+                        "what": (
+                            f"technique={technique} but reply lacks move signals "
+                            "(generic filler?)"
+                        ),
+                    }
+                )
+        except Exception:
+            pass
 
     return errs
 

@@ -39,6 +39,23 @@ mirror the fan’s language (ES/EN).
 ## Code flow
 
 1. Router → `pack_id` + ACTION.
-2. `technique_policy.choose_move` → one move (family + mechanism + beat).
-3. TURN gets `ACTIVE MOVE`. Cooling / comfort / soft-unpaid → no move.
-4. After sticky rival bit is used, TRUTH STATE cools that bit for a while (anti-spam), not a permanent moral ban.
+2. `technique_policy.choose_move` **scores** candidates from fan state
+   (msgs, spend, frees, unpaid, objection step, heat words, recent families).
+3. TURN gets `ACTIVE MOVE` + **why** (so the model knows the strategy).
+4. Cooling / comfort / soft-unpaid → no move.
+5. After draft: soft **signal check** (`reply_hits_move`) logs `move-miss` /
+   SCHEME if the bubble ignored the angle.
+6. Sticky rival cool-down after use (anti-spam).
+
+## How we keep it strategic (not random)
+
+| Layer | Owner | What it enforces |
+|-------|--------|------------------|
+| When to skip | code | comfort / cooling / soft-unpaid |
+| Which family/move | code scorer | early=bond, zero-spend=hook, unpaid=pressure, objection=ladder, diversify families |
+| Objection sequence | code | guilt → ego → FOMO/crisis → cold withdrawal |
+| Product ladder | vault / offer_selector | L0 → L1–L2 → upsell (not invent $500/week) |
+| Write the bubble | DeepSeek | WhatsApp voice for that ONE move |
+| Did she obey? | scheme_guard + logs | signal check; critic SCHEME offline |
+
+Do **not** rely on the model to “remember the taxonomy”. Code assigns; model executes; logs catch misses.
