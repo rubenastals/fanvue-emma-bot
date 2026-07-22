@@ -86,6 +86,25 @@ def test_turn_block_mentions_move():
     assert "ACTIVE MOVE" in block
     assert "EGO CHALLENGE" in block
     assert "dare him" in block
+    assert "Family:" in block
+    assert "2.3" in block
+    assert "sextortion" in block.lower() or "HARD BAN" in block
+
+
+def test_catalog_has_taxonomy_moves():
+    from core import manipulation
+
+    pull = {n for n, _ in manipulation._TECH_BY_PACK["phase_pull"]}
+    hook = {n for n, _ in manipulation._TECH_BY_PACK["phase_hook"]}
+    assert "LOVE BOMBING" in hook
+    assert "MIRRORING" in hook
+    assert "MICRO COMMITMENT" in pull
+    assert "LOYALTY PROVE" in pull
+    assert "PAIN MAP VALIDATE" in pull
+    # Forbidden language must stay in how-tos as bans, not as instructions to do it
+    joined = " ".join(h for _, h in manipulation._TECH_BY_PACK["phase_pull"])
+    assert "FORBIDDEN" in joined
+    assert "bitcoin" not in joined.lower()
 
 
 def test_assemble_simple_injects_move():

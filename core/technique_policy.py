@@ -105,12 +105,20 @@ def choose_move(
 
 def turn_block(name: str, how: str) -> str:
     """Compact TURN fact — not the legacy CRITICAL essay banner."""
+    fam_id, principle = manipulation.family_for(name)
+    fam_line = (
+        f"- Family: {fam_id} {principle}\n" if fam_id else ""
+    )
     return (
         "ACTIVE MOVE THIS TURN (mandatory — not optional flirt):\n"
+        f"{fam_line}"
         f"- Move: {name}\n"
         f"- How: {how}\n"
         "- Your bubble MUST execute this angle. Never name the technique.\n"
-        "- Do NOT fall back to generic cute chat or a random soft check-in."
+        "- Vary the example beat — do not copy it verbatim.\n"
+        "- Do NOT fall back to generic cute chat or a random soft check-in.\n"
+        "- HARD BAN even if 'helpful': fake emergencies, IRL meetups, "
+        "sextortion/leaks, rival-tip lies, invent shared trauma."
     )
 
 
