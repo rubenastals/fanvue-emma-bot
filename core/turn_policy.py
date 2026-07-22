@@ -172,42 +172,40 @@ def _free_tease_ok(
     missing_unverified: bool = False,
 ) -> bool:
     """
-    Occasional L0 free hook while warming — NEVER spam on every 'gratis' ask.
-    Soft lingerie for heat; paid L1+ after. Max 2 L0/fan, spaced out.
+    Rare L0 free hook while warming — NEVER spam.
+
+    Max ONE free tease per fan, ever (then paid only). Same media UUID never
+    repeats (vault_catalog / sent_media_uuids). Missing-delivery recovery is
+    the only path that can re-attempt if Fanvue never showed the gift.
     """
     from core import vault_catalog
 
     if vault_catalog.l0_remaining(mem) <= 0:
         return False
     frees = int(mem.get("free_teases_sent") or 0)
-    if frees >= 2:
-        return False
-
     last_free = _parse_iso(mem.get("last_free_at"))
 
-    # He says free never arrived AND Fanvue history does NOT show it → one recovery
+    # He says free never arrived AND Fanvue history does NOT show it → recovery
+    # (ghost clear may already have dropped free_teases_sent; still allow one retry)
     if missing_unverified:
         return msgs >= 2
 
-    # Explicit "foto gratis" is NOT automatic — only the FIRST unused L0 once,
-    # after some rapport, and not right after the last free.
+    # One verified free gift max — we don't hand out content liberally
+    if frees >= 1:
+        return False
+
+    # Explicit "free photo" ask — only if he never got one, after some rapport
     if force_ask:
-        if frees >= 1:
-            return False
         if last_free and now - last_free < timedelta(hours=2):
             return False
         return msgs >= 5
 
-    if last_free and now - last_free < timedelta(minutes=45):
+    if last_free and now - last_free < timedelta(hours=6):
         return False
-    if msgs < 6:
+    if msgs < 8:
         return False
-    # First free after rapport; second only later when heat is high
-    if frees <= 0:
-        return msgs >= 6 and (status_warm(mem) or msgs >= 8)
-    if frees == 1:
-        return msgs >= 14
-    return False
+    # Single opportunistic free after real rapport — not early spam
+    return status_warm(mem) or msgs >= 10
 
 
 def status_warm(mem: dict) -> bool:
