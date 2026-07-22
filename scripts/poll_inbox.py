@@ -833,7 +833,6 @@ def _handle_fan_chat_body(
             history_turns=turns,
         )
         voice_planned = (_voice_ok, _voice_why)
-        turn_action = ACTION_SEND_VOICE if _voice_ok else ""
         if voice_planned[0]:
             print(
                 f"   ACTION={ACTION_SEND_VOICE}: {voice_planned[1]} "

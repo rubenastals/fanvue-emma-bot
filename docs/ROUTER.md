@@ -14,10 +14,15 @@ REPLY_V2=0
 ```
 
 ```
-Hard truth = CODE (API / memory / cooloffs / attach)
+Hard truth = CODE (API / memory / cooloffs / attach / commitments)
 Soft intent = regex (optional JSON if SOFT_CLASSIFY=1)
-Creativity  = DeepSeek final reply only
+Creativity  = DeepSeek final reply only (never owns protocol)
 SIMPLE turn = CORE(persona) + CARD + HISTORY + TURN facts + AUTHOR
+
+**Action-first (voice):** `open_commitment` in fan_memory is code-owned.
+Poller syncs commitment from the thread, chooses `ACTION=send_voice` *before*
+DeepSeek, then sends the note regardless of creative text. Prompt gets one
+short COMMITMENT line — no more “hope the model remembers 10 messages”.
 ```
 
 When `SIMPLE_PROMPT=1` (production default):
