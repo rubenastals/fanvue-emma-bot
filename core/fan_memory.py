@@ -1073,6 +1073,11 @@ def recent_techniques(fan_uuid: str, *, n: int = 4) -> List[str]:
 
 
 def set_prefer_spanish(fan_uuid: str, prefer: bool, fan_handle: str = "") -> None:
+    from config import config
+
+    # ENGLISH_ONLY: never stick Spanish preference
+    if getattr(config, "ENGLISH_ONLY", True):
+        prefer = False
     with _LOCK:
         mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
         _ensure_card_fields(mem)
@@ -1319,10 +1324,9 @@ def render_block(fan_uuid: str) -> str:
     if mem.get("summary"):
         lines.append(f"- Rolling summary: {mem['summary']}")
 
-    if mem.get("prefer_spanish"):
-        lines.append("- Language: Spanish preferred (full Spanish only)")
-    else:
-        lines.append("- Language: mirror him (ES→ES, else EN); never mix")
+    lines.append(
+        "- Language: ENGLISH ONLY forever — even if he writes Spanish; never mix"
+    )
 
     lines.append(
         f"- Status: {mem.get('status') or 'new'} | msgs: {mem.get('messages') or 0} | "

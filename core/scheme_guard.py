@@ -9,6 +9,15 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional
 
+from config import config
+
+
+def _want_es(want_spanish: bool) -> bool:
+    """Spanish template branches are dead while ENGLISH_ONLY is on."""
+    if getattr(config, "ENGLISH_ONLY", True):
+        return False
+    return bool(want_spanish)
+
 
 # Claims an unpaid lock is waiting / he should unlock
 _CLAIM_LOCK_WAITING = re.compile(
@@ -641,7 +650,7 @@ def forced_paid_sell_line(
             hint,
         )
     )
-    if want_spanish:
+    if _want_es(want_spanish):
         if spicy:
             return (
                 f"Solo para ti… esta foto mía, ${p} — "
@@ -668,7 +677,7 @@ _BANNED_FALLBACK_OPEN = re.compile(r"(?i)^(mmm|ay)[\s.…,]")
 
 
 def fallback_purchase_bluff(*, want_spanish: bool, lock_still_active: bool) -> str:
-    if want_spanish:
+    if _want_es(want_spanish):
         if lock_still_active:
             return (
                 "Mentiroso 😏 esa foto sigue cerrada — no la has abierto. "
@@ -692,7 +701,7 @@ def fallback_purchase_bluff(*, want_spanish: bool, lock_still_active: bool) -> s
 def fallback_no_lock(*, want_spanish: bool) -> str:
     # Wording must NOT trip invented_lock_claim (no candado/unlock/waiting-lock).
     # Bratty WhatsApp — not therapist intake.
-    if want_spanish:
+    if _want_es(want_spanish):
         return (
             "jaja eso no bb… ahora mismo no te tengo nada así. "
             "sígueme el rollo un toque 😏"
@@ -709,7 +718,7 @@ def fallback_photos_only(
     # Natural WhatsApp — avoid robotic "Solo fotos / UNA candada" stamp.
     if real_price is not None:
         rp = float(real_price)
-        if want_spanish:
+        if _want_es(want_spanish):
             return (
                 f"solo fotitos bb… esa tuya de ${rp:.0f} sigue ahí si de verdad "
                 f"quieres verme 😏"
@@ -718,13 +727,13 @@ def fallback_photos_only(
             f"pics only babe… that ${rp:.0f} one is still there if you "
             f"really wanna see me 😏"
         )
-    if want_spanish:
+    if _want_es(want_spanish):
         return "solo hago fotitos bb… dime qué te pone y te mando una rica 😈"
     return "i only do pics babe… tell me what you want and i'll lock a hot one 😈"
 
 
 def fallback_ghost_promise(*, want_spanish: bool) -> str:
-    if want_spanish:
+    if _want_es(want_spanish):
         return (
             "Ahora mismo no te puedo soltar esa foto así, pillín 🔥 "
             "Pero dime qué te vuelve loco de mis tetas… ¿así te caliento más?"
@@ -736,7 +745,7 @@ def fallback_ghost_promise(*, want_spanish: bool) -> str:
 
 
 def fallback_blame_own_it(*, want_spanish: bool) -> str:
-    if want_spanish:
+    if _want_es(want_spanish):
         return (
             "Perdona, bebé… se me trabó yo, no tú. "
             "Quédate conmigo un ratito y te lo dejo bien 🥺"

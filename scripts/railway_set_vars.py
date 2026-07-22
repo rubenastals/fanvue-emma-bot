@@ -21,6 +21,7 @@ pairs = {
     "DEEPSEEK_TEMPERATURE": env.get("DEEPSEEK_TEMPERATURE") or "0.9",
     "LEAN_CREATIVE": env.get("LEAN_CREATIVE") or "1",
     "SIMPLE_PROMPT": env.get("SIMPLE_PROMPT") or "1",
+    "ENGLISH_ONLY": env.get("ENGLISH_ONLY") or "1",
     "REPLY_V2": env.get("REPLY_V2") or "0",
     "PHASE_ANALYST": env.get("PHASE_ANALYST") or "0",
     "INJECT_LESSONS": env.get("INJECT_LESSONS") or "0",

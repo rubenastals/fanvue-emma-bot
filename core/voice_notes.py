@@ -319,8 +319,10 @@ def reply_is_voice_beg(reply: str) -> bool:
     return bool(_EMMA_VOICE_BEG.search(reply or ""))
 
 
-def forced_voice_close_line(*, want_spanish: bool) -> str:
+def forced_voice_close_line(*, want_spanish: bool = False) -> str:
     """Short text when audio attaches — never another pídemelo."""
+    if getattr(config, "ENGLISH_ONLY", True):
+        want_spanish = False
     if want_spanish:
         return "Ven aquí un segundo… esto es solo para ti"
     return "Come here a sec… this one's just for you"
@@ -782,7 +784,9 @@ def maybe_send(
         print("   voice skipped: text is apology/cooling ? wrong beat for audio")
         return False
 
-    want_spanish = language.fan_wants_spanish(fan_message, mem)
+    want_spanish = False if getattr(config, "ENGLISH_ONLY", True) else language.fan_wants_spanish(
+        fan_message, mem
+    )
     print(f"   \U0001f399\ufe0f voice note trigger: {why}")
 
     script = _generate_script(

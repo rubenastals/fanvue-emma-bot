@@ -399,10 +399,13 @@ def assemble_emma_turn(
     if not pack_id:
         pack_id = packs.fallback_pack()
 
-    # Language: mirror the fan (explicit asks persist a preference).
-    # `want_spanish` can be forced by callers (e.g. re-engagement uses the
-    # language of his LAST real message, not of the synthetic trigger).
-    if want_spanish is None:
+    # Language: ENGLISH_ONLY (default) — always EN, ignore Spanish fans / sticky.
+    if getattr(config, "ENGLISH_ONLY", True):
+        want_spanish = False
+        if fan_uuid and (mem or {}).get("prefer_spanish"):
+            fan_memory.set_prefer_spanish(fan_uuid, False, fan_handle=fan_handle)
+            mem = fan_memory.get(fan_uuid) or mem
+    elif want_spanish is None:
         pref = language.update_language_pref(mem, fan_message)
         if pref is not None and fan_uuid:
             fan_memory.set_prefer_spanish(fan_uuid, pref, fan_handle=fan_handle)
@@ -411,6 +414,7 @@ def assemble_emma_turn(
     print(
         f"   lang: {'ES' if want_spanish else 'EN'} "
         f"sticky={bool((mem or {}).get('prefer_spanish'))}"
+        f"{' ENGLISH_ONLY' if getattr(config, 'ENGLISH_ONLY', True) else ''}"
     )
 
     # Ensure the last turn is the current fan message exactly once
@@ -616,7 +620,7 @@ def assemble_emma_turn(
                 "WELCOME THIS TURN (first messages):\n"
                 "- Soft subscribe welcome — glad he subbed, now you can finally talk.\n"
                 "- Casual cute vibe like: \"so glad you subscribed, now we can finally talkk 😋\" "
-                "(ES mirror if he writes Spanish).\n"
+                "(English only).\n"
                 "- No sell, no free photo pitch, no price. One warm question max.\n"
                 "- Do NOT jump straight into dirty / content push."
             )
@@ -898,34 +902,34 @@ def assemble_emma_turn(
     if lean and simple:
         from core import technique_policy as _tp
 
-        lang = "Spanish only." if want_spanish else "English only."
         move_bit = (
             _tp.author_steer(tech_name)
             if tech_name
             else " Skip dark-psych moves this turn (comfort/cooling)."
         )
         note = (
-            f"[Emma on WhatsApp. {lang} Horny girlfriend texting — NOT a sales agent, "
-            f"NOT an essay. Informal chat slang/abbreviations OK (ES: q/xq/tb/jaja/bb; "
-            f"EN: u/rn/idk/lol). Light punctuation, lowercase fine, react first. "
-            f"Usually ONE short bubble (~80-140 chars). Pet name most turns. "
-            f"Emojis only if natural — vary or skip; never same combo twice. "
-            f"Filthy when he's hot; bratty then warm. "
-            f"No quotation marks around his words (never \"putilla\"… — write putilla…). "
-            f"No Ay…/Mmm… openers. No would-you-like / exclusive content / special offer. "
-            f"Answer his LAST message in context of the recent thread — "
-            f"do not ignore what he said minutes ago in THIS chat. "
-            f"ANTI-LOOP: never repeat the same question/beat from your last 2 replies. "
+            "[Emma on WhatsApp. ENGLISH ONLY — even if he writes Spanish. "
+            "Horny girlfriend texting — NOT a sales agent, NOT an essay. "
+            "Informal chat slang OK (u/rn/idk/lol/haha/babe). "
+            "Light punctuation, lowercase fine, react first. "
+            "Usually ONE short bubble (~80-140 chars). Pet name most turns. "
+            "Emojis only if natural — vary or skip; never same combo twice. "
+            "Filthy when he's hot; bratty then warm. "
+            "ZERO Spanish words (no mira/bebé/joder/guapo). "
+            "No quotation marks around his words. "
+            "No Ay…/Mmm… openers. No would-you-like / exclusive content / special offer. "
+            "Answer his LAST message in context of the recent thread — "
+            "do not ignore what he said minutes ago in THIS chat. "
+            "ANTI-LOOP: never repeat the same question/beat from your last 2 replies. "
             f"{move_bit.strip()} Readable but messy like real DMs. "
-            f"Sell only what STATUS attaches.]"
+            "Sell only what STATUS attaches.]"
         )
     elif lean:
-        lang = "Spanish only." if want_spanish else "English only."
         note = (
-            f"[Emma texting. {lang} Pack={pack_id}. "
+            f"[Emma texting. ENGLISH ONLY. Pack={pack_id}. "
             f"1–2 short bubbles, under ~220 total characters. Light pet names OK; "
             f"real name sometimes if ADDRESSING allows — "
-            f"never spam \"Ay {{name}}\" every bubble.]"
+            f"never spam \"Ay {{name}}\" every bubble. Zero Spanish.]"
         )
         if tech_name:
             note += manipulation.author_nudge(pack_id, tech_name)

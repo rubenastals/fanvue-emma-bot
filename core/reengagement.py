@@ -276,6 +276,10 @@ def _remember_nudge_text(fan_uuid: str, fan_handle: str, text: str) -> None:
 
 def _pick_nudge_template(style: str, want_spanish: bool, mem: dict) -> str:
     """Pick a template line, avoiding recent texts and guilt repeats."""
+    from config import config
+
+    if getattr(config, "ENGLISH_ONLY", True):
+        want_spanish = False
     pool = _TEMPLATES.get(style, _TEMPLATES["soft_checkin"])
     lines = list(pool["es"] if want_spanish else pool["en"])
     recent = set(_recent_nudge_texts(mem))
