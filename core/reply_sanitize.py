@@ -424,13 +424,14 @@ _BANNED_ADDRESS = _BANNED_ALWAYS
 
 
 # Stock line that looped live ("Hey... look at me when I'm talking to you.") — gone.
+# Keep these flirty/human — bland "tell me more" stamps kill the hook in sim+live.
 _EN_LANG_FALLBACKS = (
-    "hey… stay with me a sec",
-    "mmm tell me more…",
-    "look at you… you got me smiling",
-    "say that again… slower",
-    "you're trouble, you know that?",
-    "come here… talk to me properly",
+    "fuck… say that again, slower",
+    "you're getting me warm already 😈",
+    "mmm keep talking like that",
+    "god you're trouble… i like it",
+    "come closer… tell me what you want",
+    "don't stop… i'm listening",
 )
 _ES_LANG_FALLBACKS = (
     "ey… quédate un seg",
@@ -1085,39 +1086,55 @@ def apply_post_draft(
             f"({before_sb[:56]!r} → {reply!r})"
         )
 
-    # Soft: Spanglish / wrong language — may spend the one creative rewrite
+    # Soft: Spanglish / wrong language — strip first; LLM rewrite only if still wrong
     if language.is_mixed_or_wrong(reply, want_spanish=want_spanish):
-        print(
-            f"   lang rewrite: reply was wrong for "
-            f"{'ES' if want_spanish else 'EN'}"
-        )
-        fixed = rw.spend(
-            "lang",
-            call,
-            messages
-            + [
-                {"role": "assistant", "content": reply},
-                {
-                    "role": "user",
-                    "content": language.rewrite_instruction(want_spanish),
-                },
-            ],
-        )
-        if fixed is not None:
-            reply = fixed
-        # No second LLM pass — English mode can still strip Spanish tokens
-        if (not want_spanish) and language.is_mixed_or_wrong(
-            reply, want_spanish=False
-        ):
-            reply = _force_english_cleanup(reply, history_turns=turns)
-        elif (not want_spanish) and reply:
-            # Soft strip leftover pet-name crumbs without nuking the bubble
-            soft = _SPANISH_TOKEN_STRIP.sub("", reply)
+        if not want_spanish:
+            soft = _SPANISH_TOKEN_STRIP.sub("", reply or "")
             soft = _BANNED_SPANISH_IN_ENGLISH.sub("", soft)
             soft = re.sub(r"[ \t]{2,}", " ", soft)
             soft = re.sub(r" +([,.!?…])", r"\1", soft).strip(" \t,;.-")
-            if soft and len(soft) >= 8:
+            if soft and len(soft) >= 8 and not language.is_mixed_or_wrong(
+                soft, want_spanish=False
+            ):
+                print("   lang: soft-strip salvaged EN (no LLM rewrite)")
                 reply = soft
+            else:
+                print(
+                    f"   lang rewrite: reply was wrong for "
+                    f"{'ES' if want_spanish else 'EN'}"
+                )
+                fixed = rw.spend(
+                    "lang",
+                    call,
+                    messages
+                    + [
+                        {"role": "assistant", "content": reply},
+                        {
+                            "role": "user",
+                            "content": language.rewrite_instruction(want_spanish),
+                        },
+                    ],
+                )
+                if fixed is not None:
+                    reply = fixed
+                if language.is_mixed_or_wrong(reply, want_spanish=False):
+                    reply = _force_english_cleanup(reply, history_turns=turns)
+        else:
+            print("   lang rewrite: reply was wrong for ES")
+            fixed = rw.spend(
+                "lang",
+                call,
+                messages
+                + [
+                    {"role": "assistant", "content": reply},
+                    {
+                        "role": "user",
+                        "content": language.rewrite_instruction(want_spanish),
+                    },
+                ],
+            )
+            if fixed is not None:
+                reply = fixed
 
     # Delivery gate: strip false "I sent it" claims — never another LLM call
     reply = _enforce_delivery_truth(
@@ -1212,8 +1229,13 @@ def apply_post_draft(
     if no_lock and not offer and scheme_guard.invented_lock_claim(
         reply, lock_active=False
     ):
-        reply = scheme_guard.fallback_no_lock(want_spanish=want_spanish)
-        print("   🔒 invented-lock → safe fallback (no LLM)")
+        just_bought = bool(ppv_status and ppv_status.get("purchased"))
+        if just_bought:
+            reply = scheme_guard.fallback_just_purchased(want_spanish=want_spanish)
+            print("   🔒 invented-lock after purchase → reward fallback (no LLM)")
+        else:
+            reply = scheme_guard.fallback_no_lock(want_spanish=want_spanish)
+            print("   🔒 invented-lock → safe fallback (no LLM)")
 
     # "foto que te dejé / has abierto" with no real unpaid lock — strip or fallback
     if no_lock and not offer and scheme_guard.claims_left_photo(reply):

@@ -200,6 +200,20 @@ def _hard_route(
             "reward_purchase", d, facts, {"reward_purchase": True}
         )
 
+    # Just unlocked / recent purchase window — reward, don't re-sell or deny the lock
+    if facts.recent_purchase and not facts.ppv_unpaid:
+        facts.hard_pack = "reward_purchase"
+        d = _decision(
+            MODE_TEASE,
+            "recent purchase — reward/thank, no new pitch",
+            allow_price=False,
+            allow_ppv_talk=False,
+            allow_free_tease=False,
+        )
+        return RouteResult(
+            "reward_purchase", d, facts, {"reward_purchase": True}
+        )
+
     # First 1–2 fan messages: warm subscribe welcome — no sell / no free tease
     if (
         facts.msgs <= 2

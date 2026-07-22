@@ -167,27 +167,60 @@ def update_language_pref(mem: dict, fan_message: str) -> Optional[bool]:
     return None
 
 
+# Stops that collide with English ("me", "no", "si") — never use for EN leak detect.
+_SPANISH_STOPS_EN_SAFE = frozenset(
+    w
+    for w in _SPANISH_STOPS
+    if w
+    not in {
+        "me",
+        "te",
+        "se",
+        "nos",
+        "le",
+        "les",
+        "lo",
+        "ya",
+        "no",
+        "si",
+        "mi",
+        "tu",
+        "su",
+        "mis",
+        "tus",
+        "sus",
+        "a",
+        "tan",
+        "muy",
+    }
+)
+
+
 def is_mixed_or_wrong(text: str, *, want_spanish: bool) -> bool:
     """Detect Spanglish or wrong-language leakage."""
     if english_only():
         want_spanish = False
     if not text or not text.strip():
         return True
-    es = len(_SPANISH_CONTENT.findall(text)) + sum(
-        1 for w in _words(text) if w in _SPANISH_STOPS
-    )
+    content_es = len(_SPANISH_CONTENT.findall(text))
     en = len(_ENGLISH_REPLY_HITS.findall(text))
     if want_spanish:
+        stop_es = sum(1 for w in _words(text) if w in _SPANISH_STOPS)
+        es = content_es + stop_es
         if es == 0 and en >= 1:
             return True
         if es == 0 and re.search(r"[A-Za-z]{4,}", text or ""):
             return True
         return en >= 4 and es >= 1 and en > es
+    # ENGLISH target: accents / real Spanish content only — not "me"/"no" stops.
     if re.search(r"[áéíóúñ¿¡]", text or ""):
         return True
+    stop_es = sum(1 for w in _words(text) if w in _SPANISH_STOPS_EN_SAFE)
+    es = content_es + stop_es
     if en >= 2 and es <= 1:
         return False
-    return es >= 2
+    # Need real Spanish signal (2+ content hits, or content+safe-stop)
+    return content_es >= 2 or (content_es >= 1 and es >= 2)
 
 
 def language_system_block(want_spanish: bool = False) -> str:
