@@ -381,7 +381,8 @@ def author_note_for(
             ),
         }.get(decision.mode, "Stay in character.")
         return (
-            f"[Emma texting. {lang} Natural clear grammar — no word-salad. "
+            f"[Emma WhatsApp texting. {lang} Informal chat voice — slang/abbreviations OK, "
+            f"not essay grammar, no word-salad. "
             f"1–3 short lines. Pet names welcome; real name sometimes OK (see ADDRESSING) — "
             f"never 'Ay Name' every bubble. {mode_hint}]"
         )

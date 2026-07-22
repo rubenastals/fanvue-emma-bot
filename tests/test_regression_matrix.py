@@ -76,6 +76,7 @@ def test_persona_has_priority_ladder():
     assert "ATTACHING" in persona
     assert "Emma: Mmm" not in persona
     assert "Never start messages with \"Ay…\", \"Mmm…\"" in persona
+    assert "WHATSAPP VOICE" in persona
     assert "only when he is WARM or HOT" in persona
     assert "caro" in persona.lower() and "papi" in persona.lower()
 
