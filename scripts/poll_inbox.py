@@ -1150,10 +1150,14 @@ def _handle_fan_chat_body(
                 )
                 print("   ACTION=send_voice: forced close line (empty/beg draft)")
 
-        max_bubbles = int(
-            getattr(decision, "max_bubbles", None)
-            or getattr(config, "MAX_BUBBLES", 3)
-            or 3
+        # Hard cap 2 WhatsApp bubbles — triple-text feels spammy
+        max_bubbles = min(
+            2,
+            int(
+                getattr(decision, "max_bubbles", None)
+                or getattr(config, "MAX_BUBBLES", 2)
+                or 2
+            ),
         )
         bubbles = split_into_messages(
             reply,

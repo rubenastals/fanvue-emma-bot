@@ -206,6 +206,17 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
             low,
         )
     )
+    # Soft clarify / follow-up — not a crisis beat
+    soft_clarify = bool(
+        re.search(
+            r"(?i)^\s*("
+            r"pq\b|por\s*qu[eé]|why\b|c[oó]mo\b|como\b|a\s+grabar|"
+            r"qu[eé]\s+dices|what\s+do\s+you\s+mean|no\s+me\s+pasa|"
+            r"nada\b|ok\b|ahh+|jaj+|ahah"
+            r")",
+            low,
+        )
+    ) or (len(low) <= 28 and low.endswith("?"))
     return {
         "spent": spent,
         "purchases": purchases,
@@ -217,6 +228,7 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
         "buying": buying,
         "price_push": price_push,
         "horny": horny,
+        "soft_clarify": soft_clarify,
         "zero_spender": spent <= 0 and purchases <= 0,
     }
 
@@ -283,13 +295,28 @@ def score_move(
             why.append("unpaid-crisis-ok")
 
     # Price pushback → ladder + emergency + rival
-    if sig["price_push"] or eff_pack == "price_objection" or sig["reject_step"] > 0:
+    # Stale price_objection_step alone must NOT force crisis on soft check-ins
+    objection_live = bool(
+        sig["price_push"]
+        or eff_pack == "price_objection"
+        or (sig["reject_step"] > 0 and not sig.get("soft_clarify"))
+    )
+    if objection_live:
         if "GUILT" in up or "EGO" in up or "FOMO" in up or "EMERGENCY" in up:
             score += 8
             why.append("objection-ladder")
         if "WITHDRAWAL" in up and sig["reject_step"] >= 3:
             score += 10
             why.append("objection-exit")
+
+    # Soft clarify ("pq lo dices?", "a grabar?") → bond/mirror, not crisis/rival
+    if sig.get("soft_clarify"):
+        if "EMERGENCY" in up or name in manipulation._RIVAL_TECHS:
+            score -= 14
+            why.append("clarify-not-crisis")
+        if up in ("MIRRORING", "GASLIGHTING (soft)") or "LOVE BOMBING" in up:
+            score += 6
+            why.append("clarify-soft")
 
     # Reward pack
     if eff_pack == "reward_purchase":

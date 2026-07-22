@@ -49,14 +49,31 @@ _INVENTED_GLITCH = re.compile(
     r"se (me )?(bloque[oó]|trab[oó])|photo is blocked)\b"
 )
 
-# Promising video/custom we do not have in the photo vault
+# Promising HIM a video/custom we cannot attach (photo vault only).
+# Do NOT match "irme a grabar / grabar contenido / shoot for my page"
+# (creator workflow) — that was nuking good replies into robotic candado lines.
 _CLAIM_FAKE_VIDEO = re.compile(
     r"(?i)\b("
-    r"v[ií]deo|video|clip|4k|"
-    r"te grabo|grabarte|grabarme|"
-    r"empiezo a grabar|voy a grabar|grabe (algo|un|una)|"
-    r"grabo (algo|un|una)|recording (a |you )|"
-    r"custom (video|clip|vid)"
+    r"(te\s+)?(mando|env[ií]o|paso|suelto)\s+(un\s+)?v[ií]deo|"
+    r"(te\s+)?(mando|env[ií]o)\s+(un\s+)?clip|"
+    r"v[ií]deo\s+(para\s+ti|custom|privado)|"
+    r"custom\s+(video|clip|vid)|"
+    r"te\s+grabo\s+(un\s+)?(v[ií]deo|clip)|"
+    r"grabarte\s+(un\s+)?(v[ií]deo|clip)|"
+    r"recording\s+(you\s+)?a\s+(video|clip)|"
+    r"i'?ll\s+(send|make)\s+(you\s+)?a\s+(video|clip)"
+    r")\b"
+)
+
+# Claims he left/opened a photo when no unpaid lock is actually waiting
+_CLAIM_LEFT_PHOTO = re.compile(
+    r"(?i)\b("
+    r"foto\s+que\s+te\s+(dej[eé]|mand[eé]|envi[eé]|pas[eé])|"
+    r"(ni\s+siquiera\s+)?has\s+abierto\s+la\s+foto|"
+    r"la\s+foto\s+que\s+te\s+(dej|mand|envi)|"
+    r"photo\s+i\s+(left|sent)\s+you|"
+    r"haven'?t\s+(even\s+)?opened\s+the\s+photo|"
+    r"you\s+(still\s+)?haven'?t\s+opened"
     r")\b"
 )
 
@@ -268,6 +285,26 @@ def invented_video_claim(reply: str) -> bool:
     if not text:
         return False
     return bool(_CLAIM_FAKE_VIDEO.search(text))
+
+
+def claims_left_photo(reply: str) -> bool:
+    """True when reply says she left/he must open a photo."""
+    text = (reply or "").strip()
+    if not text:
+        return False
+    return bool(_CLAIM_LEFT_PHOTO.search(text))
+
+
+def strip_left_photo_claims(reply: str) -> str:
+    """Remove false 'I left you a photo / open it' clauses."""
+    text = (reply or "").strip()
+    if not text:
+        return text
+    cleaned = _CLAIM_LEFT_PHOTO.sub("", text)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    cleaned = re.sub(r"\s+([,…!?])", r"\1", cleaned)
+    cleaned = re.sub(r"^[.…,\s]+", "", cleaned)
+    return cleaned.strip() or text
 
 
 def strip_echo_quotes(reply: str) -> str:
@@ -654,41 +691,36 @@ def fallback_purchase_bluff(*, want_spanish: bool, lock_still_active: bool) -> s
 
 def fallback_no_lock(*, want_spanish: bool) -> str:
     # Wording must NOT trip invented_lock_claim (no candado/unlock/waiting-lock).
+    # Bratty WhatsApp — not therapist intake.
     if want_spanish:
         return (
-            "Ahora mismo no tengo nada esperándote así. "
-            "Cuéntame qué te pasa, estoy aquí 🥺"
+            "jaja eso no bb… ahora mismo no te tengo nada así. "
+            "sígueme el rollo un toque 😏"
         )
     return (
-        "I don't have anything waiting for you like that right now. "
-        "Tell me what's going on — I'm here 🥺"
+        "lol not like that babe… i don't have anything sitting for you rn. "
+        "stay with me a sec 😏"
     )
 
 
 def fallback_photos_only(
     *, want_spanish: bool, real_price: Optional[float] = None
 ) -> str:
-    # Avoid video/grabar tokens — invented_video_claim would re-fire on the fallback.
+    # Natural WhatsApp — avoid robotic "Solo fotos / UNA candada" stamp.
     if real_price is not None:
         rp = float(real_price)
         if want_spanish:
             return (
-                f"Solo fotos 😏 Tienes UNA candada esperando — "
-                f"${rp:.0f} y la abres, bebé."
+                f"solo fotitos bb… esa tuya de ${rp:.0f} sigue ahí si de verdad "
+                f"quieres verme 😏"
             )
         return (
-            f"Photos only 😏 You have ONE lock waiting — "
-            f"${rp:.0f} and unlock it, babe."
+            f"pics only babe… that ${rp:.0f} one is still there if you "
+            f"really wanna see me 😏"
         )
     if want_spanish:
-        return (
-            "Solo fotos en el vault 😏 "
-            "dime qué te pone y te cierro una de verdad."
-        )
-    return (
-        "Photos only in the vault 😏 "
-        "tell me what you want and I'll lock a real one."
-    )
+        return "solo hago fotitos bb… dime qué te pone y te mando una rica 😈"
+    return "i only do pics babe… tell me what you want and i'll lock a hot one 😈"
 
 
 def fallback_ghost_promise(*, want_spanish: bool) -> str:

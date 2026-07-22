@@ -777,8 +777,8 @@ def split_into_messages(
     if not parts:
         parts = _soft_slice(reply)
 
-    default_cap = int(getattr(config, "MAX_BUBBLES", 3) or 3)
-    hard_cap = max(1, max_bubbles if max_bubbles is not None else default_cap)
+    default_cap = min(2, int(getattr(config, "MAX_BUBBLES", 2) or 2))
+    hard_cap = max(1, min(2, max_bubbles if max_bubbles is not None else default_cap))
     if len(parts) > hard_cap:
         # Keep first N bubbles; if the last kept one is mid-clause, merge the
         # next fragment in (better a slightly long finished thought than a chop).
@@ -951,12 +951,26 @@ def apply_post_draft(
         reply = scheme_guard.fallback_no_lock(want_spanish=want_spanish)
         print("   🔒 invented-lock → safe fallback (no LLM)")
 
+    # "foto que te dejé / has abierto" with no real unpaid lock — strip or fallback
+    if no_lock and not offer and scheme_guard.claims_left_photo(reply):
+        stripped = scheme_guard.strip_left_photo_claims(reply)
+        if (
+            scheme_guard.claims_left_photo(stripped)
+            or scheme_guard.invented_lock_claim(stripped, lock_active=False)
+            or len(stripped) < 12
+        ):
+            reply = scheme_guard.fallback_no_lock(want_spanish=want_spanish)
+            print("   🔒 left-photo bluff → safe fallback (no LLM)")
+        else:
+            reply = stripped
+            print("   🔒 left-photo bluff: stripped claim (kept reply)")
+
     # Belt: SELL=NONE + no active lock → never ship money talk
     if no_lock and not offer and _stated_prices(reply):
         reply = _strip_wrong_prices(reply, real_price=None)
         print("   💵 invent belt: stripped $ with SELL=NONE / no lock")
 
-    # Vault is photos only — never promise video/custom/grabar
+    # Vault is photos only — never promise to SEND him a video/custom
     if scheme_guard.invented_video_claim(reply):
         rp = None
         if offer and float(offer.get("price") or 0) > 0:
