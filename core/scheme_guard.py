@@ -564,6 +564,106 @@ def forced_paid_sell_line(
     )
 
 
+# Deterministic post-rewrite fallbacks. Must obey persona hard bans:
+# no "Mmm…" / "Ay…" openers; no caro/papi/nena/nene.
+_BANNED_FALLBACK_OPEN = re.compile(r"(?i)^(mmm|ay)[\s.…,]")
+
+
+def fallback_purchase_bluff(*, want_spanish: bool, lock_still_active: bool) -> str:
+    if want_spanish:
+        if lock_still_active:
+            return (
+                "Mentiroso 😏 esa foto sigue cerrada — no la has abierto. "
+                "No puedes saber lo guarra que es… todavía. Ábrela."
+            )
+        return (
+            "Mentiroso 😏 esa foto se fue sin que la abrieras. "
+            "No puedes saber lo guarra que era… todavía."
+        )
+    if lock_still_active:
+        return (
+            "Liar 😏 that photo is still locked — you haven't opened it. "
+            "You can't know how filthy it is… yet. Unlock it."
+        )
+    return (
+        "Liar 😏 that photo left without you unlocking it. "
+        "You can't know how filthy it was… yet."
+    )
+
+
+def fallback_no_lock(*, want_spanish: bool) -> str:
+    if want_spanish:
+        return (
+            "Ahora mismo no tengo un candado esperándote. "
+            "Cuéntame qué te pasa, estoy aquí 🥺"
+        )
+    return (
+        "I don't have a lock waiting for you right now. "
+        "Tell me what's going on — I'm here 🥺"
+    )
+
+
+def fallback_photos_only(
+    *, want_spanish: bool, real_price: Optional[float] = None
+) -> str:
+    if real_price is not None:
+        rp = float(real_price)
+        if want_spanish:
+            return (
+                f"De vídeo no… solo fotos 😏 Tienes UNA candada esperando — "
+                f"${rp:.0f} y la abres, bebé."
+            )
+        return (
+            f"No video… photos only 😏 You have ONE lock waiting — "
+            f"${rp:.0f} and unlock it, babe."
+        )
+    if want_spanish:
+        return (
+            "Vídeo no tengo 😏 Solo fotos en el vault — "
+            "dime qué te pone y te cierro una de verdad."
+        )
+    return (
+        "No video 😏 Photos only in the vault — "
+        "tell me what you want and I'll lock a real one."
+    )
+
+
+def fallback_ghost_promise(*, want_spanish: bool) -> str:
+    if want_spanish:
+        return (
+            "Ahora mismo no te puedo soltar esa foto así, pillín 🔥 "
+            "Pero dime qué te vuelve loco de mis tetas… ¿así te caliento más?"
+        )
+    return (
+        "I can't drop that photo like that right now, baby 🔥 "
+        "Tell me what drives you crazy about my tits… want me hotter?"
+    )
+
+
+def fallback_blame_own_it(*, want_spanish: bool) -> str:
+    if want_spanish:
+        return (
+            "Perdona, bebé… se me trabó yo, no tú. "
+            "Quédate conmigo un ratito y te lo dejo bien 🥺"
+        )
+    return (
+        "Sorry baby… that was on me, not you. "
+        "Stay with me a minute and I'll drop it properly 🥺"
+    )
+
+
+def fallback_obeys_style_bans(text: str) -> bool:
+    """True if deterministic fallback text respects opener / hard pet bans."""
+    t = (text or "").strip()
+    if not t:
+        return False
+    if _BANNED_FALLBACK_OPEN.search(t):
+        return False
+    if re.search(r"(?i)\b(caro|papi|nena|nene)\b", t):
+        return False
+    return True
+
+
 def history_has_rival_fan(history_turns: Optional[List[Dict[str, Any]]]) -> bool:
     """True if any recent Emma (assistant) turn already used the rival-fan bit."""
     if not history_turns:

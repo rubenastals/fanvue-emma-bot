@@ -1065,26 +1065,10 @@ def generate_emma_reply(
             fan_saw_bluff and not scheme_guard.calls_out_purchase_bluff(reply)
         )
         if still_bad:
-            if status_active or unpaid_gate:
-                reply = (
-                    "Mmm… mentiroso 😏 esa foto sigue cerrada — no la has abierto. "
-                    "No puedes saber lo guarra que es… todavía. Ábrela."
-                    if want_spanish
-                    else (
-                        "Mmm… liar 😏 that photo is still locked — you haven't opened it. "
-                        "You can't know how filthy it is… yet. Unlock it."
-                    )
-                )
-            else:
-                reply = (
-                    "Mmm… mentiroso 😏 esa foto se fue sin que la abrieras. "
-                    "No puedes saber lo guarra que era… todavía."
-                    if want_spanish
-                    else (
-                        "Mmm… liar 😏 that photo left without you unlocking it. "
-                        "You can't know how filthy it was… yet."
-                    )
-                )
+            reply = scheme_guard.fallback_purchase_bluff(
+                want_spanish=want_spanish,
+                lock_still_active=bool(status_active or unpaid_gate),
+            )
             print("   🔒 unseen-ppv rewrite → bluff fallback")
 
     # Invented candado/$ when no real unpaid lock and nothing attaching
@@ -1110,15 +1094,7 @@ def generate_emma_reply(
         ]
         reply = _call(fix_msgs)
         if scheme_guard.invented_lock_claim(reply, lock_active=False):
-            reply = (
-                "Mmm… ahora mismo no tengo un candado esperándote. "
-                "Cuéntame qué te pasa, estoy aquí 🥺"
-                if want_spanish
-                else (
-                    "Mmm… I don't have a lock waiting for you right now. "
-                    "Tell me what's going on — I'm here 🥺"
-                )
-            )
+            reply = scheme_guard.fallback_no_lock(want_spanish=want_spanish)
             print("   🔒 invented-lock rewrite → safe fallback")
 
     # Belt: SELL=NONE + no active lock → never ship money talk
@@ -1155,22 +1131,9 @@ def generate_emma_reply(
                     rp = float(ppv_status["price"])
                 except (TypeError, ValueError):
                     rp = None
-            if rp is not None:
-                reply = (
-                    f"De vídeo no… solo fotos 😏 Tienes UNA candada esperando — "
-                    f"${rp:.0f} y la abres, guapo."
-                    if want_spanish
-                    else f"No video… photos only 😏 You have ONE lock waiting — "
-                    f"${rp:.0f} and unlock it, babe."
-                )
-            else:
-                reply = (
-                    "Mmm… vídeo no tengo 😏 Solo fotos en el vault — "
-                    "dime qué te pone y te cierro una de verdad."
-                    if want_spanish
-                    else "Mmm… no video 😏 Photos only in the vault — "
-                    "tell me what you want and I'll lock a real one."
-                )
+            reply = scheme_guard.fallback_photos_only(
+                want_spanish=want_spanish, real_price=rp
+            )
             print("   📷 invented-video rewrite → photos-only fallback")
 
     # Ghost "dame un segundo / te preparo / mira lo que te tengo" with nothing attaching
@@ -1197,15 +1160,7 @@ def generate_emma_reply(
         ]
         reply = _call(fix_msgs)
         if scheme_guard.ghost_media_promise(reply, media_attached=False):
-            reply = (
-                "Mmm… ahora mismo no te puedo soltar esa foto así, pillín 🔥 "
-                "Pero dime qué te vuelve loco de mis tetas… ¿así te caliento más?"
-                if want_spanish
-                else (
-                    "Mmm… I can't drop that photo like that right now, baby 🔥 "
-                    "Tell me what drives you crazy about my tits… want me hotter?"
-                )
-            )
+            reply = scheme_guard.fallback_ghost_promise(want_spanish=want_spanish)
             print("   👻 ghost-promise rewrite → no-stall fallback")
         else:
             print("   👻 ghost-promise rewrite ok")
@@ -1232,15 +1187,7 @@ def generate_emma_reply(
         ]
         reply = _call(fix_msgs)
         if scheme_guard.blame_after_ghost(reply, media_attached=False):
-            reply = (
-                "Perdona, bebé… se me trabó yo, no tú. "
-                "Quédate conmigo un ratito y te lo dejo bien 🥺"
-                if want_spanish
-                else (
-                    "Sorry baby… that was on me, not you. "
-                    "Stay with me a minute and I'll drop it properly 🥺"
-                )
-            )
+            reply = scheme_guard.fallback_blame_own_it(want_spanish=want_spanish)
             print("   👻 blame-after-ghost → own-it fallback")
         else:
             print("   👻 blame-after-ghost rewrite ok")
@@ -1597,9 +1544,10 @@ def _name_budget_note(
     name = _usable_fan_name(name, confirmed=name_confirmed)
     if not name:
         return (
-            "ADDRESSING: USE a pet name this turn (baby/babe/cielo/guapo/mi vida/"
-            "handsome/trouble) — rotate, don't stack 3 in one line. "
-            "HARD BAN: never invent a first name.",
+            "ADDRESSING: USE a pet name this turn "
+            "(EN: baby/babe/handsome/trouble; ES: bebé/cielo/guapo/mi vida) — "
+            "rotate, don't stack 3 in one line. HARD BAN: caro/papi/nena/nene. "
+            "Never invent a first name.",
             0,
         )
     recent_emma = [
@@ -1617,16 +1565,18 @@ def _name_budget_note(
     if last_had or len(used_recent) >= 2:
         return (
             f"ADDRESSING THIS TURN: skip \"{name}\" — you used it recently. "
-            f"USE a pet name (baby/babe/cielo/guapo/mi vida/handsome/trouble). "
-            f"Vary pets; don't spam the same one. Never \"Ay {name}\".",
+            f"USE a pet name (EN: baby/babe/handsome/trouble; "
+            f"ES: bebé/cielo/guapo/mi vida). "
+            f"Vary pets; don't spam the same one. Never \"Ay {name}\". "
+            f"HARD BAN: caro/papi/nena/nene.",
             0,
         )
     # Allowed — invite occasional natural use
     return (
         f"ADDRESSING: His confirmed name is \"{name}\". You MAY say it ONCE this turn "
         f"if natural. Still USE a pet name most turns "
-        f"(baby/babe/cielo/guapo/mi vida/handsome/trouble). "
-        f"Never open every line with \"Ay {name}\".",
+        f"(EN: baby/babe/handsome/trouble; ES: bebé/cielo/guapo/mi vida). "
+        f"Never open every line with \"Ay {name}\". HARD BAN: caro/papi/nena/nene.",
         1,
     )
 

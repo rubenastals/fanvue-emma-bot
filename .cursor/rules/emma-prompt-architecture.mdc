@@ -1,5 +1,5 @@
 ---
-description: Emma live prompt architecture — never inflate Soft into chat
+description: Emma live prompt architecture — SIMPLE canonical; never inflate Soft into chat
 globs: fanvue-emma-bot/**/*
 alwaysApply: false
 ---
@@ -8,16 +8,33 @@ alwaysApply: false
 
 Live chat quality collapses when Soft lessons / critic norms / sales essays are stacked into the system prompt.
 
-## Live layers ONLY (priority order)
+## Canonical live brain (defaults)
 
-1. **CORE** (`core/prompt_core.py`) — short immutable persona + hard bans. Do not grow forever; replace a rule to add one.
+```
+SIMPLE_PROMPT=1
+LEAN_CREATIVE=1
+INJECT_LESSONS=0
+PHASE_ANALYST=0
+SOFT_CLASSIFY=0
+REPLY_V2=0
+AUTO_APPROVE_SOFT_LESSONS=0
+```
+
+**Live creative path = SIMPLE only:**
+
+1. **CORE** — `personas/emma.md` via `prompt_core.get_active_persona()`. Replace a rule to add one; do not append forever.
 2. **CLIENT CARD** — durable facts about this fan.
-3. **HISTORY** — up to ~100 recent messages.
-4. **ONE PACK** (`packs/*.md` via `intent_router`) — situation MUST/SHOULD/NEVER only.
-5. **TURN** — offer/vision/delivery facts when needed (budget-capped).
-6. **AUTHOR** — one short line (`Pack=…`).
+3. **HISTORY** — recent messages.
+4. **TURN** — code-derived facts only (TRUTH STATE, SELL/LOCK STATUS, delivery, vision, voice). Budget-capped in `prompt_layers.py`.
+5. **AUTHOR** — one short steer line.
 
-See `docs/ROUTER.md` to add casuistries. Never inject more than one situational pack.
+Hard money/media truth stays in **code** (`intent_router`, `offer_selector`, `poll_inbox`, `scheme_guard`). Creativity is DeepSeek; lies are caught by gates + guards.
+
+## Packs under SIMPLE
+
+`packs/*.md` + router `pack_id` still run for **hard gates / sell flags / logs**. They are **not** injected into the live prompt when `SIMPLE_PROMPT=1`. Do not “fix chat” by editing a pack expecting it to change SIMPLE creative output — change `emma.md`, a TURN fact block, or a code gate.
+
+Non-SIMPLE (`SIMPLE_PROMPT=0`) is legacy: CORE short + manipulation banner + one pack. Do not grow that path.
 
 ## Forbidden in live prompt
 
@@ -26,20 +43,28 @@ See `docs/ROUTER.md` to add casuistries. Never inject more than one situational 
 - Always-on vault catalog spam on chill turns
 - Auto-approve Soft into behavior that affects chat
 - Stacking multiple situation packs / Soft norms
+- New CRITICAL TURN essays for bugs that belong in `scheme_guard` or hard gates
+
+## Conflict rule (one policy per topic)
+
+When persona, TURN banner, and rewrite disagree: **code truth wins** (LOCK/SELL/DELIVERY/AUDIO) → then deterministic `scheme_guard` fallback → then persona. Prefer strip/fallback over another LLM rewrite. Fallbacks must not use banned openers (`Mmm…`, `Ay…`) or hard-ban pets (`caro/papi/nena/nene`).
 
 ## When DeepSeek / improve / autofix runs
 
 - Log every proposal in `docs/PROMPT_AUDIT.md` / `.prompt_audit.jsonl` via `core/prompt_audit.py`
 - Soft stays **pending for human review** — never silent live injection
 - Autofix must list files touched; operator reviews `git diff` before deploy
-- Prefer code fixes (router gates, verify delivery, name scrub) or a new `packs/*.md` over growing CORE
+- Prefer code fixes (router gates, verify delivery, name scrub) over growing CORE
 
 ## Operator defaults
 
 ```
 LEAN_CREATIVE=1
+SIMPLE_PROMPT=1
 INJECT_LESSONS=0
 SOFT_CLASSIFY=0
 AUTO_APPROVE_SOFT_LESSONS=0
 DEEPSEEK_TEMPERATURE=0.9
 ```
+
+On “va bien”: `python scripts/save_good_backup.py "…"` before more experiments.
