@@ -197,7 +197,8 @@ def pick_playbook_move(
             sig.get("price_push") or pid == "price_objection" or reject >= 1
         )
         if price_fight:
-            if reject >= 3:
+            hold_streak = sum(1 for t in recent[-4:] if t == "HOLD FRAME")
+            if reject >= 3 or hold_streak >= 2:
                 return SOFT_EXIT, "objection-soft-exit"
             return HOLD_FRAME, "unpaid-price-push"
         # First attach / unpaid tease — filthy girlfriend, not store scarcity

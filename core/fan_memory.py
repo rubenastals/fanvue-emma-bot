@@ -1023,13 +1023,15 @@ def clear_ghost_free(
 
 
 def record_reject(fan_uuid: str, fan_handle: str = "", minutes: int = 120) -> dict:
-    """Fan pushed back on price / said later — log only (no chill sell-ban)."""
+    """Fan pushed back on price / said later — log + advance objection ladder."""
     del minutes  # legacy arg; cooloff window removed
     with _LOCK:
         mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
         _ensure_card_fields(mem)
         mem["last_reject_at"] = _now()
         mem["chill_until"] = None  # never block sell via chill
+        step = int(mem.get("price_objection_step") or 0)
+        mem["price_objection_step"] = min(3, step + 1)
         _put(fan_uuid, mem)
         return mem
 

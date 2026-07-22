@@ -59,6 +59,17 @@ def test_price_objection_soft_exit_after_rejects():
     assert move.name == "SOFT EXIT"
 
 
+def test_soft_exit_after_hold_frame_streak():
+    move, why = pb.pick_playbook_move(
+        pack_id="ppv_unpaid",
+        sig={"msgs": 14, "reject_step": 1, "price_push": True},
+        unpaid=True,
+        recent_techs=["HOLD FRAME", "HOLD FRAME"],
+    )
+    assert move.name == "SOFT EXIT"
+    assert "soft-exit" in why
+
+
 def test_shy_graduates_to_heat_after_rapport():
     move = technique_policy.choose_move(
         "phase_pull",

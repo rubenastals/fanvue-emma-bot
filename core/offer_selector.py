@@ -444,12 +444,16 @@ def choose_offer(
             1.0,
             "code",
         )
-    # $0 fans: no AI sell without ask/horny — unless rapport earned (free + msgs)
+    # $0 fans: no AI sell without ask/horny — rapport close only when warm enough
     if _zero_spender(mem) and not direct and not max_dirty:
         horny_now = bool(getattr(facts, "horny", False))
         msgs_n = int(mem.get("messages") or 0)
         frees_n = int(mem.get("free_teases_sent") or 0)
-        rapport_close = msgs_n >= 10 and frees_n >= 1
+        warm_signal = horny_now or bool(getattr(facts, "buying", False)) or bool(
+            getattr(facts, "engacho", False)
+        )
+        # Free + depth + warm signal — avoids pushy sell on shy short chats
+        rapport_close = msgs_n >= 12 and frees_n >= 1 and warm_signal
         if not horny_now and not rapport_close:
             return OfferChoice(
                 False,
@@ -584,7 +588,10 @@ def choose_offer(
         reason = f"clarify veto; selector said: {reason}"
     msgs_n = int(mem.get("messages") or 0)
     frees_n = int(mem.get("free_teases_sent") or 0)
-    rapport_close = msgs_n >= 10 and frees_n >= 1
+    warm_signal = bool(getattr(facts, "horny", False)) or bool(
+        getattr(facts, "buying", False)
+    ) or bool(getattr(facts, "engacho", False))
+    rapport_close = msgs_n >= 12 and frees_n >= 1 and warm_signal
     if (
         sell_now
         and _zero_spender(mem)
