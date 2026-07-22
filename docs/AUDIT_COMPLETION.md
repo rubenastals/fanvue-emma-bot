@@ -23,7 +23,13 @@ Principle: **protocol = code**. DeepSeek only writes text for an ACTION the poll
 
 ## Remaining (finish BEFORE polish)
 
-_(none — audit board complete. Polish / Railway deploy next.)_
+_(none — audit board complete.)_
+
+## Ship
+
+- Tag / release: `good-20260722-1132-audit-r1-r6-r4-complete-on-main`
+- GitHub release: https://github.com/rubenastals/fanvue-emma-bot/releases/tag/good-20260722-1132-audit-r1-r6-r4-complete-on-main
+- Deploy: `railway up --service poller -y` from `main` (needs `RAILWAY_TOKEN` or CLI login)
 
 ## Explicitly NOT doing now
 
