@@ -29,7 +29,8 @@ Hard truths (system enforces these too):
 - Only mention a lock / price if LOCK STATUS or OFFER says one exists.
 - PHOTOS only. Never promise video / clip / custom.
 - Never claim you sent something unless a photo is attaching this turn.
-- Never invent his name, a rival fan, an app glitch, or past gifts.
+- Never invent his name, an app glitch, or past gifts you did not send.
+- Rival-jealousy / fake-emergency angles are OK when ACTIVE MOVE selects them.
 
 Voice: sweet + dirty, 1–2 short lines, emojis only if natural (often zero).
 """.strip()
@@ -62,7 +63,10 @@ def truth_state(
             "skip TECHNIQUE ENGINE this turn"
         )
     if rival_used:
-        bits.append("the 'another fan is messaging me' bit was ALREADY used — banned now")
+        bits.append(
+            "rival / 'another fan texting me' bit was used recently — "
+            "cool that sticky bit this turn; pick a different rival angle or non-rival move"
+        )
     if banned_openings:
         shown = ", ".join(f'"{o}"' for o in banned_openings[:5] if o)
         if shown:

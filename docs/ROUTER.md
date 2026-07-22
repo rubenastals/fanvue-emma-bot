@@ -85,8 +85,8 @@ ACTIVE MOVE THIS TURN (mandatory — not optional flirt):
 
 Skipped on cooling / comfort / soft-unpaid reconnect. Catalogs live in
 `core/manipulation.py` (picker only — not the fat banner). Families +
-FORBIDDEN list: [`DARK_PSYCH_TAXONOMY.md`](DARK_PSYCH_TAXONOMY.md). See
-[`TECHNIQUES.md`](TECHNIQUES.md).
+bans: [`DARK_PSYCH_TAXONOMY.md`](DARK_PSYCH_TAXONOMY.md). How-tos are
+**English only**. See [`TECHNIQUES.md`](TECHNIQUES.md).
 
 ## Legacy only (`SIMPLE_PROMPT=0`): manipulation engine
 

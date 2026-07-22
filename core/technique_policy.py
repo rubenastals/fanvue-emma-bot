@@ -61,6 +61,7 @@ def choose_move(
     no_lock: bool = False,
     soft_support: bool = False,
     ban_withdrawal: bool = False,
+    ban_rival_fan: bool = False,
     exclude_names: Optional[List[str]] = None,
     turn_action: Any = None,
     unpaid: bool = False,
@@ -84,7 +85,7 @@ def choose_move(
             eff = "phase_hook"
         else:
             return None
-    # FOMO/scarcity only when a real lock is in play
+    # Lock-price FOMO only when a real lock is in play (rival FOMO still OK)
     force_no_lock = bool(no_lock) and eff not in (
         "ppv_unpaid",
         "phase_close",
@@ -100,6 +101,7 @@ def choose_move(
         soft_support=soft_support,
         exclude_names=exclude_names,
         ban_withdrawal=ban_withdrawal,
+        ban_rival_fan=ban_rival_fan,
     )
 
 
@@ -117,8 +119,8 @@ def turn_block(name: str, how: str) -> str:
         "- Your bubble MUST execute this angle. Never name the technique.\n"
         "- Vary the example beat — do not copy it verbatim.\n"
         "- Do NOT fall back to generic cute chat or a random soft check-in.\n"
-        "- HARD BAN even if 'helpful': fake emergencies, IRL meetups, "
-        "sextortion/leaks, rival-tip lies, invent shared trauma."
+        "- HARD BAN: IRL meetups, sextortion/leaks, invent trauma not in CLIENT CARD.\n"
+        "- Rival jealousy + fake emergency moves ARE allowed when this move says so."
     )
 
 
