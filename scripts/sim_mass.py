@@ -311,7 +311,13 @@ def run_llm_archetype(name: str, *, run_idx: int = 0) -> Dict[str, Any]:
                 )
             except Exception as exc:
                 print(f"  (purchase memory warn: {exc})")
-            ppv_status = {"active": False, "purchased": True}
+            ppv_status = {
+                "active": False,
+                "purchased": True,
+                "price": float(pending_lock.get("price") or 0),
+                "label": str(pending_lock.get("label") or "your locked photo"),
+                "ago": "just now",
+            }
             delivery_truth = {"ppv_unpaid": False}
             offer = None
             pending_lock = None
