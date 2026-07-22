@@ -921,6 +921,7 @@ def assemble_emma_turn(
             "Answer his LAST message in context of the recent thread — "
             "do not ignore what he said minutes ago in THIS chat. "
             "ANTI-LOOP: never repeat the same question/beat from your last 2 replies. "
+            "Never loop abandonment lines (most guys leave / poof they're gone / you're quiet). "
             f"{move_bit.strip()} Readable but messy like real DMs. "
             "Sell only what STATUS attaches.]"
         )
