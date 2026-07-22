@@ -130,16 +130,20 @@ SOFT_EXIT = PlayMove(
     name="SOFT EXIT",
     family_id="2.3",
     principle="release pressure without begging",
-    when="He rejected price 3+ times on the same unpaid lock — cool the sell, keep the door open.",
+    when=(
+        "He said no / not now / another moment, or rejected price repeatedly — "
+        "cool the sell, keep the door open."
+    ),
     never=(
         "Guilt. Fake emergency. Rival FOMO. Instant deep discount beg. "
-        "Never 'go find someone else' / shade him for being broke."
+        "Never 'go find someone else' / shade him for being broke. "
+        "Never unlock nag / 'it's disappearing' / 'you're killing me' chase."
     ),
     how=(
         "Mechanism: step back warmly — door open, no chase. "
-        "Short. He knows where the photo is. Stay sweet. Resume heat later."
+        "Short. Acknowledge him. He knows where the photo is. Stay sweet."
     ),
-    example_beat="ok babe… you know where that photo is when you're ready for me 😘",
+    example_beat="ok babe… no pressure. you know where that photo is when you're ready 😘",
     signals=(
         r"(?i)\b(when\s+you.?re\s+ready|you\s+know\s+where|no\s+pressure|"
         r"door.?s?\s+open|whenever\s+you|i.?ll\s+be\s+here|ok\s+babe|"
@@ -197,14 +201,22 @@ def pick_playbook_move(
             return HEAT, "reward-then-heat"
         return REWARD, "pack-reward"
 
-    # 2) Unpaid lock / price objection — ladder (not eternal HOLD FRAME)
+    # 2) Unpaid lock / price objection — ladder (not eternal SELL LOCK chase)
     if unpaid or pid in ("ppv_unpaid", "price_objection"):
         # "how do you look in the photo?" → filthy describe, NEVER discount/soft-exit
-        if sig.get("ask_lock_tease"):
+        if sig.get("ask_lock_tease") and not sig.get("soft_decline"):
             return SELL_LOCK, "unpaid-describe-tease"
+        # Clear no / not now — stop unlock nag immediately
+        if sig.get("soft_decline"):
+            return SOFT_EXIT, "decline-soft-exit"
+        # Already soft-exited recently → bond, don't re-pitch the lock
+        if "SOFT EXIT" in recent[-2:]:
+            return BOND, "post-exit-bond"
+        # Too many sell-lock teases in a row without buy → release pressure
+        sell_streak = sum(1 for t in recent[-3:] if t == "SELL LOCK")
+        if sell_streak >= 2 and not sig.get("buying") and not sig.get("horny"):
+            return SOFT_EXIT, "sell-streak-soft-exit"
         # Price fight = this msg pushes price, OR sticky price_objection pack.
-        # Bare reject_step on ppv_unpaid alone must NOT force HOLD forever
-        # (that made "how do you look?" → "i don't do discounts").
         price_fight = bool(sig.get("price_push") or pid == "price_objection")
         if price_fight:
             hold_streak = sum(1 for t in recent[-4:] if t == "HOLD FRAME")

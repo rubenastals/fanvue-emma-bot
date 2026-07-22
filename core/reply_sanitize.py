@@ -1236,7 +1236,8 @@ def apply_post_draft(
         fan_memory.set_last_mode(fan_uuid, decision.mode, fan_handle=fan_handle)
         if re.search(
             r"\b(too expensive|too much|caro|expensive|can'?t|no money|later|nah|pass|"
-            r"cheaper|discount|half|final offer|"
+            r"cheaper|discount|half|final offer|no,?\s*sorry|not\s+now|"
+            r"another\s+moment|not\s+so\s+horny|don'?t\s+want\s+to\s+spend|"
             r"pelado|pelá|sin (plata|dinero|pasta)|no tengo (plata|dinero))\b",
             fan_message.lower(),
         ):
