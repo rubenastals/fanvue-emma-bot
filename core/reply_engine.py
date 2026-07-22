@@ -870,73 +870,46 @@ def generate_emma_reply(
 
     reply = _call(messages)
 
-    # If Spanglish / wrong language slipped through → forced rewrite
+    # R2: after the creative draft, at most N LLM rewrites (default 1 = lang/length).
+    # Hard money/media lies never spend the budget — strip or deterministic fallback.
+    rw = RewriteBudget(
+        max_extra=max(0, int(getattr(config, "MAX_CREATIVE_REWRITES", 1) or 0))
+    )
+
+    # Soft: Spanglish / wrong language — may spend the one creative rewrite
     if language.is_mixed_or_wrong(reply, want_spanish=want_spanish):
         print(
             f"   lang rewrite: reply was wrong for "
             f"{'ES' if want_spanish else 'EN'}"
         )
-        fix_msgs = messages + [
-            {"role": "assistant", "content": reply},
-            {
-                "role": "user",
-                "content": language.rewrite_instruction(want_spanish),
-            },
-        ]
-        reply = _call(fix_msgs)
-        # Still English while Spanish required → second hard rewrite
-        if want_spanish and language.is_mixed_or_wrong(reply, want_spanish=True):
-            fix_msgs = messages + [
+        fixed = rw.spend(
+            "lang",
+            _call,
+            messages
+            + [
                 {"role": "assistant", "content": reply},
                 {
                     "role": "user",
-                    "content": (
-                        "REESCRIBE YA EN ESPAÑOL. Cero inglés. "
-                        "Misma idea, tono pícaro, español natural."
-                    ),
+                    "content": language.rewrite_instruction(want_spanish),
                 },
-            ]
-            reply = _call(fix_msgs)
-            print("   lang rewrite: second Spanish pass")
-        # Still bad? last-resort strip Spanish tokens in English mode
+            ],
+        )
+        if fixed is not None:
+            reply = fixed
+        # No second LLM pass — English mode can still strip Spanish tokens
         if (not want_spanish) and language.is_mixed_or_wrong(
             reply, want_spanish=False
         ):
             reply = _force_english_cleanup(reply)
 
-    # Delivery gate: never claim a photo was sent unless this turn attaches one
+    # Delivery gate: strip false "I sent it" claims — never another LLM call
     reply = _enforce_delivery_truth(
         reply,
         media_attached=bool(offer),
         want_spanish=want_spanish,
     )
-    if (not offer) and _claims_unconfirmed_delivery(reply):
-        # One rewrite pass against false "I sent it" claims
-        fix_msgs = messages + [
-            {"role": "assistant", "content": reply},
-            {
-                "role": "user",
-                "content": (
-                    "REWRITE: You claimed a photo was sent/locked/in his inbox but NOTHING "
-                    "is being attached this turn. Remove every delivery claim. Apologize briefly "
-                    "if you implied it arrived, then flirt — do not invent a glitch or ask him to refresh."
-                    if not want_spanish
-                    else (
-                        "REESCRIBE: Afirmaste que enviaste/bloqueaste una foto o que está en su bandeja, "
-                        "pero este turno NO se adjunta nada. Quita cualquier claim de entrega. "
-                        "Disculpa breve si lo diste por enviado, luego flirtea — sin inventar fallos técnicos."
-                    )
-                ),
-            },
-        ]
-        reply = _enforce_delivery_truth(
-            _call(fix_msgs),
-            media_attached=False,
-            want_spanish=want_spanish,
-        )
 
     # Committed sell: code chose a paid offer → attach is law. Text must follow.
-    # Rewrite once; if still off, force a deterministic sell line (never cancel PPV).
     if (
         offer
         and float(offer.get("price") or 0) > 0
@@ -944,36 +917,12 @@ def generate_emma_reply(
         and not scheme_guard.paid_offer_reply_aligned(reply)
     ):
         price = float(offer.get("price") or 0)
-        print("   SELL sync: reply ≠ paid lock — rewriting to sell the attach")
-        fix_msgs = messages + [
-            {"role": "assistant", "content": reply},
-            {
-                "role": "user",
-                "content": (
-                    f"REWRITE: Your draft went the wrong direction (e.g. asking for HIS pic/face). "
-                    f"This turn the SYSTEM attaches YOUR paid photo lock (${price:.0f}). "
-                    "Tease that photo briefly and lock it. Never ask him for his face, selfie, or pic."
-                    if not want_spanish
-                    else (
-                        f"REESCRIBE: Tu borrador fue en otra dirección (p.ej. pedirle SU foto/cara). "
-                        f"Este turno el SISTEMA adjunta TU candado de foto de pago (${price:.0f}). "
-                        "Provoca esa foto en breve y bloquéala. Nunca le pidas su cara, selfie o foto."
-                    )
-                ),
-            },
-        ]
-        reply = _enforce_delivery_truth(
-            _call(fix_msgs),
-            media_attached=True,
+        reply = scheme_guard.forced_paid_sell_line(
+            price=price,
             want_spanish=want_spanish,
+            label=str(offer.get("label") or ""),
         )
-        if not scheme_guard.paid_offer_reply_aligned(reply):
-            reply = scheme_guard.forced_paid_sell_line(
-                price=price,
-                want_spanish=want_spanish,
-                label=str(offer.get("label") or ""),
-            )
-            print("   SELL sync: still off — FORCED sell line (attach stays)")
+        print("   SELL sync: reply ≠ paid lock — FORCED sell line (no LLM rewrite)")
 
     if fan_uuid:
         fan_memory.set_last_mode(fan_uuid, decision.mode, fan_handle=fan_handle)
@@ -1005,30 +954,13 @@ def generate_emma_reply(
         if ago_m is not None and scheme_guard.invented_lock_wait_minutes(
             reply, minutes_ago=ago_m
         ):
+            reply = _fix_invented_wait_minutes(reply, minutes_ago=ago_m)
             print(
-                f"   timing sync: invented wait vs real {ago_m}m ago — rewriting"
+                f"   timing sync: invented wait → clamped to real {ago_m}m "
+                f"(no LLM rewrite)"
             )
-            fix_msgs = messages + [
-                {"role": "assistant", "content": reply},
-                {
-                    "role": "user",
-                    "content": (
-                        f"REWRITE: You invented a wrong wait time. LOCK STATUS says "
-                        f"this photo was sent {ago_raw}. Use ONLY that. "
-                        "Do not claim you've been waiting longer. Soft own the slip, then tease the unlock."
-                        if not want_spanish
-                        else (
-                            f"REESCRIBE: Inventaste un tiempo de espera falso. LOCK STATUS dice "
-                            f"que esta foto se envió {ago_raw}. Usa SOLO eso. "
-                            "No digas que llevas más tiempo esperando. Reconoce el fallo con gracia y tienta el unlock."
-                        )
-                    ),
-                },
-            ]
-            reply = _call(fix_msgs)
 
     # Fan never bought last PPV — must NOT validate "I opened/liked it".
-    # If he bluffed, reply MUST call it out (not just avoid a few phrases).
     bluff_needs_fix = never_bought and (
         scheme_guard.validates_unseen_ppv(reply)
         or (
@@ -1037,73 +969,18 @@ def generate_emma_reply(
         )
     )
     if bluff_needs_fix:
-        print("   purchase bluff: reply failed unpaid-open logic — rewriting")
-        if status_active or unpaid_gate:
-            rewrite_bluff = (
-                "REWRITE HARD: He has NOT purchased the waiting lock. He cannot have "
-                "liked/seen it (blur preview ≠ unlocked). Remove every validation "
-                "('valía la pena', 'qué parte te gustó', 'glad you liked'). "
-                "Call the bluff playfully (mentiroso / never opened) and push THIS unlock."
-                if not want_spanish
-                else (
-                    "REESCRIBE DURO: NO ha comprado el candado que espera. No puede haber "
-                    "visto/gustado esa foto (el preview borroso NO es unlock). Quita "
-                    "'valía la pena' / 'qué parte te gustó' / 'me alegro que te gustara'. "
-                    "Llama el farol con picardía (mentiroso / no la abriste) y empuja ESTE unlock."
-                )
-            )
-        else:
-            rewrite_bluff = (
-                "REWRITE HARD: Last PPV expired WITHOUT purchase — he never unlocked it. "
-                "Remove every validation that he liked/saw it. Call the bluff playfully. "
-                "Do not apologize or gift a replacement. Flirt/reconnect only unless a NEW lock attaches."
-                if not want_spanish
-                else (
-                    "REESCRIBE DURO: El último PPV caducó SIN compra — nunca lo desbloqueó. "
-                    "Quita toda validación de que le gustó/vio. Llama el farol con picardía. "
-                    "No pidas perdón ni regales reemplazo. Solo flirteo/reconexión salvo candado NUEVO."
-                )
-            )
-        fix_msgs = messages + [
-            {"role": "assistant", "content": reply},
-            {"role": "user", "content": rewrite_bluff},
-        ]
-        reply = _call(fix_msgs)
-        still_bad = scheme_guard.validates_unseen_ppv(reply) or (
-            fan_saw_bluff and not scheme_guard.calls_out_purchase_bluff(reply)
+        reply = scheme_guard.fallback_purchase_bluff(
+            want_spanish=want_spanish,
+            lock_still_active=bool(status_active or unpaid_gate),
         )
-        if still_bad:
-            reply = scheme_guard.fallback_purchase_bluff(
-                want_spanish=want_spanish,
-                lock_still_active=bool(status_active or unpaid_gate),
-            )
-            print("   🔒 unseen-ppv rewrite → bluff fallback")
+        print("   🔒 purchase bluff → deterministic bluff fallback (no LLM)")
 
     # Invented candado/$ when no real unpaid lock and nothing attaching
     if no_lock and not offer and scheme_guard.invented_lock_claim(
         reply, lock_active=False
     ):
-        fix_msgs = messages + [
-            {"role": "assistant", "content": reply},
-            {
-                "role": "user",
-                "content": (
-                    "REWRITE HARD: LOCK STATUS=none. You invented a waiting candado, "
-                    "price, or countdown. Remove EVERY unlock/$/minutes claim. "
-                    "Flirt or comfort only — do not invent urgency."
-                    if not want_spanish
-                    else (
-                        "REESCRIBE DURO: LOCK STATUS=none. Inventaste un candado, "
-                        "precio o countdown. Quita TODA mención a unlock/$/minutos. "
-                        "Solo flirteo o apoyo — sin urgencia inventada."
-                    )
-                ),
-            },
-        ]
-        reply = _call(fix_msgs)
-        if scheme_guard.invented_lock_claim(reply, lock_active=False):
-            reply = scheme_guard.fallback_no_lock(want_spanish=want_spanish)
-            print("   🔒 invented-lock rewrite → safe fallback")
+        reply = scheme_guard.fallback_no_lock(want_spanish=want_spanish)
+        print("   🔒 invented-lock → safe fallback (no LLM)")
 
     # Belt: SELL=NONE + no active lock → never ship money talk
     if no_lock and not offer and _stated_prices(reply):
@@ -1112,106 +989,36 @@ def generate_emma_reply(
 
     # Vault is photos only — never promise video/custom/grabar
     if scheme_guard.invented_video_claim(reply):
-        fix_msgs = messages + [
-            {"role": "assistant", "content": reply},
-            {
-                "role": "user",
-                "content": (
-                    "REWRITE HARD: You promised a VIDEO/custom/recording. "
-                    "Catalog is PHOTOS only. Remove every video/grabar/clip/custom "
-                    "promise. Offer a vault PHOTO tease only, or flirt — never film."
-                    if not want_spanish
-                    else (
-                        "REESCRIBE DURO: Prometiste un VÍDEO/custom/grabar. "
-                        "El catálogo es SOLO FOTOS. Quita video/grabar/clip/custom. "
-                        "Solo puedes teaser una FOTO del vault, o flirtear — nunca grabar."
-                    )
-                ),
-            },
-        ]
-        reply = _call(fix_msgs)
-        if scheme_guard.invented_video_claim(reply):
-            rp = None
-            if offer and float(offer.get("price") or 0) > 0:
-                rp = float(offer["price"])
-            elif ppv_status and ppv_status.get("active") and ppv_status.get("price"):
-                try:
-                    rp = float(ppv_status["price"])
-                except (TypeError, ValueError):
-                    rp = None
-            reply = scheme_guard.fallback_photos_only(
-                want_spanish=want_spanish, real_price=rp
-            )
-            print("   📷 invented-video rewrite → photos-only fallback")
+        rp = None
+        if offer and float(offer.get("price") or 0) > 0:
+            rp = float(offer["price"])
+        elif ppv_status and ppv_status.get("active") and ppv_status.get("price"):
+            try:
+                rp = float(ppv_status["price"])
+            except (TypeError, ValueError):
+                rp = None
+        reply = scheme_guard.fallback_photos_only(
+            want_spanish=want_spanish, real_price=rp
+        )
+        print("   📷 invented-video → photos-only fallback (no LLM)")
 
     # Voice note counts as an attach — don't ghost-rewrite "dame un segundo" when audio comes
     _media_this_turn = bool(offer) or bool(voice_will_send)
 
-    # Ghost stall with nothing attaching: strip phrases first; only hard-fallback if still dirty
+    # Ghost stall: strip phrases; if still dirty → fallback (no LLM)
     if scheme_guard.ghost_media_promise(reply, media_attached=_media_this_turn):
         stripped = scheme_guard.strip_ghost_promise_phrases(reply)
         if not scheme_guard.ghost_media_promise(stripped, media_attached=False):
             reply = stripped
             print("   👻 ghost-promise: stripped stall (kept coherent reply)")
         else:
-            fix_msgs = messages + [
-                {"role": "assistant", "content": reply},
-                {
-                    "role": "user",
-                    "content": (
-                        "REWRITE HARD: You promised/stalled sending a photo ('dame un segundo', "
-                        "'te preparo', 'voy a mandar', 'mira lo que te tengo') but NOTHING "
-                        "attaches this turn. Remove every send/prep promise. Keep the rest of "
-                        "your coherent flirt — do not restart the conversation."
-                        if not want_spanish
-                        else (
-                            "REESCRIBE DURO: Prometiste/retrasaste una foto ('dame un segundo', "
-                            "'te preparo', 'voy a mandar') pero este turno NO se adjunta nada. "
-                            "Quita la promesa de envío. Conserva el flirteo coherente — no reinicies."
-                        )
-                    ),
-                },
-            ]
-            reply = _call(fix_msgs)
-            if scheme_guard.ghost_media_promise(reply, media_attached=False):
-                # Last resort: strip again; only then replace whole reply
-                stripped2 = scheme_guard.strip_ghost_promise_phrases(reply)
-                if stripped2 and not scheme_guard.ghost_media_promise(
-                    stripped2, media_attached=False
-                ):
-                    reply = stripped2
-                    print("   👻 ghost-promise: strip after rewrite")
-                else:
-                    reply = scheme_guard.fallback_ghost_promise(want_spanish=want_spanish)
-                    print("   👻 ghost-promise rewrite → no-stall fallback")
-            else:
-                print("   👻 ghost-promise rewrite ok")
+            reply = scheme_guard.fallback_ghost_promise(want_spanish=want_spanish)
+            print("   👻 ghost-promise → no-stall fallback (no LLM)")
 
     # Never gaslight / FOMO-blame him when nothing attached this turn
     if scheme_guard.blame_after_ghost(reply, media_attached=_media_this_turn):
-        fix_msgs = messages + [
-            {"role": "assistant", "content": reply},
-            {
-                "role": "user",
-                "content": (
-                    "REWRITE HARD: You blamed HIM or claimed you already sent / he missed "
-                    "his chance, but NOTHING attaches this turn. Own the miss briefly, "
-                    "no glitch story. Keep the rest of your coherent message if possible."
-                    if not want_spanish
-                    else (
-                        "REESCRIBE DURO: Culpaste a ÉL o dijiste que ya lo enviaste, pero este "
-                        "turno NO se adjunta nada. Asume el fallo en breve. Conserva el resto "
-                        "coherente si puedes."
-                    )
-                ),
-            },
-        ]
-        reply = _call(fix_msgs)
-        if scheme_guard.blame_after_ghost(reply, media_attached=False):
-            reply = scheme_guard.fallback_blame_own_it(want_spanish=want_spanish)
-            print("   👻 blame-after-ghost → own-it fallback")
-        else:
-            print("   👻 blame-after-ghost rewrite ok")
+        reply = scheme_guard.fallback_blame_own_it(want_spanish=want_spanish)
+        print("   👻 blame-after-ghost → own-it fallback (no LLM)")
 
     # Style rewrites (rival-fan / Ay openings) removed — Group A; CORE guides tone only.
     if fan_uuid and tech_name:
@@ -1222,7 +1029,7 @@ def generate_emma_reply(
             used_rival_fan=False,
         )
 
-    # Price truth: reply must not assert a $ amount that isn't the real lock/offer price
+    # Price truth: strip wrong $ amounts — never another LLM call
     real_price = None
     if offer and float(offer.get("price") or 0) > 0:
         real_price = float(offer["price"])
@@ -1234,57 +1041,26 @@ def generate_emma_reply(
     stated = _stated_prices(reply)
     bad_price = [p for p in stated if real_price is None or abs(p - real_price) > 0.5]
     if bad_price:
-        if real_price is not None:
-            instr = (
-                f"REWRITE: The only real price is ${real_price:.0f}. Remove any other "
-                f"amount ({', '.join(f'${p:.0f}' for p in bad_price)}). State ${real_price:.0f} or no price."
-                if not want_spanish
-                else (
-                    f"REESCRIBE: El único precio real es ${real_price:.0f}. Quita cualquier "
-                    f"otra cifra ({', '.join(f'${p:.0f}' for p in bad_price)}). Di ${real_price:.0f} o ningún precio."
-                )
-            )
-        else:
-            instr = (
-                "REWRITE: There is NO active lock/price this turn. Remove every $ / € amount "
-                "and any candado/unlock claim. Flirt or reconnect only."
-                if not want_spanish
-                else (
-                    "REESCRIBE: NO hay candado/precio activo este turno. Quita toda cifra $ / € "
-                    "y cualquier mención a candado/unlock. Solo flirteo o reconexión."
-                )
-            )
-        fix_msgs = messages + [
-            {"role": "assistant", "content": reply},
-            {"role": "user", "content": instr},
-        ]
-        reply = _call(fix_msgs)
-        still = [
-            p for p in _stated_prices(reply)
-            if real_price is None or abs(p - real_price) > 0.5
-        ]
-        if still:
-            reply = _strip_wrong_prices(reply, real_price=real_price)
-            print(
-                f"   💵 price-truth rewrite → corrected amounts "
-                f"(real=${real_price if real_price else 'none'})"
-            )
-        else:
-            print(f"   💵 price-truth rewrite ok (real=${real_price if real_price else 'none'})")
+        reply = _strip_wrong_prices(reply, real_price=real_price)
+        print(
+            f"   💵 price-truth: stripped/corrected amounts "
+            f"(real=${real_price if real_price else 'none'})"
+        )
 
-    # Length: rewrite short if over budget — never ship a mid-sentence hard-cut later
+    # Length / complete: deterministic trim first; LLM only if budget remains
     reply = _rewrite_if_too_long(
         reply,
         call=_call,
         messages=messages,
         want_spanish=want_spanish,
+        budget=rw,
     )
-    # Finish dangling clauses (token/budget chops) before other style rewrites
     reply = _ensure_complete_reply(
         reply,
         call=_call,
         messages=messages,
         want_spanish=want_spanish,
+        budget=rw,
     )
 
     # Kill audio pídemelo loops in CODE — history already has the ask 20×
@@ -1297,65 +1073,39 @@ def generate_emma_reply(
         print("   🎙️ voice-beg loop in draft — forcing close line (no pídemelo)")
         reply = _vn_loop.forced_voice_close_line(want_spanish=want_spanish)
 
-    # Continuity: kill loops / repeated questions / same-beat replies
+    # Continuity: strip repeated trailing questions — no LLM rewrite
     if scheme_guard.continuity_loop(reply, turns):
-        print("   continuity: loop/repeat detected — rewriting")
-        fix_msgs = messages + [
-            {"role": "assistant", "content": reply},
-            {
-                "role": "user",
-                "content": (
-                    "REWRITE HARD: You repeated an opening, re-asked a question you "
-                    "already asked, or stayed on the same beat as your last message. "
-                    "Continue the LONG thread: reference something concrete from the "
-                    "CHAT HISTORY / THREAD BEAT, answer what he just said, and move "
-                    "ONE step forward. No repeated questions. No generic restart."
-                    if not want_spanish
-                    else (
-                        "REESCRIBE DURO: Repetiste un opening, repreguntaste algo que "
-                        "ya preguntaste, o te quedaste en el mismo beat que tu último "
-                        "mensaje. Continúa el hilo LARGO: menciona algo concreto del "
-                        "CHAT HISTORY / THREAD BEAT, responde a lo que acaba de decir, "
-                        "y avanza UN paso. Sin preguntas repetidas. Sin reiniciar."
-                    )
-                ),
-            },
-        ]
-        reply = _call(fix_msgs)
-        if scheme_guard.continuity_loop(reply, turns):
-            # Strip trailing question if she's looping questions
-            if scheme_guard.repeats_recent_question(reply, turns):
-                reply = re.sub(r"[¿?][^¿?]*[?¿]\s*$", "", reply).strip()
-                reply = re.sub(r"\?\s*$", "", reply).strip()
-            print("   continuity: still sticky — stripped loop question")
+        if scheme_guard.repeats_recent_question(reply, turns):
+            reply = re.sub(r"[¿?][^¿?]*[?¿]\s*$", "", reply).strip()
+            reply = re.sub(r"\?\s*$", "", reply).strip()
+        print("   continuity: loop/repeat — stripped sticky question (no LLM)")
 
-    # Spanish gender / conjugation slips (common after English rewrite cascades)
+    # Grammar: one polish only if creative rewrite budget remains
     if want_spanish and language.looks_broken_spanish(reply):
-        print("   grammar: broken Spanish gender/person — rewriting")
-        fix_msgs = messages + [
-            {"role": "assistant", "content": reply},
-            {
-                "role": "user",
-                "content": language.grammar_rewrite_instruction(),
-            },
-        ]
-        reply = _call(fix_msgs)
-        if language.looks_broken_spanish(reply):
-            # Second pass with the language rewrite (also Spanish-native)
-            fix_msgs = messages + [
+        fixed = rw.spend(
+            "grammar",
+            _call,
+            messages
+            + [
                 {"role": "assistant", "content": reply},
                 {
                     "role": "user",
-                    "content": language.rewrite_instruction(True),
+                    "content": language.grammar_rewrite_instruction(),
                 },
-            ]
-            reply = _call(fix_msgs)
-            print("   grammar: second Spanish polish")
+            ],
+        )
+        if fixed is not None:
+            reply = fixed
 
-    # Last safety: never return a mid-clause chop after rewrite cascade
+    # Last safety: never return a mid-clause chop after sanitize
     if looks_incomplete_text(reply):
         reply = _trim_dangling_clause(reply)
         print("   ✂ incomplete: final trim before send")
+
+    if rw.used:
+        print(f"   rewrite budget: used {rw.used}/{rw.max_extra} ({', '.join(rw.log)})")
+    else:
+        print(f"   rewrite budget: used 0/{rw.max_extra} (draft + deterministic only)")
 
     # Scheme meta + deterministic guard
     decision.pack_id = pack_id or ""
@@ -1432,6 +1182,66 @@ _WORD_MONEY = {
     "forty": 40,
     "fifty": 50,
 }
+
+
+class RewriteBudget:
+    """
+    Cap post-draft LLM rewrites (R2). Hard lies must not spend this —
+    use strip / deterministic fallback instead.
+    """
+
+    def __init__(self, max_extra: int = 1) -> None:
+        self.max_extra = max(0, int(max_extra))
+        self.used = 0
+        self.log: List[str] = []
+
+    def can_spend(self) -> bool:
+        return self.used < self.max_extra
+
+    def spend(self, label: str, call, msgs: List[Dict[str, str]]) -> Optional[str]:
+        if not self.can_spend():
+            print(f"   rewrite budget: skip LLM ({label}) — deterministic only")
+            return None
+        self.used += 1
+        self.log.append(label)
+        print(f"   rewrite budget: LLM #{self.used}/{self.max_extra} ({label})")
+        return call(msgs)
+
+
+def _fix_invented_wait_minutes(text: str, *, minutes_ago: int) -> str:
+    """Clamp invented 'N minutos' wait claims down to the real lock age."""
+    real = max(0, int(minutes_ago))
+
+    def _clamp_num(m: re.Match) -> str:
+        try:
+            claimed = int(m.group(1))
+        except (TypeError, ValueError):
+            return m.group(0)
+        if claimed <= real + 2:
+            return m.group(0)
+        return m.group(0).replace(str(claimed), str(real), 1)
+
+    cleaned = text or ""
+    cleaned = re.sub(r"(?i)(\d{1,3})\s*minut", _clamp_num, cleaned)
+    cleaned = re.sub(
+        r"(?i)(minut\w*\s*[,.…]+\s*)(\d{1,3})",
+        lambda m: (
+            m.group(0)
+            if int(m.group(2)) <= real + 2
+            else m.group(1) + str(real)
+        ),
+        cleaned,
+    )
+    cleaned = re.sub(
+        r"(?i)((?:waiting|for)\s+)(\d{1,3})(\s*min\b)",
+        lambda m: (
+            m.group(0)
+            if int(m.group(2)) <= real + 2
+            else m.group(1) + str(real) + m.group(3)
+        ),
+        cleaned,
+    )
+    return cleaned
 
 
 def _stated_prices(text: str) -> List[float]:
@@ -2017,10 +1827,12 @@ def _rewrite_if_too_long(
     call,
     messages: List[Dict[str, str]],
     want_spanish: bool,
+    budget: Optional[RewriteBudget] = None,
 ) -> str:
     """
     If the model wrote past the bubble budget, rewrite shorter — do NOT
     ship a reply that split_into_messages would mutilate with mid-word cuts.
+    Uses at most one LLM call when rewrite budget allows; else trim only.
     """
     if not _reply_needs_shorten(reply):
         return reply
@@ -2038,14 +1850,17 @@ def _rewrite_if_too_long(
             f"caracteres. Termina cada frase completa — nunca cortes a mitad de idea."
         )
     )
+    fix_msgs = messages + [
+        {"role": "assistant", "content": reply},
+        {"role": "user", "content": instr},
+    ]
     try:
-        shorter = call(
-            messages
-            + [
-                {"role": "assistant", "content": reply},
-                {"role": "user", "content": instr},
-            ]
-        )
+        if budget is not None:
+            shorter = budget.spend("length", call, fix_msgs)
+            if shorter is None:
+                return _trim_dangling_clause(reply)
+        else:
+            shorter = call(fix_msgs)
     except Exception as exc:
         print(f"   ⚠️ length-rewrite failed: {exc}")
         return _trim_dangling_clause(reply)
@@ -2069,8 +1884,9 @@ def _ensure_complete_reply(
     call,
     messages: List[Dict[str, str]],
     want_spanish: bool,
+    budget: Optional[RewriteBudget] = None,
 ) -> str:
-    """One pass to finish a mid-clause reply without growing into an essay."""
+    """Finish a mid-clause reply; LLM only if rewrite budget remains."""
     text = (reply or "").strip()
     if not text or not looks_incomplete_text(text):
         return text
@@ -2090,14 +1906,17 @@ def _ensure_complete_reply(
             f"Mismo significado/tono. No reinicies. No añadas un pitch nuevo."
         )
     )
+    fix_msgs = messages + [
+        {"role": "assistant", "content": text},
+        {"role": "user", "content": instr},
+    ]
     try:
-        fixed = call(
-            messages
-            + [
-                {"role": "assistant", "content": text},
-                {"role": "user", "content": instr},
-            ]
-        )
+        if budget is not None:
+            fixed = budget.spend("complete", call, fix_msgs)
+            if fixed is None:
+                return trimmed
+        else:
+            fixed = call(fix_msgs)
     except Exception as exc:
         print(f"   ⚠️ complete-rewrite failed: {exc}")
         return trimmed
