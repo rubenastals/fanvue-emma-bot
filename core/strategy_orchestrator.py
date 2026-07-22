@@ -1,3 +1,10 @@
+"""
+QUARANTINED — not the live SIMPLE brain (audit R3).
+
+Celery / StrategyOrchestrator legacy pipeline. Production chat is
+scripts/poll_inbox.py → reply_engine.generate_emma_reply.
+Do NOT patch this orchestrator to fix Railway/poller chat quality.
+"""
 import json
 import random
 from datetime import datetime

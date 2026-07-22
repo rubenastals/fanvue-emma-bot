@@ -144,12 +144,22 @@ Rule meanings:
 - ENGAGEMENT: fan cooling down and the bot doesn't adapt
 
 YOUR TASK: find the ROOT CAUSE in the bot's steering code and make the SMALLEST effective fix.
+
+Live brain (SIMPLE_PROMPT=1): personas/emma.md + TURN facts via reply_engine.
+Do NOT edit quarantined dead brains (they are not injected in production):
+- core/system_prompt.py, core/reply_v2.py, core/emma_prompt_v2.py
+- STRATEGY_BLOCK in core/strategy_prompt.py (live uses truth_state only)
+- core/manipulation.py technique banners, core/phase_analyst.py
+- packs/*.md creative text (gates/logs only under SIMPLE)
+- core/lorebook.py (not injected when LEAN_CREATIVE=1)
+
 Likely levers (in priority order):
-- core/turn_policy.py       (author_note_for — per-turn behavioral note, decide_turn thresholds)
-- core/language.py          (language detection / lock / rewrite instruction)
-- core/reply_engine.py      (_sanitize_reply filters, prompt assembly order)
-- core/system_prompt.py     (persona rules — edit surgically, do NOT rewrite wholesale)
-- core/lorebook.py          (keyword-triggered guidance)
+- personas/emma.md          (SIMPLE CORE persona — replace a rule; do not append forever)
+- core/reply_engine.py      (TURN assemble, sanitize, scheme belts)
+- core/scheme_guard.py      (deterministic hard-lie strip/fallback)
+- core/intent_router.py     / scripts/poll_inbox.py  (hard gates, commitments, attach)
+- core/language.py          (language detection / rewrite instruction)
+- core/turn_policy.py       (author_note_for — per-turn behavioral note)
 - core/reengagement.py      (nudge/goodmorning triggers)
 
 HARD CONSTRAINTS:

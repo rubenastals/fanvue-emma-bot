@@ -1,12 +1,8 @@
 """
-Phase 0 — DeepSeek READS the conversation + client card BEFORE creative reply.
+QUARANTINED — not the live SIMPLE brain (audit R3).
 
-Returns structured JSON:
-  - which sales phase / pack we are in
-  - what to remember about him (name, likes, avoid)
-  - short situation summary
-
-Hard API gates (unpaid PPV, delivery truth, buy/close) still win over the analyst.
+Skipped entirely when SIMPLE_PROMPT=1. Even on legacy path, no-ops unless
+PHASE_ANALYST=1 (default off). Do NOT enable or expand this for production.
 """
 from __future__ import annotations
 

@@ -1,14 +1,16 @@
 """
-Emma reply engine — prompt + history + SillyTavern-style injections.
+Emma reply engine — LIVE creative assemble + sanitize (SIMPLE canonical).
 
-Prompt assembly (order matters — models obey the START and END most):
-  1. system: EMMA_SYSTEM_PROMPT (persona)  ← unchanged base
-  2. system: fan memory
-  3. system: triggered lorebook
-  4. chat history + current message
-  5. author's note on last user turn (NOW mode-aware via turn_policy)
+Production defaults (SIMPLE_PROMPT=1, LEAN_CREATIVE=1):
+  1. CORE — personas/emma.md via prompt_core.get_active_persona()
+  2. CLIENT CARD — fan_memory
+  3. HISTORY — recent turns
+  4. TURN — code facts only (truth_state, LOCK/SELL/DELIVERY/AUDIO, …)
+  5. AUTHOR — short steer line
 
-Freedom stays high; turn_policy only softens/hardens sell pressure.
+Dead brains (do not patch for live fixes — see core/quarantine.py):
+  EMMA_SYSTEM_PROMPT (LEAN=0 only), reply_v2, STRATEGY_BLOCK essay,
+  manipulation banners / packs inject (SIMPLE=0 only), lorebook (LEAN=0).
 """
 from __future__ import annotations
 

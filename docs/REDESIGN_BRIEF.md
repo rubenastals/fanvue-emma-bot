@@ -104,4 +104,6 @@ Honest gap: a few seconds while the new container starts. Pending DMs process on
 
 ## Lorebook hot-reload (Soft without kill)
 
-Edit [`core/lorebook.json`](../core/lorebook.json). Poller reloads from disk about every **5 minutes** (`ensure_fresh`). No redesign PR required for keyword style ammo.
+Edit [`core/lorebook.json`](../core/lorebook.json). Poller reloads from disk about every **5 minutes** (`ensure_fresh`).
+
+**Note (SIMPLE + LEAN live):** lorebook is **not** injected into the creative prompt when `LEAN_CREATIVE=1` (production default). Hot-reload only matters if you run `LEAN_CREATIVE=0`. For live chat fixes prefer `personas/emma.md` / code gates — see `core/quarantine.py`.

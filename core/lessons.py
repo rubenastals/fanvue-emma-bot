@@ -6,7 +6,8 @@ Two levels:
   Behavioral rules must NOT live here — Emma's conduct is shared across fans.
 - global lessons: pending until approved (or via improve_once --apply-soft).
 
-Both are injected into the reply prompt as compact system blocks.
+Live inject is OFF by default (INJECT_LESSONS=0). Soft stays pending for
+human review — do not re-enable silent injection into the SIMPLE prompt.
 """
 from __future__ import annotations
 

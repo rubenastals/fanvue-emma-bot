@@ -52,7 +52,6 @@ from core.reply_engine import (
     split_into_messages,
     tip_amount_usd,
 )
-from core.reply_v2 import generate_reply_v2
 from core.intent_router import route as route_intent
 from core.turn_policy import decide_turn  # noqa: F401 — kept for scripts/tests
 from db import account_id, processed_store, use_postgres, use_redis
@@ -937,6 +936,9 @@ def _handle_fan_chat_body(
             # Keep "Emma is typing…" alive during the (multi-second) DeepSeek call.
             with _typing_keepalive(fv, fan_uuid):
                 if use_v2:
+                    # Lazy import — V2 is quarantined; unused under SIMPLE_PROMPT=1.
+                    from core.reply_v2 import generate_reply_v2
+
                     reply, decision, offer = generate_reply_v2(
                         text,
                         history_turns=turns,

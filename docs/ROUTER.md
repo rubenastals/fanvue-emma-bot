@@ -163,6 +163,20 @@ Emma sees a loud **LOCK STATUS** every turn (active + ~minutes left, or none). P
 | `core/reply_engine.py` | Assemble + rewrite belts |
 | `core/scheme_guard.py` | Post-reply hard checks + safe fallbacks |
 | `scripts/poll_inbox.py` | Routes each fan turn |
+| `core/quarantine.py` | Dead-brain registry (audit R3) |
+
+## DO NOT EDIT for live SIMPLE fixes (quarantined)
+
+| Module | Why dead under production defaults |
+|--------|-------------------------------------|
+| `core/reply_v2.py` / `core/emma_prompt_v2.py` | Ignored when `SIMPLE_PROMPT=1` |
+| `core/system_prompt.py` | Fat essay; only if `LEAN_CREATIVE=0` |
+| `STRATEGY_BLOCK` in `core/strategy_prompt.py` | Offline; live uses `truth_state()` |
+| `core/manipulation.py` | Technique banners only if `SIMPLE=0` |
+| `core/phase_analyst.py` | Off unless `PHASE_ANALYST` + non-SIMPLE |
+| `core/strategy_orchestrator.py` | Celery legacy — not `poll_inbox` |
+
+Emergency flags keep these importable; see banners at top of each file.
 
 ## Logs
 

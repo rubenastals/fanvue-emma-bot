@@ -88,9 +88,8 @@ class Config:
     HISTORY_MAX_MESSAGES = int(os.getenv("HISTORY_MAX_MESSAGES", "48"))
     HISTORY_MIN_MESSAGES = int(os.getenv("HISTORY_MIN_MESSAGES", "16"))
 
-    # V2 brain: one English psychology prompt + recent history (default ON).
-    # Old pack/analyst/manipulation path only if REPLY_V2=0.
-    # Catalog-only sell rails live in reply_engine; V2 off by default.
+    # Parallel V2 brain (default OFF). Ignored entirely when SIMPLE_PROMPT=1.
+    # Emergency only: REPLY_V2=1 and SIMPLE_PROMPT=0 → core/reply_v2.py
     REPLY_V2 = os.getenv("REPLY_V2", "0") == "1"
     # Shorter history = less imitation of burned bland turns from old brain
     V2_MAX_HISTORY_TURNS = int(os.getenv("V2_MAX_HISTORY_TURNS", "24"))

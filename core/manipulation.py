@@ -1,8 +1,11 @@
 """
-Manipulation technique picker — the loudest signal in the live prompt.
+QUARANTINED — not the live SIMPLE brain (audit R3).
 
-Picks ONE technique for this turn and renders a high-priority banner so
-DeepSeek cannot bury it under fluff.
+Technique banners inject only when SIMPLE_PROMPT=0 (legacy).
+Under SIMPLE=1, tactics live in personas/emma.md; this module is unused
+for creative text (router may still pick pack_id for gates/logs).
+
+Do NOT edit techniques here expecting production chat to change.
 """
 from __future__ import annotations
 

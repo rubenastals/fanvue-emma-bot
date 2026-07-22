@@ -1,9 +1,8 @@
 """
 Test the chat flow WITHOUT webhooks, Postgres, Redis or Celery.
 
-Uses:
-  - DeepSeek  → generate Emma's reply (full system prompt)
-  - Fanvue API → optionally send the reply (--send)
+Uses the LIVE SIMPLE brain (personas/emma.md) — not the quarantined fat
+system_prompt.py essay.
 
 Usage:
   # 1) Generate reply only (prints to terminal):
@@ -16,7 +15,6 @@ Get a fan UUID: open a chat on Fanvue → the fan's UUID comes from the API
 or from a test account you've messaged before.
 """
 import argparse
-import importlib.util
 import os
 import sys
 
@@ -30,14 +28,7 @@ sys.path.insert(0, _ROOT)
 
 from openai import OpenAI
 from config import config
-
-
-def _load_system_prompt():
-    path = os.path.join(_ROOT, "core", "system_prompt.py")
-    spec = importlib.util.spec_from_file_location("_sp", path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.EMMA_SYSTEM_PROMPT
+from core.prompt_core import get_active_persona
 
 
 def generate_reply(fan_message: str) -> str:
@@ -52,7 +43,7 @@ Reply in character. Short (1-3 lines). Follow all tone and psychology rules.
     resp = client.chat.completions.create(
         model=config.DEEPSEEK_MODEL,
         messages=[
-            {"role": "system", "content": _load_system_prompt()},
+            {"role": "system", "content": get_active_persona()},
             {"role": "user", "content": prompt},
         ],
         temperature=config.TEMPERATURE,

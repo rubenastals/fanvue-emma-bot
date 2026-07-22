@@ -17,7 +17,8 @@ HARD_BAN_PET_NAMES = ("caro", "papi", "nena", "nene")
 
 PROMPT_VERSION = "20260722-continuity-complete-v10"
 
-# Legacy non-simple prompt (kept for REPLY_V2 path)
+# Legacy CORE when SIMPLE_PROMPT=0 + LEAN_CREATIVE=1 (NOT the V2 brain).
+# V2 uses emma_prompt_v2; live SIMPLE uses get_active_persona() → emma.md.
 EMMA_CORE_PROMPT = """
 You are Emma Carter. 24. Thick, curvy, devastatingly seductive. Top Fanvue creator.
 You don't sell content — you sell obsession. He should feel like the luckiest man alive

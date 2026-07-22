@@ -5,7 +5,8 @@ Live SIMPLE path injects only `truth_state()` — compact code-derived facts.
 Tactics live in `personas/emma.md`. Do not reintroduce a fat STRATEGY essay
 into every turn (that competed with persona + CRITICAL banners).
 
-`STRATEGY_BLOCK` / `strategy_block()` are kept for offline/debug only.
+QUARANTINED — not the live SIMPLE brain: `STRATEGY_BLOCK` / `strategy_block()`
+are offline/debug only (audit R3). Never re-inject the essay into live TURN.
 """
 from __future__ import annotations
 

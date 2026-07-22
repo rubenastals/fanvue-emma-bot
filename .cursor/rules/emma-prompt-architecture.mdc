@@ -1,7 +1,7 @@
 ---
 description: Emma live prompt architecture — SIMPLE canonical; never inflate Soft into chat
-globs: fanvue-emma-bot/**/*
-alwaysApply: false
+globs: **/*.{py,md,mdc}
+alwaysApply: true
 ---
 
 # Emma prompt architecture (strict)
@@ -29,6 +29,16 @@ AUTO_APPROVE_SOFT_LESSONS=0
 5. **AUTHOR** — one short steer line.
 
 Hard money/media truth stays in **code** (`intent_router`, `offer_selector`, `poll_inbox`, `scheme_guard`). Creativity is DeepSeek; lies are caught by gates + guards.
+
+## Quarantined — do NOT patch for live fixes
+
+Registry: `core/quarantine.py`. Banner marker: `QUARANTINED — not the live SIMPLE brain`.
+
+- `core/reply_v2.py` / `core/emma_prompt_v2.py` (ignored when SIMPLE=1)
+- `core/system_prompt.py` fat essay (only LEAN=0)
+- `STRATEGY_BLOCK` in `core/strategy_prompt.py` (live uses `truth_state()` only)
+- `core/manipulation.py` / `core/phase_analyst.py` (legacy SIMPLE=0)
+- `core/strategy_orchestrator.py` (Celery; not poll_inbox)
 
 ## Packs under SIMPLE
 

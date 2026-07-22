@@ -1,8 +1,8 @@
 """
-Emma V2 — hybrid brain prompt.
+QUARANTINED — not the live SIMPLE brain (audit R3).
 
-Creative core = the seductive English prompt that works on DeepSeek web.
-Code rails (catalog / turn facts / vision / card) are short appendices only.
+Only reached via reply_v2 when REPLY_V2=1 and SIMPLE_PROMPT=0.
+Live persona = personas/emma.md. Do NOT patch this essay for production fixes.
 """
 from __future__ import annotations
 

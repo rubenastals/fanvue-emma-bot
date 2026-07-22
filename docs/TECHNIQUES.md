@@ -36,4 +36,10 @@ Cada **fase** es un pack; el router elige uno por turno según el input.
 En `phase_pull`: **una sola técnica por mensaje**.
 En `price_objection`: **un solo step por turno** (1→2→3→4 across turns).
 
-Añadir casuística = editar el `.md` de la fase o subir prioridad en `packs/_index.json`.
+**SIMPLE live (`SIMPLE_PROMPT=1`):** añadir casuística =
+código (`intent_router` / `poll_inbox` / `scheme_guard`) o una regla en
+`personas/emma.md`. Editar `packs/*.md` **no** cambia el texto creativo
+(solo gates/logs).
+
+**Legacy (`SIMPLE_PROMPT=0`):** editar el `.md` de la fase o subir prioridad
+en `packs/_index.json`.
