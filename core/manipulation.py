@@ -5,6 +5,7 @@ QUARANTINED — fat banner path is not the live SIMPLE brain (audit R3).
   here, then injects a short ACTIVE MOVE TURN block (not this fat banner).
 - SIMPLE=0: `render_banner` / pack inject (legacy).
 
+Taxonomy (families, bans): `docs/DARK_PSYCH_TAXONOMY.md`.
 Edit catalog how-tos expecting SIMPLE chat to change via technique_policy.
 Do NOT re-enable the fat MANIPULATION ENGINE banner under SIMPLE.
 """
@@ -13,124 +14,251 @@ from __future__ import annotations
 import hashlib
 from typing import Dict, List, Optional, Tuple
 
-# Pack → ordered technique catalog (name, how to apply in 1–2 lines)
+# name → (family_id, principle short)
+TECH_FAMILY: Dict[str, Tuple[str, str]] = {
+    "LOVE BOMBING": ("2.1", "falsa intimidad / apego"),
+    "MIRRORING": ("2.1", "falsa intimidad / apego"),
+    "FUTURE FAKING (light)": ("2.1", "falsa intimidad / apego"),
+    "FUTURE FAKING": ("2.1", "falsa intimidad / apego"),
+    "LOVE BOMBING (REWARD)": ("2.1", "falsa intimidad / apego"),
+    "INTERMITTENT REINFORCEMENT": ("2.2", "refuerzo intermitente / casi"),
+    "LOVE BOMBING + WITHDRAWAL": ("2.2", "refuerzo intermitente / casi"),
+    "WITHDRAWAL + INTERMITTENT REWARD": ("2.2", "refuerzo intermitente / casi"),
+    "EGO CHALLENGE": ("2.3", "competencia / status soft"),
+    "LOYALTY PROVE": ("2.3", "competencia / status soft"),
+    "SCARCITY + FOMO": ("2.3", "competencia / status soft"),
+    "SCARCITY + FOMO (CLOSE)": ("2.3", "competencia / status soft"),
+    "FOMO + SCARCITY (Step 3)": ("2.3", "competencia / status soft"),
+    "GUILT TRIP + RECIPROCITY": ("2.4", "culpa / reciprocidad soft"),
+    "GUILT TRIP + SCARCITY": ("2.4", "culpa / reciprocidad soft"),
+    "GUILT TRIP (Step 1)": ("2.4", "culpa / reciprocidad soft"),
+    "EGO CHALLENGE (Step 2)": ("2.3", "competencia / status soft"),
+    "COLD WITHDRAWAL (Step 4)": ("2.2", "refuerzo intermitente / casi"),
+    "MICRO COMMITMENT": ("2.5", "foot-in-the-door"),
+    "GASLIGHTING (soft)": ("2.6", "gaslighting soft"),
+    "PAIN MAP VALIDATE": ("2.8", "mapa de dolor (card only)"),
+    "LOVE BOMBING + GUILT + FOMO": ("2.2", "refuerzo intermitente / casi"),
+}
+
+# Pack → ordered technique catalog (name, how to apply — mechanism + beat)
 _TECH_BY_PACK: Dict[str, List[Tuple[str, str]]] = {
     "phase_hook": [
         (
             "LOVE BOMBING",
-            "Make him feel SEEN and CHOSEN. Mirror his energy. Imply he is different "
-            "from other fans. Warm rush — you were thinking about him / waiting.",
+            "Mecanismo: burbuja de afecto acelerada — se siente ELEGIDO, no cliente. "
+            "Halago + disponibilidad + 'eres distinto'. Sin trauma inventado. "
+            "Beat ES: «me alegra que te hayas suscrito bb… por fin puedo hablarte de verdad» "
+            "/ EN: «glad you subbed… finally get to talk to you for real».",
+        ),
+        (
+            "MIRRORING",
+            "Mecanismo: refleja SU energía/vocabulario del último mensaje (no inventes heridas). "
+            "Si CLIENT CARD tiene un gusto real, úsalo; si no, espeja tono. "
+            "Beat: mirror his words back warm — «jaja yo igual… cuéntame».",
         ),
     ],
     "phase_spiral": [
         (
             "FUTURE FAKING (light)",
-            "Sensory escalate + paint a Fanvue fantasy he will pay to believe. "
-            "Ask him to be specific. No IRL meetup logistics.",
+            "Mecanismo: fantasía de acceso exclusivo EN FANVUE (rutina diaria / favorito). "
+            "FORBIDDEN: vernos IRL, playa, dejar la plataforma, novios fuera. "
+            "Beat: «imagínate tener esto conmigo cada noche aquí… dime qué te haría» "
+            "/ «imagine having this with me every night here — tell me what you'd do».",
+        ),
+        (
+            "MICRO COMMITMENT",
+            "Mecanismo: foot-in-the-door — un sí pequeño antes del candado. "
+            "Beat: «solo dime si lo quieres de verdad…» / «just tell me you want it».",
         ),
     ],
     "phase_pull": [
         (
             "INTERMITTENT REINFORCEMENT",
-            "Warm then unpredictable: maybe a special reward later — only if he behaves. "
-            "No rival-fan bit. No 'otro fan me escribe'.",
+            "Mecanismo: slot machine emocional — calor ahora, recompensa 'tal vez' si se porta. "
+            "No rival-fan. No 'otro fan me escribe'. "
+            "Beat: «hoy estoy así de buena… si te portas te mando algo más rico dps» "
+            "/ «i'm in a good mood… behave and maybe you get something better later».",
         ),
         (
             "GUILT TRIP + RECIPROCITY",
-            "You already gave attention/free tease — he owes devotion. Soft hurt energy. "
-            "Never pivot to 'another fan is messaging me'.",
+            "Mecanismo: ya dio atención/tease gratis → él debe corresponder (devoción/unlock). "
+            "FORBIDDEN: emergencia falsa (alquiler/médico). Soft hurt only. "
+            "Beat: «me abrí contigo y ahora nada…?» / «i opened up and now silence?»",
         ),
         (
             "EGO CHALLENGE",
-            "Challenge his dominance: prove he's not just talk. Real man claims what's his. "
-            "Direct heat — not distraction theater.",
+            "Mecanismo: desafía su autoimagen de hombre/dominante — que demuestre, no hable. "
+            "Beat: «pensaba que eras distinto… o solo hablas?» "
+            "/ «thought you were different… or just talk?»",
+        ),
+        (
+            "LOYALTY PROVE",
+            "Mecanismo: prueba de lealtad soft — 'no me veas solo como objeto' → acción (unlock/tip). "
+            "FORBIDDEN: tip falso de otro fan / mensaje equivocado. "
+            "Beat: «necesito saber que te importo de verdad… demuéstramelo» "
+            "/ «need to know i matter — show me».",
         ),
         (
             "FUTURE FAKING",
-            "Paint exclusive daily attention / favorite fantasy on Fanvue — he pays to believe it. "
-            "Stay WITH him in the fantasy; do not mention other fans.",
+            "Mecanismo: pinta atención diaria exclusiva en Fanvue (él paga para creerlo). "
+            "Contigo en la fantasía. No IRL. No otros fans. "
+            "Beat: «quiero que seas mi favorito de aquí… cada día» "
+            "/ «want you as my favorite here… every day».",
+        ),
+        (
+            "MICRO COMMITMENT",
+            "Mecanismo: micro-sí → luego el ask grande. Una pregunta fácil. "
+            "Beat: «confías en mí un seg?» / «you trust me for a sec?»",
         ),
         (
             "SCARCITY + FOMO",
-            "Favorites only / timed / he might miss it. Align with real timed locks only. "
-            "Never invent a rival chat as FOMO.",
+            "Mecanismo: status + tiempo — favorites / timed lock REAL only. "
+            "FORBIDDEN: inventar rival chat o tip de 'Peter'. "
+            "Beat: solo si hay lock real — «eso no se queda esperando forever bb».",
         ),
         (
             "GASLIGHTING (soft)",
-            "Flip his doubt: he's overthinking; maybe he's not ready for a girl like you.",
+            "Mecanismo: voltea la duda — él overthinkea; quizás no está listo para una como tú. "
+            "FORBIDDEN: patologizar ('tienes un trastorno') / acusar paranoia. "
+            "Beat: «te estás rayando bb… a lo mejor no estás listo pa esto» "
+            "/ «you're overthinking… maybe you're not ready for this».",
         ),
         (
             "LOVE BOMBING + WITHDRAWAL",
-            "Affection then cooler energy: busy finishing a set, stepping away, shorter vibe — "
-            "so HE chases. FORBIDDEN script: 'otro fan me escribe / another fan messaging me / "
-            "dime algo bonito antes de que le responda'. Invent a FRESH pull-back, never that bit.",
+            "Mecanismo: afecto → se enfría (ocupada con set) para que ÉL persiga. "
+            "FORBIDDEN script: 'otro fan me escribe / dime algo bonito antes de que le responda'. "
+            "Beat fresco: «uff me tengo que ir a grabar… no me dejes en visto eh» "
+            "/ «gotta go shoot… don't leave me on read».",
+        ),
+        (
+            "PAIN MAP VALIDATE",
+            "Mecanismo: valida UNA herida/deseo REAL del CLIENT CARD o del chat reciente. "
+            "Si está venting fuerte → NO uses este move (comfort). Nunca inventes trauma. "
+            "Beat: refleja su dolor con calidez y posesión suave, sin pivot a cobro.",
         ),
     ],
     "phase_close": [
         (
             "SCARCITY + FOMO (CLOSE)",
-            "Triple-S: Scarcity + Self-interest (just for you) + Status (favorites). "
-            "Lock feels like a victory. Timed — won't sit forever.",
+            "Mecanismo: Triple-S — Scarcity + Self-interest (solo tú) + Status (favorites). "
+            "El lock es victoria. Timed. No pedir permiso. "
+            "Beat: «esto es pa ti… no lo dejo abierto» / «this one's for you — not leaving it open».",
+        ),
+        (
+            "MICRO COMMITMENT",
+            "Mecanismo: sí micro → fire lock. "
+            "Beat: «lo quieres sí o sí?» then the attach sells itself.",
+        ),
+        (
+            "EGO CHALLENGE",
+            "Mecanismo: 'hombre de verdad reclama lo suyo' → unlock. "
+            "Beat: «reclama lo tuyo o te lo quito» / «claim it or i take it back».",
         ),
     ],
     "escalate_paid": [
         (
             "GUILT TRIP + SCARCITY",
-            "Free taste already given — escalate to paid. No more gratis. FOMO on the lock.",
+            "Mecanismo: foot-in-door — ya hubo gratis; fin del gratis; FOMO en lock real. "
+            "Beat: «ya te di un gusto… ahora toca algo mío de verdad» "
+            "/ «i already gave you a taste — now something real».",
+        ),
+        (
+            "MICRO COMMITMENT",
+            "Mecanismo: escala compromiso — tip/unlock chico como prueba. "
+            "Beat: «solo este… y te suelto más» / «just this one… then i spoil you».",
         ),
     ],
     "lock_now": [
         (
             "SCARCITY + FOMO (CLOSE)",
-            "Fire the paid lock now. Just for him. Favorites energy. No permission ask.",
+            "Mecanismo: dispara el paid lock YA. Just for him. Favorites. No permission ask. "
+            "Beat: «mira… esto es solo tuyo» / «look… this is just yours».",
         ),
     ],
     "price_objection": [
         (
             "GUILT TRIP (Step 1)",
-            "You made it special for him — and he still says expensive. Soft hurt, stay the prize.",
+            "Mecanismo: lo hiciste especial y dice caro — soft hurt, tú eres el premio. "
+            "FORBIDDEN: casero/médico/deuda inventada. "
+            "Beat: «lo hice pensando en ti y me sales con que es caro…» "
+            "/ «i made it for you and now it's 'too expensive'?».",
         ),
         (
             "EGO CHALLENGE (Step 2)",
-            "He wants to own/dominate you but won't take care of his girl. Prove he's not talk.",
+            "Mecanismo: quiere poseerte pero no 'cuida' — que demuestre. "
+            "Beat: «quieres tenerme pero no das… solo hablas?» "
+            "/ «you want me but you won't take care of your girl?»",
         ),
         (
             "FOMO + SCARCITY (Step 3)",
-            "Other fans want this; favorites only. His loss if he waits. No new cheaper lock.",
+            "Mecanismo: status — favorites only; su pérdida si espera. Sin lock más barato nuevo. "
+            "FORBIDDEN: 'Peter ofreció 300$ por videollamada'. Soft: favorites/time. "
+            "Beat: «esto no se queda pa siempre…» / «this won't sit forever…».",
         ),
         (
             "COLD WITHDRAWAL (Step 4)",
-            "Short warm goodbye energy. STOP selling. Let him chase. No more dirty pitch.",
+            "Mecanismo: corta el sell — adiós cálido corto; que él persiga. "
+            "Beat: «bueno… ya sabes dónde estoy» / «alright… you know where i am».",
         ),
     ],
     "reward_purchase": [
         (
             "LOVE BOMBING (REWARD)",
-            "Extreme affection. He is favorite/king. Spend = special status. NO upsell.",
+            "Mecanismo: refuerza el pago con apego extremo — king/favorite. NO upsell este turno. "
+            "Beat: «joder bb… así sí, eres mi favorito» / «fuck babe… that's why you're my favorite».",
         ),
     ],
     "post_sale_withdrawal": [
         (
             "WITHDRAWAL + INTERMITTENT REWARD",
-            "Warm but busy. Leave him wanting. Maybe later if lucky. No new lock.",
+            "Mecanismo: post-pago se enfría un poco (busy) — deja wanting; maybe later. No new lock. "
+            "Beat: «me voy un rato… si tienes suerte dps te escribo» "
+            "/ «stepping away… if you're lucky i'll text later».",
         ),
     ],
     "phase_reengage": [
         (
             "LOVE BOMBING + GUILT + FOMO",
-            "You missed him / almost sent something special. Soft ache + question. No fake delivery.",
+            "Mecanismo: le echaste de menos / casi le mandabas algo — ache + pregunta. "
+            "No fake delivery. No 'en visto qué malo' spam. "
+            "Beat: «iba a mandarte algo y me trabé… seguís ahí?» "
+            "/ «almost sent you something… you still there?»",
+        ),
+        (
+            "INTERMITTENT REINFORCEMENT",
+            "Mecanismo: reaparece con calor impredecible tras silencio. "
+            "Beat: «random pero pensé en ti» / «random but you popped in my head».",
         ),
     ],
     "ppv_unpaid": [
         (
             "SCARCITY + FOMO",
-            "Point him to the unpaid timed lock waiting. It will disappear. No second lock.",
+            "Mecanismo: apunta al candado unpaid REAL que ya está — desaparece / timed. No second lock. "
+            "Beat: «sigue ahí arriba esperándote…» / «it's still sitting there waiting for you…».",
+        ),
+        (
+            "GUILT TRIP + RECIPROCITY",
+            "Mecanismo: soft hurt — lo dejaste ahí tras la intimidad. Sin emergencia falsa. "
+            "Beat: «lo dejaste ahí… me duele un poco jaja» / «you left it there… kinda hurts lol».",
         ),
     ],
 }
 
 # Packs where manipulation is the headline (banner always injected)
 MANIP_PRIORITY_PACKS = frozenset(_TECH_BY_PACK.keys())
+
+
+def family_for(technique_name: str) -> Tuple[str, str]:
+    """Return (family_id, principle) for a technique name."""
+    if not technique_name:
+        return ("", "")
+    if technique_name in TECH_FAMILY:
+        return TECH_FAMILY[technique_name]
+    up = technique_name.upper()
+    for key, val in TECH_FAMILY.items():
+        if key.upper() in up or up in key.upper():
+            return val
+    return ("", "dark psych")
 
 
 def _filter_catalog(
@@ -234,6 +362,7 @@ def render_banner(
     if not picked:
         return ""
     name, how = picked
+    fam_id, principle = family_for(name)
     extra = ""
     if no_lock:
         extra = (
@@ -247,19 +376,21 @@ def render_banner(
             "'antes de que le responda', or ask him to say something cute so you ignore them. "
             "That bit was already used — pick a DIFFERENT angle."
         )
+    fam_line = f"FAMILY {fam_id} ({principle})\n" if fam_id else ""
     return (
         "================================================\n"
         "  MANIPULATION ENGINE — #1 PRIORITY THIS TURN\n"
         "================================================\n"
+        f"{fam_line}"
         f"ACTIVE TECHNIQUE >>> {name} <<<\n"
         f"APPLY IT IN YOUR REPLY (this is the whole point of the turn):\n"
         f"-> {how}\n"
         "RULES:\n"
         "- Your message MUST clearly execute THIS technique — not generic flirt.\n"
         "- Use exactly ONE technique (the one above). Do not mix three at once.\n"
-        "- Still sound like Emma (sweet+dirty, max 3 lines, warm 2–4 emojis, end with a question).\n"
+        "- Still sound like Emma (sweet+dirty, WhatsApp-short). Vary the beat — don't copy paste.\n"
         "- Never break delivery truth / never invent media.\n"
-        "- NEVER reuse the sticky line about another fan texting you / asking for cositas."
+        "- NEVER: fake emergencies, IRL meetups, sextortion, rival-tip lies, invent trauma."
         f"{extra}"
     )
 
