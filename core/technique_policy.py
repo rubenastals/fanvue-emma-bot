@@ -5,6 +5,9 @@ Strategy = CODE picks the move from fan state + pack + ACTION.
 Creativity = DeepSeek writes WhatsApp text for that move.
 Compliance = soft signal check after draft (log / SCHEME), not another essay.
 
+Under SIMPLE_PROMPT=1: uses the slim 6-move playbook
+(`core/technique_playbook.py`) with a clear WHEN tree — not 17 scored techs.
+
 How-tos / instructions: English only.
 """
 from __future__ import annotations
@@ -13,7 +16,9 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from config import config
 from core import manipulation
+from core import technique_playbook as playbook
 
 # First N messages: romance / heat / ask-his-photo only — dark cards later.
 EARLY_ROMANCE_MAX_MSGS = 8
@@ -545,7 +550,9 @@ def choose_move(
 ) -> Optional[ActiveMove]:
     """
     Pick ONE move strategically from fan state + pack.
-    price_objection keeps the 4-step ladder (with optional emergency spice).
+
+    SIMPLE_PROMPT=1 → slim playbook WHEN tree (6 moves).
+    Legacy SIMPLE=0 → old scored catalog (kept for tests / rollback).
     """
     eff = effective_pack_for_move(
         pack_id or "",
@@ -557,6 +564,36 @@ def choose_move(
     )
     if not eff:
         return None
+
+    # --- Slim playbook (live default) ---------------------------------
+    if getattr(config, "SIMPLE_PROMPT", True):
+        if eff == "ask_free_first":
+            eff = "phase_hook"
+        sig = _fan_signals(mem, fan_message)
+        if mem is not None and int(mem.get("messages") or 0):
+            sig["msgs"] = int(mem.get("messages") or msgs or 0)
+        elif msgs:
+            sig["msgs"] = msgs
+        # Sync reject ladder into signals
+        if reject_count:
+            sig["reject_step"] = max(int(sig.get("reject_step") or 0), int(reject_count))
+        recent = list(exclude_names or [])
+        move, why = playbook.pick_playbook_move(
+            pack_id=eff,
+            sig=sig,
+            unpaid=unpaid or eff == "ppv_unpaid",
+            recent_techs=recent,
+        )
+        print(f"   move: playbook [{move.name}] why={why} (pack={eff})")
+        return ActiveMove(
+            name=move.name,
+            how=f"{move.how} Beat: {move.example_beat}",
+            why=why,
+            family_id=move.family_id,
+            principle=move.principle,
+        )
+
+    # --- Legacy fat catalog path --------------------------------------
     if eff not in manipulation._TECH_BY_PACK:
         if eff == "ask_free_first":
             eff = "phase_hook"
@@ -694,7 +731,12 @@ def choose_move(
 
 
 def turn_block(move: ActiveMove) -> str:
-    """Compact TURN fact — not the legacy CRITICAL essay banner."""
+    """Compact TURN fact — playbook-aware when name is one of the 6."""
+    pm = playbook.PLAYBOOK.get(move.name) or playbook._LEGACY_TO_PLAY.get(
+        (move.name or "").upper()
+    )
+    if pm is not None:
+        return playbook.turn_block(pm, why=move.why or "")
     fam_line = (
         f"- Family: {move.family_id} {move.principle}\n"
         if move.family_id
@@ -710,8 +752,7 @@ def turn_block(move: ActiveMove) -> str:
         "- Your bubble MUST execute this angle. Never name the technique.\n"
         "- Vary the example beat — do not copy it verbatim.\n"
         "- Do NOT fall back to generic cute chat or a random soft check-in.\n"
-        "- HARD BAN: IRL meetups, sextortion/leaks, invent trauma not in CLIENT CARD.\n"
-        "- Rival jealousy + fake emergency moves ARE allowed when this move says so."
+        "- HARD BAN: IRL meetups, sextortion/leaks, invent trauma not in CLIENT CARD."
     )
 
 
@@ -719,7 +760,8 @@ def author_steer(name: str) -> str:
     if not name:
         return ""
     return (
-        f" Execute ACTIVE MOVE [{name}] — that angle is the point of this bubble."
+        f" Execute ACTIVE MOVE [{name}] — that angle is the point of this bubble. "
+        f"Match its energy (see TURN example beat)."
     )
 
 
@@ -727,9 +769,10 @@ def reply_hits_move(reply: str, technique_name: str) -> bool:
     """True if reply shows a soft signal of the assigned move."""
     if not technique_name or not (reply or "").strip():
         return False
+    if playbook.get_play_move(technique_name) is not None:
+        return playbook.reply_hits_playbook(reply, technique_name)
     patterns = _MOVE_SIGNALS.get(technique_name) or ()
     if not patterns:
-        # Unknown move — don't false-fail
         return True
     text = reply.strip()
     return any(re.search(p, text) for p in patterns)

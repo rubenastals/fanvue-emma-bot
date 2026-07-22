@@ -1318,19 +1318,39 @@ def apply_post_draft(
         reply = scheme_guard.fallback_blame_own_it(want_spanish=want_spanish)
         print("   👻 blame-after-ghost → own-it fallback (no LLM)")
 
+    # Soft enforce ACTIVE MOVE: one LLM rewrite if draft ignored the playbook beat.
     # Style rewrites (rival-fan / Ay openings) removed — Group A; CORE guides tone only.
-    if fan_uuid and tech_name:
+    if tech_name:
         from core import technique_policy as _tp
+        from core import technique_playbook as _pb
 
-        used_rival = _tp.is_rival_move(tech_name) or scheme_guard.rival_fan_claim(
-            reply
-        )
-        fan_memory.record_technique(
-            fan_uuid,
-            tech_name,
-            fan_handle=fan_handle or "",
-            used_rival_fan=used_rival,
-        )
+        if not _tp.reply_hits_move(reply, tech_name) and rw.can_spend():
+            fixed = rw.spend(
+                "move-hit",
+                call,
+                messages
+                + [
+                    {"role": "assistant", "content": reply},
+                    {
+                        "role": "user",
+                        "content": _pb.move_rewrite_instruction(tech_name),
+                    },
+                ],
+            )
+            if fixed is not None and (fixed or "").strip():
+                reply = fixed
+                print(f"   🎯 move-hit rewrite → [{tech_name}]")
+
+        if fan_uuid:
+            used_rival = _tp.is_rival_move(tech_name) or scheme_guard.rival_fan_claim(
+                reply
+            )
+            fan_memory.record_technique(
+                fan_uuid,
+                tech_name,
+                fan_handle=fan_handle or "",
+                used_rival_fan=used_rival,
+            )
         if not _tp.reply_hits_move(reply, tech_name):
             print(
                 f"   ⚠️ move-miss: assigned [{tech_name}] but reply lacks signals"

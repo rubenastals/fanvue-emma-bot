@@ -74,19 +74,23 @@ Hard bans / persona laws live in `personas/emma.md` (SIMPLE) or `core/prompt_cor
 
 ## Live psychology move (`SIMPLE_PROMPT=1`)
 
-Code picks **one** move per turn (`core/technique_policy.py`) and injects a
-short TURN block:
+Code picks **one of 6** playbook moves (`core/technique_playbook.py` via
+`technique_policy.choose_move`) and injects a loud TURN block:
 
 ```
-ACTIVE MOVE THIS TURN (mandatory — not optional flirt):
-- Move: GUILT TRIP + RECIPROCITY
-- How: …
+ACTIVE MOVE THIS TURN (mandatory — one angle only):
+- Move: HEAT
+- WHEN: …
+- NEVER: …
+- Example beat: …
 ```
 
-Skipped on cooling / comfort / soft-unpaid reconnect. Catalogs live in
-`core/manipulation.py` (picker only — not the fat banner). Families +
-bans: [`DARK_PSYCH_TAXONOMY.md`](DARK_PSYCH_TAXONOMY.md). How-tos are
-**English only**. See [`TECHNIQUES.md`](TECHNIQUES.md).
+Moves: **BOND · HEAT · ASK PIC · SELL LOCK · HOLD FRAME · REWARD**.
+Skipped on cooling / comfort / soft-unpaid reconnect.
+Guilt / fake-emergency / rival FOMO are structurally out of the live playbook.
+If the draft misses move signals → one soft `move-hit` rewrite, then a warn.
+Train with `sim_mass.py --llm-fan` and watch **move_hit_rate**.
+See [`TECHNIQUES.md`](TECHNIQUES.md).
 
 ## Legacy only (`SIMPLE_PROMPT=0`): manipulation engine
 
@@ -113,9 +117,11 @@ python scripts/sim_mass.py --json out/sim.json
 Uses the **live** path (`assemble → DeepSeek → sanitize → scheme_guard` +
 `core/sim_detect.py`). Prefer `--llm-fan` for training: DeepSeek-fast plays the
 subscriber (`core/sim_fan_llm.py`), can unlock/reject/send selfie/leave, then
-`core/sim_score.py` rates hook/human/sell (fail if avg &lt; 6). Scripted fans in
-`core/sim_scenarios.py` are for fast regression. Add an archetype/scenario when
-you find a new failure mode — do **not** open throwaway Fanvue accounts.
+`core/sim_score.py` rates hook/human/sell (fail if avg &lt; 6). Report also
+prints **move_hit_rate** (assigned ACTIVE MOVE vs reply signals) — that is how
+we train “when to use” the playbook without Fanvue accounts. Scripted fans in
+`core/sim_scenarios.py` are for fast regression. Add an archetype when you find
+a new failure mode.
 
 Then: `scheme_check.py` / critic on real logs; unit matrix via `run_audit_matrix.py`.
 
