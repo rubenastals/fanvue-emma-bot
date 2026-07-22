@@ -1,4 +1,4 @@
-good-20260721-2235-prompt-order-restored-sell-commi
-3bcd899
-prompt order restored; sell-commit + unpaid bluff kept
-2026-07-21T22:35:06.695564+00:00
+good-20260722-0001-pre-architecture-cleanup-audit-b
+c116e7e
+pre-architecture cleanup audit baseline
+2026-07-22T00:01:49.320749+00:00

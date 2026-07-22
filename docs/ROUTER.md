@@ -1,13 +1,32 @@
 # Emma router — boolean gates + situation packs
 
-## Principle
+## Live brain (canonical)
+
+Defaults in `config.py`:
 
 ```
-Hard truth = CODE (API / memory / cooloffs)
+SIMPLE_PROMPT=1   ← creative path (personas/emma.md + TURN facts)
+LEAN_CREATIVE=1
+INJECT_LESSONS=0
+PHASE_ANALYST=0
+SOFT_CLASSIFY=0
+REPLY_V2=0
+```
+
+```
+Hard truth = CODE (API / memory / cooloffs / attach)
 Soft intent = regex (optional JSON if SOFT_CLASSIFY=1)
 Creativity  = DeepSeek final reply only
-One turn    = CORE + CARD + HISTORY + 1 PACK
+SIMPLE turn = CORE(persona) + CARD + HISTORY + TURN facts + AUTHOR
 ```
+
+When `SIMPLE_PROMPT=1` (production default):
+
+- Router still picks **one** `pack_id` for hard gates, sell flags, and logs.
+- Pack markdown (`packs/*.md`) is **not** injected into the prompt.
+- Tactics live in `personas/emma.md`; per-turn truth in LOCK/SELL/DELIVERY/AUDIO/TRUTH STATE.
+
+When `SIMPLE_PROMPT=0` (legacy): CORE short + manipulation banner + one pack (see below). Do not grow that path.
 
 Never dump Soft lessons or fat essays into the live prompt.
 
@@ -16,23 +35,24 @@ Never dump Soft lessons or fat essays into the live prompt.
 | Layer | What | When |
 |-------|------|------|
 | **Hard gates** | Code chooses pack, blocks 2nd PPV, attaches media, unsends locks | every turn |
-| **Loud prompt** | LOCK STATUS + MANIPULATION ENGINE + 1 pack MUST/NEVER | every turn |
-| **scheme_guard** | Deterministic check after reply (invented candado, banned nick, pack rails) | every turn → logs `⚠ scheme_fail` |
+| **Loud prompt** | LOCK / SELL STATUS + persona (SIMPLE) or MANIP + 1 pack (legacy) | every turn |
+| **scheme_guard** | Deterministic check after reply (invented candado, bluff, sell sync) | every turn → logs `⚠ scheme_fail` |
 | **Critic SCHEME** | DeepSeek scores pack/lock/technique obedience | async after turn |
 | **scheme_check** | Offline report of packs/techs/guard hits | `python scripts/scheme_check.py [--critic]` |
 
-DeepSeek is creative Soft — it can still drift. Hard gates + guard catch the expensive lies; critic/board catch soft drift for pack enrichment.
+DeepSeek is creative Soft — it can still drift. Hard gates + guard catch the expensive lies; critic/board catch soft drift for pack enrichment (offline / legacy).
 
 ## Pipeline
 
 1. **HardGates** — unpaid PPV, free_in_chat, fan media, chill/reject windows  
 2. **SoftClassify** — regex booleans; if ambiguous and `SOFT_CLASSIFY=1`, cheap JSON call  
 3. **PickWinningPack** — first match in `packs/_index.json` priority  
-4. **Assemble** — budgets in `core/prompt_layers.py`  
-5. **Creative reply** — DeepSeek writes 1–3 lines  
-6. **Sanitize + API verify** — free/PPV attach + timed unsend
+4. **Offer select** — whether to attach; unpaid never stacks a second lock  
+5. **Assemble** — budgets in `core/prompt_layers.py` (SIMPLE: persona + TURN facts)  
+6. **Creative reply** — DeepSeek writes 1–2 short lines  
+7. **Sanitize + scheme_guard + API verify** — rewrite belts, free/PPV attach + timed unsend  
 
-## Sales phases (your big playbook → packs)
+## Sales phases (pack ids — gates / logs; creative only if SIMPLE=0)
 
 | Phase | Pack | When |
 |-------|------|------|
@@ -45,9 +65,9 @@ DeepSeek is creative Soft — it can still drift. Hard gates + guard catch the e
 | Withdrawal | `post_sale_withdrawal` | after reward window |
 | Re-engage | `phase_reengage` | silence nudges |
 
-The 10 absolute laws live in `core/prompt_core.py`. Tactics live only in the winning pack — never paste the full essay into the system prompt.
+Hard bans / persona laws live in `personas/emma.md` (SIMPLE) or `core/prompt_core.py` (legacy).
 
-## Manipulation engine (loudest layer)
+## Legacy only (`SIMPLE_PROMPT=0`): manipulation engine
 
 When the pack is manipulative, the prompt injects a banner **before** the pack:
 
@@ -56,21 +76,9 @@ MANIPULATION ENGINE — #1 PRIORITY NOW
 ACTIVE TECHNIQUE >>> GUILT TRIP + RECIPROCITY <<<
 ```
 
-Picker: `core/manipulation.py` (one technique per turn; rotates on pull; steps 1–4 on objection).
-Author note also nudges: `execute manipulation technique […]`.
+Picker: `core/manipulation.py`. See [`TECHNIQUES.md`](TECHNIQUES.md).
 
-See [`TECHNIQUES.md`](TECHNIQUES.md).
-
-## Turn order (important)
-
-1. **Code hard gates** (PPV unpaid, delivery API, chill…)  
-2. **Phase analyst** (DeepSeek): reads full chat + CLIENT CARD → phase, pack, name, likes  
-3. **CLIENT RECALL** block injected  
-4. **Manipulation ENGINE** (one technique)  
-5. **Situation pack**  
-6. **Creative DeepSeek** writes the reply  
-
-Env: `PHASE_ANALYST=1` (default). Set `0` to skip the analyst call.
+Phase analyst (`PHASE_ANALYST`) defaults **off**. Only used on the non-SIMPLE path.
 
 ## Priority (high → low)
 
@@ -85,18 +93,26 @@ python scripts/enrich_packs.py --no-deepseek  # anti-regression fallback only
 ```
 
 Rules for enrichment (do **not** regress):
+
 - One pack / turn still; `budget_chars` ≈ 1400 in `_index.json`
 - Bake past failures into NEVER (fake delivery, invent names, glitches, Soft dumps)
 - Never paste Soft lessons into live prompt (`INJECT_LESSONS=0`)
-- After DeepSeek rewrite, manually fix conflicts (e.g. close must still fire lock same turn)
+- Under SIMPLE, pack edits do **not** change live creative text — use for gates/offline only unless you switch `SIMPLE_PROMPT=0`
 
 ## Adding a casuistry
 
+**Prefer (SIMPLE live):**
+
+1. Code hard gate in `intent_router` / `poll_inbox` / `scheme_guard`, **or**
+2. Replace one rule in `personas/emma.md` (do not append forever), **or**
+3. A small TURN fact block only if code cannot express it.
+
+**Legacy pack path (`SIMPLE=0`):**
+
 1. Create `packs/my_case.md` with MUST / SHOULD / NEVER (keep under ~1200 chars).  
-2. Insert `my_case` into `_index.json` priority at the right height.  
-3. Add a hard or soft flag in `core/intent_router.py` (`_hard_route` or `_soft_active`).  
+2. Insert `my_case` into `_index.json` priority.  
+3. Add a hard or soft flag in `core/intent_router.py`.  
 4. Add a row to `tests/test_intent_router.py`.  
-5. Do **not** grow `prompt_core.py` unless it is a universal hard ban.
 
 ## Pack format
 
@@ -114,10 +130,13 @@ NEVER:
 
 | Env | Default | Meaning |
 |-----|---------|---------|
-| `LEAN_CREATIVE` | `1` | Short CORE + packs path |
+| `SIMPLE_PROMPT` | `1` | Persona + TURN facts (canonical live) |
+| `LEAN_CREATIVE` | `1` | Layered budgets |
 | `INJECT_LESSONS` | `0` | Soft never in live |
 | `SOFT_CLASSIFY` | `0` | Extra JSON classify when ambiguous |
 | `SOFT_CLASSIFY_MODEL` | (main model) | Optional cheaper model |
+| `PHASE_ANALYST` | `0` | Legacy analyst call (off) |
+| `REPLY_V2` | `0` | Parallel brain (off; ignored when SIMPLE=1) |
 | `PPV_EXPIRE_ENABLED` | `1` | Unsend unpaid locks on a timer |
 | `PPV_EXPIRE_MINUTES` | `30` | Timed unpaid lock unsend |
 | `PPV_PURGE_ACTIVE_ON_START` | `1` | Wipe ALL unpaid locks when poller boots |
@@ -128,12 +147,16 @@ Emma sees a loud **LOCK STATUS** every turn (active + ~minutes left, or none). P
 
 | Module | Role |
 |--------|------|
+| `personas/emma.md` | SIMPLE live CORE |
+| `core/prompt_core.py` | Persona loader + legacy CORE |
+| `core/prompt_layers.py` | Budgets / layer assemble |
 | `core/turn_facts.py` | Boolean facts dataclass |
 | `core/intent_router.py` | Hard → soft → pack_id + TurnDecision |
 | `core/soft_classify.py` | Optional JSON classifier |
-| `core/packs.py` | Load/render one pack |
-| `packs/*.md` | Situation rules |
-| `core/reply_engine.py` | Injects winning pack into prompt |
+| `core/packs.py` | Load/render one pack (legacy inject) |
+| `packs/*.md` | Situation rules (gates/logs under SIMPLE) |
+| `core/reply_engine.py` | Assemble + rewrite belts |
+| `core/scheme_guard.py` | Post-reply hard checks + safe fallbacks |
 | `scripts/poll_inbox.py` | Routes each fan turn |
 
 ## Logs
@@ -142,5 +165,5 @@ Each turn prints:
 
 ```
 pack: lock_now | mode=soft_sell | price=True | via=regex
-prompt: CORE=… CARD=… TURN=… pack=lock_now
+prompt: v=… CORE=… CARD=… TURN=… pack=lock_now SIMPLE
 ```

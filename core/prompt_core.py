@@ -2,7 +2,8 @@
 Core persona loader — loads persona from PERSONA_FILE env var if set,
 falls back to Emma Carter default.
 
-Phase tactics live in packs/*.md (hook / spiral / pull / close...).
+Live default is SIMPLE: tactics live in personas/emma.md.
+Packs (packs/*.md) are gates/logs under SIMPLE_PROMPT=1; injected only if SIMPLE=0.
 NEVER append Soft lessons / critic spam / sales essays here.
 """
 from __future__ import annotations
@@ -14,7 +15,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 
 HARD_BAN_PET_NAMES = ("caro", "papi", "nena", "nene")
 
-PROMPT_VERSION = "20260719-simple-en-v8"
+PROMPT_VERSION = "20260722-simple-stabilize-v9"
 
 # Legacy non-simple prompt (kept for REPLY_V2 path)
 EMMA_CORE_PROMPT = """

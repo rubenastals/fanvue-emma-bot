@@ -25,10 +25,13 @@ def test_validates_unseen():
     assert sg.validates_unseen_ppv("glad you liked it — that was just a tease")
     assert sg.validates_unseen_ppv("¿ves? te dije que valía la pena, bebé")
     assert sg.validates_unseen_ppv("ahora dime… ¿qué parte de mí te gustó más?")
-    assert not sg.validates_unseen_ppv("mmm mentiroso, nunca la abriste 😏")
+    assert not sg.validates_unseen_ppv("mentiroso, nunca la abriste 😏")
     assert sg.calls_out_purchase_bluff(
-        "Mmm… mentiroso 😏 esa foto sigue cerrada — no la has abierto."
+        "Mentiroso 😏 esa foto sigue cerrada — no la has abierto."
     )
+    bluff = sg.fallback_purchase_bluff(want_spanish=True, lock_still_active=True)
+    assert sg.calls_out_purchase_bluff(bluff)
+    assert sg.fallback_obeys_style_bans(bluff)
 
 
 def test_never_bought_active_unpaid():
