@@ -79,6 +79,7 @@ def test_fake_emergency_penalized_early_unpaid():
         "cardish": False,
         "prove_ask": False,
         "soft_clarify": False,
+        "shy_short": False,
         "zero_spender": True,
         "status": "warm",
         "spent": 0,
@@ -101,6 +102,45 @@ def test_fake_emergency_penalized_early_unpaid():
         no_lock=False,
     )
     assert score_scar > score_crisis, (score_scar, why2, score_crisis, why)
+    assert "crisis-banned" in why or "unpaid-crisis-banned" in why
+
+
+def test_ppv_unpaid_catalog_no_guilt_crisis():
+    from core import manipulation
+
+    names = {n for n, _ in manipulation._TECH_BY_PACK["ppv_unpaid"]}
+    assert "FAKE EMERGENCY" not in names
+    assert not any("GUILT" in n for n in names)
+    assert "SCARCITY + FOMO" in names
+
+
+def test_rival_banned_after_purchase():
+    sig = {
+        "msgs": 20,
+        "reject_step": 2,
+        "price_push": False,
+        "horny": False,
+        "buying": False,
+        "flirting": False,
+        "venting": False,
+        "cardish": True,
+        "prove_ask": False,
+        "soft_clarify": False,
+        "shy_short": False,
+        "zero_spender": False,
+        "status": "spender",
+        "spent": 20,
+        "purchases": 1,
+    }
+    score, why = score_move(
+        "RIVAL TIP FOMO",
+        eff_pack="ppv_unpaid",
+        sig=sig,
+        recent_fams=[],
+        unpaid=True,
+        no_lock=False,
+    )
+    assert score < 0 or "rival-after-purchase-banned" in why
 
 
 if __name__ == "__main__":
@@ -108,4 +148,6 @@ if __name__ == "__main__":
     test_just_purchased_fallback()
     test_invented_lock_after_purchase_rewards()
     test_fake_emergency_penalized_early_unpaid()
+    test_ppv_unpaid_catalog_no_guilt_crisis()
+    test_rival_banned_after_purchase()
     print("ok")

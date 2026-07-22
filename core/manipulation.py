@@ -254,9 +254,10 @@ _TECH_BY_PACK: Dict[str, List[Tuple[str, str]]] = {
     ],
     "price_objection": [
         (
-            "GUILT TRIP (Step 1)",
-            "Mechanism: you made it special and he says expensive — soft hurt, you stay the prize. "
-            "Beat: i made it for you and now it's 'too expensive'?.",
+            "SCARCITY + FOMO",
+            "Mechanism: STEP 1 hold frame on the real lock — value, not guilt. Filthy tease. "
+            "No landlord/rent crisis. No 'i made it for you and now expensive'. "
+            "Beat: that one's still there… i don't drop this price for everyone.",
         ),
         (
             "EGO CHALLENGE (Step 2)",
@@ -265,14 +266,9 @@ _TECH_BY_PACK: Dict[str, List[Tuple[str, str]]] = {
         ),
         (
             "FOMO + SCARCITY (Step 3)",
-            "Mechanism: rival + time pressure — someone else wants this; favorites only; his loss if he waits. "
-            "No new cheaper lock. Rival tip / videocall bait OK here. "
-            "Beat: he offered more… this won't sit forever.",
-        ),
-        (
-            "FAKE EMERGENCY",
-            "Mechanism: if he's stalling on price, layer a short crisis reason you need him now. "
-            "Beat: i wouldn't push if i didn't need this today… please.",
+            "Mechanism: light time pressure on the SAME lock — favorites only; his loss if he waits. "
+            "No new cheaper lock. Soft rival OK only here, not earlier. "
+            "Beat: this won't sit forever…",
         ),
         (
             "COLD WITHDRAWAL (Step 4)",
@@ -320,23 +316,26 @@ _TECH_BY_PACK: Dict[str, List[Tuple[str, str]]] = {
         (
             "SCARCITY + FOMO",
             "Mechanism: point at the REAL unpaid lock already in chat — timed / will vanish. No second lock. "
+            "Hold frame, filthy tease, no guilt/crisis. "
             "Beat: it's still sitting there waiting for you….",
         ),
         (
+            "HOT FLIRT",
+            "Mechanism: keep him hard while the lock sits — dirty-sweet, point at THAT photo. "
+            "No guilt, no landlord story, no rival. "
+            "Beat: fuck i keep thinking about you opening that one…",
+        ),
+        (
+            "MICRO COMMITMENT",
+            "Mechanism: micro-yes toward the existing unpaid lock only. "
+            "Beat: you want it yes or yes? that one's still yours to claim.",
+        ),
+        # RIVAL only OK after repeated rejects (technique_policy scores it late).
+        (
             "RIVAL TIP FOMO",
-            "Mechanism: imply someone else would unlock it — he should first. "
+            "Mechanism: light rival pressure ONLY if he's stalled hard — he should claim first. "
+            "Never after he already bought. Never on shy/short replies. "
             "Beat: guys like that don't wait… you going to?",
-        ),
-        (
-            "GUILT TRIP + RECIPROCITY",
-            "Mechanism: soft hurt — the paid tease is still waiting; he owes a look. "
-            "Beat: that one's still sitting there for you… don't leave me hanging on it. "
-            "HARD BAN: accusing him of going quiet in chat — only nudge the unpaid lock.",
-        ),
-        (
-            "FAKE EMERGENCY",
-            "Mechanism: short crisis + unlock as the help. "
-            "Beat: i need this today… that lock would actually help me.",
         ),
     ],
 }
@@ -428,13 +427,13 @@ def pick_technique(
             if force_name.upper() not in {t.upper() for t in _RIVAL_TECHS}:
                 force_name = None
     if pack_id == "price_objection":
-        # Keep step ladder on core 4; FAKE EMERGENCY is optional insert at step 3
+        # Hold-frame ladder — no guilt step 1, no fake emergency spice
         core = [
             c
             for c in catalog
             if c[0]
             in (
-                "GUILT TRIP (Step 1)",
+                "SCARCITY + FOMO",
                 "EGO CHALLENGE (Step 2)",
                 "FOMO + SCARCITY (Step 3)",
                 "COLD WITHDRAWAL (Step 4)",
@@ -443,11 +442,6 @@ def pick_technique(
         if not core:
             core = catalog
         idx = max(0, min(len(core) - 1, int(reject_count)))
-        # On step 3, sometimes swap to FAKE EMERGENCY for variety
-        if idx == 2:
-            emergencies = [c for c in catalog if c[0] == "FAKE EMERGENCY"]
-            if emergencies and (int(hashlib.md5(f"{fan_uuid}:{msgs}".encode()).hexdigest()[:4], 16) % 2):
-                return emergencies[0]
         return core[idx]
     fresh = [(n, h) for n, h in catalog if n.upper() not in exclude_u]
     pool = fresh or list(catalog)

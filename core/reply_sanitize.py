@@ -495,6 +495,22 @@ _SOFT_BOND_STAMP = re.compile(
     r"finally\s+someone\s+who\s+(cares|listens|gets\s+me)"
     r")"
 )
+# Fake emergency / rent-landlord savior — banned structural leak
+_FAKE_CRISIS = re.compile(
+    r"(?i)("
+    r"\blandlord\b|\brent\b|\bcasero\b|\balquiler\b|"
+    r"medical\s+bill|hospital\s+bill|\bdebt\b|"
+    r"kicked\s+out|help\s+me\s+(please|out)|"
+    r"i\s+need\s+this\s+(today|tonight|rn)|"
+    r"wouldn'?t\s+(ask|push)\s+if\s+i\s+didn'?t\s+need"
+    r")"
+)
+_CRISIS_FALLBACKS = (
+    "that one's still sitting there for you… don't leave it hanging 😈",
+    "fuck i keep thinking about you opening that one",
+    "you want it yes or yes? it's still yours to claim",
+)
+
 _HEAT_FALLBACKS = (
     "fuck… keep talking like that, you're getting me wet",
     "say that again… slower… while i touch myself",
@@ -1084,6 +1100,19 @@ def apply_post_draft(
         print(
             "   🔥 soft-bond stamp (no heat) — replaced "
             f"({before_sb[:56]!r} → {reply!r})"
+        )
+
+    # Fake crisis / landlord-rent savior — structural ban
+    if _FAKE_CRISIS.search(reply or ""):
+        before_cr = reply
+        banned = {
+            _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
+        }
+        opts = [p for p in _CRISIS_FALLBACKS if _norm_bubble(p) not in banned]
+        reply = random.choice(opts or list(_CRISIS_FALLBACKS))
+        print(
+            "   🚫 fake-crisis stamp — replaced "
+            f"({before_cr[:56]!r} → {reply!r})"
         )
 
     # Soft: Spanglish / wrong language — strip first; LLM rewrite only if still wrong
