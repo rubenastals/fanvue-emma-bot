@@ -584,6 +584,7 @@ def assemble_emma_turn(
             no_lock=no_lock,
             soft_support=soft_support,
             ban_withdrawal=ban_withdrawal,
+            ban_rival_fan=ban_rival,
             exclude_names=exclude_techs,
             turn_action=turn_action,
             unpaid=bool(

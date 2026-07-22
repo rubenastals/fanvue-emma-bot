@@ -1,10 +1,12 @@
 # Técnicas → Fases (Emma)
 
-Taxonomía completa (familias, mecanismos, FORBIDDEN):
+Full taxonomy (families, mechanisms, FORBIDDEN):
 [`DARK_PSYCH_TAXONOMY.md`](DARK_PSYCH_TAXONOMY.md).
 
-El playbook largo NO se pega entero al modelo. Las **10 leyes** viven en CORE.
-Cada **fase** es un pack; el router elige uno por turno según el input.
+The long playbook is NOT pasted into the model. Core laws live in CORE.
+Each **phase** is a pack; the router picks one per turn from fan input.
+
+**Prompt / how-to instructions are English only.** Chat bubbles may mirror ES/EN.
 
 ## Mapa técnico
 

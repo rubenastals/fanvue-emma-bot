@@ -23,8 +23,12 @@ def test_pull_picks_named_move():
     name, how = move
     assert name
     assert how
-    # No FOMO invent when no lock
-    assert "SCARCITY" not in name.upper() and "FOMO" not in name.upper()
+    # No lock-price scarcity invent when no lock (rival FOMO still allowed)
+    assert name not in (
+        "SCARCITY + FOMO",
+        "SCARCITY + FOMO (CLOSE)",
+        "FOMO + SCARCITY (Step 3)",
+    )
 
 
 def test_cooling_skips_move():
@@ -52,7 +56,10 @@ def test_unpaid_scarcity():
         turn_action=SimpleNamespace(action="flirt"),
     )
     assert move is not None
-    assert "SCARCITY" in move[0].upper() or "FOMO" in move[0].upper()
+    allowed = {
+        n for n, _ in __import__("core.manipulation", fromlist=["manipulation"])._TECH_BY_PACK["ppv_unpaid"]
+    }
+    assert move[0] in allowed
 
 
 def test_price_objection_beats_unpaid():
@@ -88,7 +95,8 @@ def test_turn_block_mentions_move():
     assert "dare him" in block
     assert "Family:" in block
     assert "2.3" in block
-    assert "sextortion" in block.lower() or "HARD BAN" in block
+    assert "HARD BAN" in block
+    assert "fake emergency" in block.lower() or "Rival jealousy" in block
 
 
 def test_catalog_has_taxonomy_moves():
@@ -101,10 +109,43 @@ def test_catalog_has_taxonomy_moves():
     assert "MICRO COMMITMENT" in pull
     assert "LOYALTY PROVE" in pull
     assert "PAIN MAP VALIDATE" in pull
-    # Forbidden language must stay in how-tos as bans, not as instructions to do it
+    assert "RIVAL TIP FOMO" in pull
+    assert "WRONG MESSAGE JEALOUSY" in pull
+    assert "RIVAL VIDEOCALL BAIT" in pull
+    assert "STICKY RIVAL CHASE" in pull
+    assert "FAKE EMERGENCY" in pull
+    # How-tos are English instructions
     joined = " ".join(h for _, h in manipulation._TECH_BY_PACK["phase_pull"])
-    assert "FORBIDDEN" in joined
+    assert "Mechanism:" in joined
     assert "bitcoin" not in joined.lower()
+
+
+def test_rival_cooled_when_recently_used():
+    move = technique_policy.choose_move(
+        "phase_pull",
+        fan_uuid="fan-rival",
+        msgs=20,
+        no_lock=True,
+        ban_rival_fan=True,
+        turn_action=__import__("types").SimpleNamespace(action="flirt"),
+    )
+    assert move is not None
+    assert move[0] not in {
+        "RIVAL TIP FOMO",
+        "WRONG MESSAGE JEALOUSY",
+        "RIVAL VIDEOCALL BAIT",
+        "STICKY RIVAL CHASE",
+    }
+
+
+def test_how_tos_english_only():
+    from core import manipulation
+
+    # Instruction lines should not be Spanish essays (beats may quote ES briefly)
+    for pack, items in manipulation._TECH_BY_PACK.items():
+        for name, how in items:
+            assert how.startswith("Mechanism:"), (pack, name)
+            assert "Mecanismo:" not in how
 
 
 def test_assemble_simple_injects_move():
