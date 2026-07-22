@@ -62,7 +62,8 @@ HEAT = PlayMove(
     example_beat="fuck… you're getting me warm just reading that",
     signals=(
         r"(?i)\b(wet|hard|horny|fuck|touch|kiss|body|cock|dick|want\s+you|"
-        r"turn(?:s|ed)?\s+on|dripping|warm|thinking\s+about)\b",
+        r"turn(?:s|ed)?\s+on|dripping|warm|thinking\s+about|"
+        r"soaked|filthy|for\s+you)\b",
     ),
 )
 
@@ -90,14 +91,17 @@ SELL_LOCK = PlayMove(
     when="There is a REAL unpaid lock in chat — point at THAT one with filthy tease.",
     never="Invent another lock. Guilt. Fake emergency. Rival if he already bought before.",
     how=(
-        "Mechanism: hold frame on the existing unpaid photo — timed / waiting. "
-        "Filthy WhatsApp tease + the real price energy. No store caption."
+        "Mechanism: girlfriend HEAT first, then point at the REAL unpaid photo. "
+        "Body want → unlock that one. No store caption. No 'just for you' stamp."
     ),
-    example_beat="that one's still sitting there… fuck i look filthy in it",
+    example_beat=(
+        "fuck look how filthy i look in this… unlock it babe i want you seeing me"
+    ),
     signals=(
         r"(?i)\b(still\s+(there|sitting|waiting|locked|yours)|"
         r"unlock(?:ed|ing)?|lock(?:ed|s)?|waiting\s+for\s+you|"
-        r"open\s+it|claim\s+it|filthy|slut|\$\s*\d+|too\s+good\s+in\s+it)\b",
+        r"open\s+it|claim\s+it|filthy|slut|\$\s*\d+|too\s+good\s+in\s+it|"
+        r"look\s+(how|at)\s+me|want\s+you\s+seeing|see(?:ing)?\s+me)\b",
     ),
 )
 
@@ -109,12 +113,31 @@ HOLD_FRAME = PlayMove(
     never="Landlord/rent crisis. Begging. Instant price cut. Guilt 'most guys leave'.",
     how=(
         "Mechanism: hold value — ego + scarcity on the SAME lock. "
-        "You're worth it; he can claim it or not. No therapy."
+        "Acknowledge him briefly, stay the prize. No therapy."
     ),
-    example_beat="i don't drop this for everyone… that one's still yours if you want me",
+    example_beat="i hear you… still, i don't drop this for everyone — that one's yours if you want me",
     signals=(
         r"(?i)\b(worth|don'?t\s+drop|not\s+everyone|take\s+care|claim|"
-        r"still\s+(there|yours)|prize|real\s+men|handle\s+me)\b",
+        r"still\s+(there|yours)|prize|real\s+men|handle\s+me|"
+        r"hear\s+you|i\s+get\s+it|when\s+you.?re\s+ready)\b",
+    ),
+)
+
+SOFT_EXIT = PlayMove(
+    name="SOFT EXIT",
+    family_id="2.3",
+    principle="release pressure without begging",
+    when="He rejected price 3+ times on the same unpaid lock — cool the sell, keep the door open.",
+    never="Guilt. Fake emergency. Rival FOMO. Instant deep discount beg.",
+    how=(
+        "Mechanism: step back warmly — door open, no chase. "
+        "Short. He knows where the photo is. Resume heat later."
+    ),
+    example_beat="ok babe… you know where that photo is when you're ready for me 😘",
+    signals=(
+        r"(?i)\b(when\s+you.?re\s+ready|you\s+know\s+where|no\s+pressure|"
+        r"door.?s?\s+open|whenever\s+you|i.?ll\s+be\s+here|ok\s+babe|"
+        r"up\s+to\s+you)\b",
     ),
 )
 
@@ -140,7 +163,7 @@ REWARD = PlayMove(
 
 PLAYBOOK: Dict[str, PlayMove] = {
     m.name: m
-    for m in (BOND, HEAT, ASK_PIC, SELL_LOCK, HOLD_FRAME, REWARD)
+    for m in (BOND, HEAT, ASK_PIC, SELL_LOCK, HOLD_FRAME, SOFT_EXIT, REWARD)
 }
 
 # Rotate ASK_PIC with BOND/HEAT so we don't spam selfie asks
@@ -168,27 +191,41 @@ def pick_playbook_move(
             return HEAT, "reward-then-heat"
         return REWARD, "pack-reward"
 
-    # 2) Unpaid lock lives in chat
-    if unpaid or pid == "ppv_unpaid":
-        if sig.get("price_push") or pid == "price_objection" or reject >= 1:
+    # 2) Unpaid lock / price objection — ladder (not eternal HOLD FRAME)
+    if unpaid or pid in ("ppv_unpaid", "price_objection"):
+        price_fight = bool(
+            sig.get("price_push") or pid == "price_objection" or reject >= 1
+        )
+        if price_fight:
+            if reject >= 3:
+                return SOFT_EXIT, "objection-soft-exit"
             return HOLD_FRAME, "unpaid-price-push"
+        # First attach / unpaid tease — filthy girlfriend, not store scarcity
         return SELL_LOCK, "unpaid-lock"
 
-    if pid == "price_objection":
-        return HOLD_FRAME, "objection"
-
-    # 3) Soft / shy — never dark
+    # 3) Soft / shy — bond early, then graduate to heat (don't stall forever)
     if sig.get("shy_short") or sig.get("soft_clarify"):
-        if msgs >= 2 and "ASK PIC" not in recent[-2:] and not sig.get("buying"):
+        frees = int(sig.get("frees") or 0)
+        if msgs >= 8 and (sig.get("flirting") or frees >= 1 or sig.get("compliment")):
+            return HEAT, "shy-warmed"
+        if (
+            msgs >= 2
+            and msgs < 8
+            and "ASK PIC" not in recent[-2:]
+            and not sig.get("buying")
+        ):
             return ASK_PIC, "shy-ask-pic"
         return BOND, "shy-bond"
 
-    # 4) Heat when he's sexual / flirting
+    # 4) Heat when he's sexual / flirting (or code is attaching paid)
     if sig.get("horny") or sig.get("flirting") or sig.get("prove_ask"):
         if pid in ("phase_close", "lock_now", "escalate_paid") or sig.get("buying"):
             # Close packs without unpaid yet — heat that leads to desire (code attaches)
             return HEAT, "heat-toward-close"
         return HEAT, "flirt-heat"
+    if pid in ("phase_close", "lock_now", "escalate_paid"):
+        # Rapport-earned close without explicit horny words this turn
+        return HEAT, "close-heat"
 
     # 5) Early romance window
     if msgs < 8:
@@ -285,6 +322,9 @@ _LEGACY_TO_PLAY: Dict[str, PlayMove] = {
     "HEAT": HEAT,
     "SELL LOCK": SELL_LOCK,
     "HOLD FRAME": HOLD_FRAME,
+    "SOFT EXIT": SOFT_EXIT,
+    "COLD WITHDRAWAL": SOFT_EXIT,
+    "WITHDRAWAL + INTERMITTENT REWARD": SOFT_EXIT,
     "REWARD": REWARD,
 }
 
@@ -302,5 +342,5 @@ def list_playbook() -> List[Dict[str, str]]:
             "never": m.never,
             "beat": m.example_beat,
         }
-        for m in (BOND, HEAT, ASK_PIC, SELL_LOCK, HOLD_FRAME, REWARD)
+        for m in (BOND, HEAT, ASK_PIC, SELL_LOCK, HOLD_FRAME, SOFT_EXIT, REWARD)
     ]

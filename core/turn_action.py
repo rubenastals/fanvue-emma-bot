@@ -280,7 +280,8 @@ def action_prompt_line(ta: Optional[TurnAction], *, mem: Optional[dict] = None) 
         price = float(ta.offer.get("price") or 0)
         return (
             "ACTION (code — law this turn):\n"
-            f"- attach_ppv ${price:.0f}. Tease THIS paid lock. Do not ask for his pic."
+            f"- attach_ppv ${price:.0f}. Filthy girlfriend tease of THIS paid lock "
+            f"(body want → unlock). No store caption. Do not ask for his pic."
         )
     if ta.action == ACTION_ATTACH_FREE and ta.offer:
         return (

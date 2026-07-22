@@ -444,10 +444,13 @@ def choose_offer(
             1.0,
             "code",
         )
-    # $0 fans: no AI sell without a clear ask this turn (stops cold drops)
+    # $0 fans: no AI sell without ask/horny — unless rapport earned (free + msgs)
     if _zero_spender(mem) and not direct and not max_dirty:
         horny_now = bool(getattr(facts, "horny", False))
-        if not horny_now:
+        msgs_n = int(mem.get("messages") or 0)
+        frees_n = int(mem.get("free_teases_sent") or 0)
+        rapport_close = msgs_n >= 10 and frees_n >= 1
+        if not horny_now and not rapport_close:
             return OfferChoice(
                 False,
                 None,
@@ -579,12 +582,16 @@ def choose_offer(
         sell_now = False
         chosen = None
         reason = f"clarify veto; selector said: {reason}"
+    msgs_n = int(mem.get("messages") or 0)
+    frees_n = int(mem.get("free_teases_sent") or 0)
+    rapport_close = msgs_n >= 10 and frees_n >= 1
     if (
         sell_now
         and _zero_spender(mem)
         and not direct
         and not max_dirty
         and not bool(getattr(facts, "horny", False))
+        and not rapport_close
     ):
         sell_now = False
         chosen = None

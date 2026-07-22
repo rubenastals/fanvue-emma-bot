@@ -76,7 +76,7 @@ def test_price_objection_holds_frame():
     assert "GUILT" not in move.name.upper()
 
 
-def test_price_objection_stays_hold_frame():
+def test_price_objection_ladder():
     m1 = technique_policy.choose_move(
         "price_objection", reject_count=0, unpaid=True
     )
@@ -88,7 +88,7 @@ def test_price_objection_stays_hold_frame():
     )
     assert m1 and m1.name == "HOLD FRAME"
     assert m2 and m2.name == "HOLD FRAME"
-    assert m4 and m4.name == "HOLD FRAME"
+    assert m4 and m4.name == "SOFT EXIT"
 
 
 def test_early_chat_avoids_emergency():
