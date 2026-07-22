@@ -850,27 +850,31 @@ def thread_beat_block(
 ) -> str:
     """
     Compact continuity cue (not a second persona wall).
-    Keeps her on THIS long chat: summary + open questions + last fan beat.
+
+    Prefer the last few REAL turns over a stale card summary — same-day
+    "forgot what he said 3 minutes ago" was often summary fighting the chat.
     """
     mem = mem or {}
     lines = [
-        "THREAD BEAT — continue THIS long chat (do not restart / do not loop):",
+        "THREAD BEAT — continue THIS chat (do not restart / do not invent):",
     ]
-    summary = (mem.get("summary") or "").strip()
-    if summary:
-        lines.append(f"- Rolling story: {summary[:240]}")
+
+    # Last 4 turns of real chat (ground truth for the last few minutes)
+    recent = []
+    for turn in (history_turns or [])[-4:]:
+        role = (turn.get("role") or "").strip()
+        body = str(turn.get("content") or "").strip().replace("\n", " / ")
+        if not body:
+            continue
+        who = "HIM" if role == "user" else "YOU"
+        recent.append(f"{who}: {body[:160]}")
+    if recent:
+        lines.append("- Recent thread:")
+        lines.extend(f"  · {r}" for r in recent)
+
     facts = [str(f).strip() for f in (mem.get("facts") or []) if str(f).strip()]
     if facts:
-        lines.append("- Remember: " + "; ".join(facts[-4:])[:220])
-
-    # Last fan message (what to answer)
-    last_fan = ""
-    for turn in reversed(history_turns or []):
-        if (turn.get("role") or "") == "user":
-            last_fan = str(turn.get("content") or "").strip().split("\n")[0][:140]
-            break
-    if last_fan:
-        lines.append(f"- He just said: {last_fan}")
+        lines.append("- Card facts (only if still true): " + "; ".join(facts[-3:])[:180])
 
     asked = recent_emma_questions(history_turns, n_turns=3)[:3]
     if asked:
@@ -880,8 +884,8 @@ def thread_beat_block(
         )
 
     lines.append(
-        "- Advance the thread: reference something real from above, "
-        "answer him, then ONE new beat — never the same question again."
+        "- Answer what he just said using the recent thread above. "
+        "One new beat — never the same question again. Never contradict the thread."
     )
     return "\n".join(lines)
 
