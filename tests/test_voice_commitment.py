@@ -81,7 +81,7 @@ def test_resolve_forces_send_with_db_commitment():
         )
         assert ok, why
         assert blocks, "voice debt must hard-block PPV"
-        assert "commitment" in why.lower() or "beg-loop" in why or "owed" in why
+        assert "FSM open_voice" in why or "open_voice" in why, why
         assert (mem2.get("open_commitment") or {}).get("type") == "voice"
     finally:
         vn._enabled = orig  # type: ignore
