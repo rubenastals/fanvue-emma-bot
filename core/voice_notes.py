@@ -306,10 +306,15 @@ def should_send(
     owed = emma_owed_voice(history_turns)
     complied = fan_complied_for_voice(fan_message)
     debt, debt_why = thread_voice_debt(history_turns, lookback=20)
+    # Durable DB commitment (action-first protocol) — survives prompt amnesia
+    db_voice = isinstance(mem.get("open_commitment"), dict) and (
+        (mem.get("open_commitment") or {}).get("type") == "voice"
+    )
 
-    # Hard commit: current ask, OR open debt + any comply/engage, OR thread loop
+    # Hard commit: DB debt, current ask, OR open thread debt + comply
     committed = bool(
-        asked
+        (db_voice and (complied or asked or asked_thread))
+        or asked
         or (owed and complied)
         or (debt and complied)
         or (debt and asked_thread and not _FAN_REJECT_VOICE.search(fan_message or ""))
@@ -334,7 +339,9 @@ def should_send(
 
     trigger = False
     reason = ""
-    if debt and (complied or asked or asked_thread):
+    if db_voice and (complied or asked or asked_thread):
+        trigger, reason = True, "DB commitment=voice → ACTION send_voice"
+    elif debt and (complied or asked or asked_thread):
         trigger, reason = True, f"kill beg-loop ({debt_why})"
     elif owed and complied:
         trigger, reason = True, "owed voice after stall (pídemelo→comply)"
@@ -385,6 +392,108 @@ def plan_send(
         apply_roll=True,
         history_turns=history_turns,
     )
+
+
+def sync_commitment_from_thread(
+    fan_uuid: str,
+    *,
+    fan_handle: str,
+    fan_message: str,
+    history_turns: Optional[List[Dict[str, Any]]],
+    mem: Optional[dict] = None,
+) -> Optional[dict]:
+    """
+    CODE updates open_commitment from the real thread — before DeepSeek runs.
+
+    - Fan asks for audio → set/bump voice commitment
+    - Emma stalled (pídemelo / promised) → set voice commitment
+    - Thread debt without delivery → set voice commitment
+    - Fan rejects audio → clear
+    - Voice already delivered in recent history → clear
+    """
+    if not fan_uuid:
+        return None
+    if _FAN_REJECT_VOICE.search(fan_message or ""):
+        fan_memory.clear_commitment(fan_uuid, ctype="voice", fan_handle=fan_handle)
+        return None
+    if voice_delivered_recently(history_turns, n=24):
+        fan_memory.clear_commitment(fan_uuid, ctype="voice", fan_handle=fan_handle)
+        return None
+
+    debt, debt_why = thread_voice_debt(history_turns, lookback=20)
+    asked = fan_asked_voice(fan_message)
+    asked_thread = fan_asked_voice_in_thread(history_turns, n=12)
+    owed = emma_owed_voice(history_turns)
+
+    if not (asked or asked_thread or owed or debt):
+        return fan_memory.get_commitment(fan_uuid)
+
+    if asked:
+        src = "fan_ask"
+    elif debt:
+        src = f"thread_debt:{debt_why}"[:80]
+    elif owed:
+        src = "emma_stall"
+    else:
+        src = "thread_ask"
+
+    return fan_memory.set_commitment(
+        fan_uuid,
+        ctype="voice",
+        source=src,
+        fan_handle=fan_handle,
+        bump=True,
+    )
+
+
+def resolve_voice_action(
+    *,
+    fan_uuid: str,
+    fan_handle: str,
+    fan_message: str,
+    mem: dict,
+    decision: Any,
+    pack_id: str,
+    unpaid: bool,
+    history_turns: Optional[List[Dict[str, Any]]],
+) -> tuple[bool, str, dict]:
+    """
+    Action-first voice gate.
+
+    1) Sync DB commitment from thread (code)
+    2) Decide send_voice from commitment + heuristics
+    Returns (must_send, reason, mem_after)
+    """
+    sync_commitment_from_thread(
+        fan_uuid,
+        fan_handle=fan_handle,
+        fan_message=fan_message,
+        history_turns=history_turns,
+        mem=mem,
+    )
+    mem2 = fan_memory.get(fan_uuid) or mem
+    ok, why = plan_send(
+        fan_message=fan_message,
+        mem=mem2,
+        decision=decision,
+        pack_id=pack_id,
+        unpaid=unpaid,
+        media_sent_this_turn=False,
+        history_turns=history_turns,
+    )
+    # If heuristics say send, ensure commitment exists for next turns if send fails
+    if ok:
+        c = mem2.get("open_commitment")
+        if not (isinstance(c, dict) and c.get("type") == "voice"):
+            fan_memory.set_commitment(
+                fan_uuid,
+                ctype="voice",
+                source=why[:80],
+                fan_handle=fan_handle,
+                bump=False,
+            )
+            mem2 = fan_memory.get(fan_uuid) or mem2
+    return ok, why, mem2
 
 
 def _generate_script(

@@ -130,6 +130,9 @@ def _blank(fan_handle: str) -> dict:
         "voice_notes_today": 0,
         "voice_notes_day": None,
         "last_voice_at": None,
+        # Protocol state (code-owned). Not Soft memory — hard turn commitments.
+        # e.g. {"type": "voice", "since": iso, "source": "fan_ask", "hits": 2}
+        "open_commitment": None,
         "note": "",
         "status": "new",
         # Permanent client card (hybrid memory)
@@ -180,6 +183,8 @@ def _ensure_card_fields(mem: dict) -> None:
         mem["key_fan_quotes"] = []
     if not isinstance(mem.get("interaction_digest"), dict):
         mem["interaction_digest"] = {}
+    if "open_commitment" not in mem:
+        mem["open_commitment"] = None
 
 
 _MAX_SENT_UUIDS = 200
@@ -929,6 +934,65 @@ def mark_nudge(
         _put(fan_uuid, mem)
 
 
+def get_commitment(fan_uuid: str) -> Optional[dict]:
+    mem = get(fan_uuid)
+    c = mem.get("open_commitment") if mem else None
+    return c if isinstance(c, dict) and c.get("type") else None
+
+
+def set_commitment(
+    fan_uuid: str,
+    *,
+    ctype: str,
+    source: str = "",
+    fan_handle: str = "",
+    bump: bool = True,
+) -> dict:
+    """
+    Persist a hard turn commitment (voice, etc.). Code owns this — not the LLM.
+    """
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        prev = mem.get("open_commitment") if isinstance(mem.get("open_commitment"), dict) else None
+        if prev and prev.get("type") == ctype:
+            hits = int(prev.get("hits") or 1) + (1 if bump else 0)
+            since = prev.get("since") or _now()
+            src = (source or prev.get("source") or "")[:80]
+        else:
+            hits = 1
+            since = _now()
+            src = (source or "")[:80]
+        mem["open_commitment"] = {
+            "type": ctype,
+            "since": since,
+            "source": src,
+            "hits": hits,
+            "updated_at": _now(),
+        }
+        _put(fan_uuid, mem)
+        return dict(mem["open_commitment"])
+
+
+def clear_commitment(
+    fan_uuid: str,
+    *,
+    ctype: Optional[str] = None,
+    fan_handle: str = "",
+) -> None:
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        cur = mem.get("open_commitment")
+        if not isinstance(cur, dict):
+            mem["open_commitment"] = None
+            _put(fan_uuid, mem)
+            return
+        if ctype is None or cur.get("type") == ctype:
+            mem["open_commitment"] = None
+        _put(fan_uuid, mem)
+
+
 def record_voice_note(
     fan_uuid: str,
     fan_handle: str = "",
@@ -947,6 +1011,10 @@ def record_voice_note(
         mem["last_voice_at"] = _now()
         if script:
             mem["last_voice_script"] = script[:200]
+        # Delivered → clear protocol debt
+        cur = mem.get("open_commitment")
+        if isinstance(cur, dict) and cur.get("type") == "voice":
+            mem["open_commitment"] = None
         _put(fan_uuid, mem)
 
 

@@ -818,20 +818,27 @@ def _handle_fan_chat_body(
             )
 
         from core import voice_notes as _vn
+        from core.turn_action import ACTION_SEND_VOICE
 
-        # Keyword/score-based voice gate — no AI call.
-        # Pass history so "pídemelo" → he complies → audio actually sends.
-        voice_planned = _vn.plan_send(
+        # ACTION-FIRST: code syncs DB commitment + decides send_voice BEFORE DeepSeek.
+        # Protocol is not left to the model "remembering" 10 chat lines.
+        _voice_ok, _voice_why, mem = _vn.resolve_voice_action(
+            fan_uuid=fan_uuid,
+            fan_handle=fan_handle,
             fan_message=text,
             mem=mem,
             decision=decision,
             pack_id=route_result.pack_id,
             unpaid=unpaid,
-            media_sent_this_turn=False,
             history_turns=turns,
         )
+        voice_planned = (_voice_ok, _voice_why)
+        turn_action = ACTION_SEND_VOICE if _voice_ok else ""
         if voice_planned[0]:
-            print(f"   🎙️ voice planned: {voice_planned[1]} — no photo this turn")
+            print(
+                f"   ACTION={ACTION_SEND_VOICE}: {voice_planned[1]} "
+                f"| commitment={mem.get('open_commitment')}"
+            )
             want_sell = False
             want_free = False
 
@@ -959,7 +966,26 @@ def _handle_fan_chat_body(
 
             print(f"   ❌ generate reply failed: {type(e).__name__}: {e}")
             traceback.print_exc()
-            break
+            # ACTION=send_voice still ships audio with a safe line
+            if voice_planned[0]:
+                from core.language import fan_wants_spanish
+
+                reply = _vn.forced_voice_close_line(
+                    want_spanish=fan_wants_spanish(text, mem)
+                )
+                print("   ACTION=send_voice: using forced line after generate fail")
+            else:
+                break
+
+        # ACTION owns protocol: never let a pídemelo draft block the send
+        if voice_planned[0]:
+            from core.language import fan_wants_spanish as _fws
+
+            if not (reply or "").strip() or _vn.reply_is_voice_beg(reply):
+                reply = _vn.forced_voice_close_line(
+                    want_spanish=_fws(text, mem)
+                )
+                print("   ACTION=send_voice: forced close line (empty/beg draft)")
 
         max_bubbles = int(
             getattr(decision, "max_bubbles", None)
