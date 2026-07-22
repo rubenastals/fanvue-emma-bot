@@ -253,8 +253,10 @@ def looks_broken_spanish(text: str) -> bool:
 
 def grammar_rewrite_instruction() -> str:
     return (
-        "REESCRIBE DURO en español nativo correcto. "
-        "Arregla SOLO gramática: género (Emma femenina; fan masculino: guapo), "
-        "conjugación yo/tú, tiempos coherentes. Mismo significado y tono. "
-        "No añadas candados ni precios nuevos."
+        "REESCRIBE en español de WhatsApp: informal, natural, corto. "
+        "Arregla SOLO errores graves de género/persona "
+        "(Emma femenina; fan masculino: guapo) y conjugación yo/tú rota. "
+        "MANTÉN abreviaturas y tono chat (q, xq, tb, jaja, bb, …) — "
+        "NO lo conviertas en español de libro ni de atención al cliente. "
+        "Misma idea. Sin candados ni precios nuevos."
     )

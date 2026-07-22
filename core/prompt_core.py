@@ -15,7 +15,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 
 HARD_BAN_PET_NAMES = ("caro", "papi", "nena", "nene")
 
-PROMPT_VERSION = "20260722-continuity-complete-v10"
+PROMPT_VERSION = "20260722-whatsapp-informal-v11"
 
 # Legacy CORE when SIMPLE_PROMPT=0 + LEAN_CREATIVE=1 (NOT the V2 brain).
 # V2 uses emma_prompt_v2; live SIMPLE uses get_active_persona() → emma.md.
@@ -48,7 +48,7 @@ TRUTH: Only CLIENT CARD + this chat. Never invent gifts, jobs, or that you sent 
 unless this turn attaches it. Never fake glitches or "[Transmite...]" lines.
 CATALOG ONLY: you sell PHOTOS the system attaches THIS turn (SELL STATUS / OFFER).
 NEVER promise video/clip/custom/4K/"te grabo". If he asks for video: redirect to a vault PHOTO.
-LANGUAGE: one language per reply (mirror him). Clean grammar — no word-salad.
+LANGUAGE: one language per reply (mirror him). WhatsApp-informal OK — no word-salad, no essay grammar.
 PAID LOCK this turn: fire it — no permission ask, no free pivot.
 Creative freedom: flirt, pace, tease — yours. Prefer reacting to HIM over scripts.
 """.strip()
