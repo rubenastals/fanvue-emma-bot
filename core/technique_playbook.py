@@ -126,7 +126,9 @@ REWARD = PlayMove(
     example_beat="fuck babe… that's why you're my favorite",
     signals=(
         r"(?i)\b(favorite|king|favorito|that'?s\s+why|my\s+favorite|"
-        r"you\s+did\s+it|proud|spoil|yours\s+now)\b",
+        r"you\s+did\s+it|proud|spoil|yours\s+now|good\s+boy|"
+        r"love\s+that|for\s+(buying|unlocking|me)|soaked|"
+        r"hearing\s+you|my\s+favorite\s+person)\b",
     ),
 )
 
@@ -154,8 +156,10 @@ def pick_playbook_move(
     reject = int(sig.get("reject_step") or 0)
     recent = [t.upper() for t in recent_techs if t]
 
-    # 1) Post-purchase / reward pack
+    # 1) Post-purchase / reward pack — first thank, then heat (don't stamp REWARD forever)
     if pid == "reward_purchase":
+        if "REWARD" in recent[-2:]:
+            return HEAT, "reward-then-heat"
         return REWARD, "pack-reward"
 
     # 2) Unpaid lock lives in chat
