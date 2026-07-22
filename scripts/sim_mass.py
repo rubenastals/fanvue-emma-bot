@@ -332,14 +332,17 @@ def run_llm_archetype(name: str, *, run_idx: int = 0) -> Dict[str, Any]:
             fan_vision = (
                 fan_vision_for_selfie() if fan_action == "send_photo" else None
             )
-            offer = maybe_attach_offer(
-                turn_index=i,
-                fan_text=fan_text,
-                pending_lock=pending_lock,
-                already_free=already_free,
-                already_paid=already_paid,
-                archetype=arch,
-            )
+            # Never pitch PPV on the same turn he sends a selfie — react first
+            offer = None
+            if fan_action != "send_photo":
+                offer = maybe_attach_offer(
+                    turn_index=i,
+                    fan_text=fan_text,
+                    pending_lock=pending_lock,
+                    already_free=already_free,
+                    already_paid=already_paid,
+                    archetype=arch,
+                )
             if offer:
                 if float(offer.get("price") or 0) > 0:
                     already_paid = True
