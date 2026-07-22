@@ -12,19 +12,19 @@ Principle: **protocol = code**. DeepSeek only writes text for an ACTION the poll
 | A4 | Safe fallbacks (no Mmm… openers) + regression matrix | ✅ |
 | A5 | Complete bubbles (no mid-sentence chops) | ✅ |
 | A6 | THREAD BEAT = last real turns (not stale summary) | ✅ |
-| A7 | `open_commitment` + action-first voice (v1) | ✅ partial — **trigger still too clever** |
+| A7 | `open_commitment` + action-first voice (v1) | ✅ |
 | A8 | Hard-block PPV while voice debt open | ✅ |
+| **R1** | **Dumb voice FSM** — open_voice → SEND (no rolls/packs/horny) | ✅ |
 
 ## Remaining (finish BEFORE polish)
 
 | # | Item | Why it matters |
 |---|------|----------------|
-| **R1** | **Dumb voice FSM** — open_voice → SEND on next non-reject fan msg. No rolls/packs/horny on committed path. | “When to send” was soup — **in progress this PR** |
 | **R2** | Cap rewrite cascade — 1 creative call; only deterministic strips for hard lies | Rewrites wipe good replies / context |
 | **R3** | Quarantine dead brains (`reply_v2`, fat `system_prompt`, unused STRATEGY essay) | Agents patch the wrong surface |
 | **R4** | Split `reply_engine` seams: assemble / generate / sanitize | God-object = every fix breaks another |
 | **R5** | Generalize `TurnAction` (flirt / send_voice / attach_ppv / comfort) — one resolver before LLM | Same class of bugs as voice/PPV |
-| **R6** | Expand matrix tests: voice FSM, no-PPV-with-debt, unpaid, bluff, ES | Prevent regression while refactoring |
+| **R6** | Expand matrix tests alongside each R | Prevent regression while refactoring |
 
 ## Explicitly NOT doing now
 
