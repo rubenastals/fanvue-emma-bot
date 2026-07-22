@@ -25,7 +25,7 @@ MODE_HARD_SELL = "hard_sell"
 # Buy / receive content — vault is PHOTOS only. "video/custom" still counts as
 # buying intent (he wants media) but creative must redirect to a PHOTO offer.
 _BUYING = (
-    r"\b(unlock|buy|pay|price|how much|cu[aá]nto|precio|quiero ver|"
+    r"\b(unlock|buy|pay|price|how much (is|does|do|for)|cu[aá]nto|precio|quiero ver|"
     r"show me|let me see|locked|ppv|"
     # intent only → close a PHOTO, never promise film. No bare "content"
     # (was matching loose chat and forcing closes).
