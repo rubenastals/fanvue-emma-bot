@@ -820,9 +820,8 @@ def _handle_fan_chat_body(
         from core import voice_notes as _vn
         from core.turn_action import ACTION_SEND_VOICE
 
-        # ACTION-FIRST: code syncs DB commitment + decides send_voice BEFORE DeepSeek.
-        # Protocol is not left to the model "remembering" 10 chat lines.
-        _voice_ok, _voice_why, mem = _vn.resolve_voice_action(
+        # ACTION-FIRST: sync commitment + decide send_voice BEFORE any offer select.
+        _voice_ok, _voice_why, mem, _voice_blocks_photo = _vn.resolve_voice_action(
             fan_uuid=fan_uuid,
             fan_handle=fan_handle,
             fan_message=text,
@@ -838,8 +837,17 @@ def _handle_fan_chat_body(
                 f"   ACTION={ACTION_SEND_VOICE}: {voice_planned[1]} "
                 f"| commitment={mem.get('open_commitment')}"
             )
+        # HARD: voice debt / ask → never sell PPV this turn (even if audio API is down)
+        if _voice_blocks_photo or voice_planned[0]:
             want_sell = False
             want_free = False
+            offer = None
+            if decision and getattr(decision, "allow_price", False):
+                decision.allow_price = False
+            print(
+                f"   SELL HARD-BLOCKED: voice protocol "
+                f"(send={voice_planned[0]} why={_voice_why[:80]})"
+            )
 
         if unpaid:
             offer = None  # never attach a second lock
@@ -867,6 +875,8 @@ def _handle_fan_chat_body(
                     route_result.facts.ppv_unpaid = True
                 except Exception:
                     pass
+        elif _voice_blocks_photo or voice_planned[0]:
+            offer = None  # protocol belt — no free/paid photo while voice debt open
         elif want_free:
             offer = vault_catalog.select_free_tease(mem)
             if offer:
@@ -914,14 +924,14 @@ def _handle_fan_chat_body(
                     {**(route_result.active or {}), "phase_pull": True},
                 )
 
-        _will_attach_photo = bool(
-            offer
-            and not unpaid
-        )
-        if voice_planned[0] and offer:
-            print("   🎙️ voice wins — clearing photo/PPV offer")
+        # Final belt: never keep an offer if voice protocol is open
+        if offer and (_voice_blocks_photo or voice_planned[0]):
+            print(
+                f"   🚫 drop offer ${float(offer.get('price') or 0):.0f} — "
+                "voice debt blocks all photo attaches"
+            )
             offer = None
-            _will_attach_photo = False
+        _will_attach_photo = bool(offer and not unpaid)
 
         try:
             # Keep "Emma is typing…" alive during the (multi-second) DeepSeek call.
@@ -939,6 +949,9 @@ def _handle_fan_chat_body(
                         fan_vision=vision,
                         catalog_locked=True,  # poller already decided offer/demote
                     )
+                    if offer and (_voice_blocks_photo or voice_planned[0]):
+                        print("   🚫 v2 offer dropped — voice protocol blocks photo")
+                        offer = None
                     if offer:
                         print(
                             f"   attach: L{offer.get('level')} "
@@ -1012,6 +1025,10 @@ def _handle_fan_chat_body(
         bubbles_sent = 0
         free_sent = False
         ppv_sent = False
+        # Absolute belt: voice debt → never attach any photo (paid or free)
+        if offer and (_voice_blocks_photo or voice_planned[0]):
+            print("   🚫 pre-attach: wipe offer — voice debt still open")
+            offer = None
         is_free_offer = bool(
             offer
             and (
