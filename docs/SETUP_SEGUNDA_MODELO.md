@@ -10,7 +10,7 @@ El bot **ya soporta varias cuentas** en la misma infra (Postgres + Redis). Cada 
 | `FANVUE_CLIENT_ID` / `SECRET` (misma app OAuth) | OAuth token (creator distinto) |
 | `DATABASE_URL`, `REDIS_URL` | `personas/<id>.md` |
 | Código del bot (`poll_inbox`, gates, router) | `data/<id>_fanvue_media_map.json` + vault en Fanvue |
-| Packs / lorebook (gates, no prompt live) | `ELEVENLABS_VOICE_ID` (notas de voz) |
+| | `ELEVENLABS_VOICE_ID` (notas de voz — puede ser la misma que Emma) |
 
 ## Checklist rápido
 
@@ -106,7 +106,7 @@ Duplica el servicio **poller** con otro bloque de variables:
 | `ACCOUNT_ID` | `sofia` |
 | `FANVUE_MEDIA_MAP` | `data/sofia_fanvue_media_map.json` |
 | `FANVUE_CREATOR_HANDLE` | `im.sofiacarter` |
-| `ELEVENLABS_VOICE_ID` | voz distinta |
+| `ELEVENLABS_VOICE_ID` | misma que Emma si queréis (omitir = default) |
 | `DATABASE_URL` | mismo Postgres |
 | `REDIS_URL` | mismo Redis |
 | `FANVUE_CLIENT_ID` / `SECRET` | mismos (si misma app OAuth) |
