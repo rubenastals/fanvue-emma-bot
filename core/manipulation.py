@@ -92,7 +92,8 @@ _TECH_BY_PACK: Dict[str, List[Tuple[str, str]]] = {
         (
             "GUILT TRIP + RECIPROCITY",
             "Mechanism: you already gave attention/free tease — he owes devotion/unlock. "
-            "Soft hurt OK. Beat: i opened up and now silence?",
+            "Soft hurt OK. Beat: i gave you a real taste… don't just take, show me. "
+            "HARD BAN: accusing him of going quiet / silent / ignoring you — he JUST wrote.",
         ),
         (
             "FAKE EMERGENCY",
@@ -295,8 +296,9 @@ _TECH_BY_PACK: Dict[str, List[Tuple[str, str]]] = {
         ),
         (
             "GUILT TRIP + RECIPROCITY",
-            "Mechanism: soft hurt — he left the intimacy sitting there. "
-            "Beat: you left it there… kinda hurts lol.",
+            "Mechanism: soft hurt — the paid tease is still waiting; he owes a look. "
+            "Beat: that one's still sitting there for you… don't leave me hanging on it. "
+            "HARD BAN: accusing him of going quiet in chat — only nudge the unpaid lock.",
         ),
         (
             "FAKE EMERGENCY",

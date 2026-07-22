@@ -425,20 +425,43 @@ _BANNED_ADDRESS = _BANNED_ALWAYS
 
 # Stock line that looped live ("Hey... look at me when I'm talking to you.") — gone.
 _EN_LANG_FALLBACKS = (
-    "hey… don't go quiet on me now",
-    "mmm stay with me a sec…",
+    "hey… stay with me a sec",
+    "mmm tell me more…",
     "look at you… you got me smiling",
     "say that again… slower",
     "you're trouble, you know that?",
     "come here… talk to me properly",
 )
 _ES_LANG_FALLBACKS = (
-    "ey… no te me calles ahora",
-    "mmm quédate un seg…",
+    "ey… quédate un seg",
+    "mmm cuéntame más…",
     "mira cómo me tienes…",
     "dime eso otra vez… más despacio",
     "eres un problema, lo sabes?",
     "ven aquí… háblame bien",
+)
+
+# Live reply path: fan JUST messaged — never accuse silence / going quiet.
+_SILENCE_REPROACH = re.compile(
+    r"(?i)("
+    r"you'?re?\s+(just\s+)?\.+\s*quiet|"
+    r"you'?re?\s+(just\s+)?(quiet|silent|ignoring\s+me)|"
+    r"(went|going|go)\s+quiet|"
+    r"left\s+me\s+(on\s+read|hanging)|"
+    r"now\s+you'?re?\s+just\s*\.+\s*quiet|"
+    r"and\s+now\s+you'?re?\s+just\s*\.+\s*quiet|"
+    r"te\s+quedaste\s+callad|"
+    r"me\s+(has\s+)?dejado\s+(en\s+visto|colgad)|"
+    r"me\s+dejaste\s+(en\s+visto|colgad)|"
+    r"now\s+you'?re?\s+just\s*\.\.\.\s*quiet"
+    r")"
+)
+
+_SILENCE_REPROACH_FALLBACKS = (
+    "aw that actually made me soft… say more",
+    "hey i hear you… come closer",
+    "ok that was cute… keep talking to me",
+    "mm i like when you're honest like that",
 )
 
 # Extra Spanish crumbs to strip in EN mode before nuking the whole bubble
@@ -969,6 +992,15 @@ def apply_post_draft(
     rw = RewriteBudget(
         max_extra=max(0, int(getattr(config, "MAX_CREATIVE_REWRITES", 1) or 0))
     )
+
+    # Fan JUST messaged this turn — never accuse "you're quiet / went silent"
+    if _SILENCE_REPROACH.search(reply or ""):
+        before_sg = reply
+        reply = random.choice(_SILENCE_REPROACH_FALLBACKS)
+        print(
+            "   🔇 silence-guilt on active turn — replaced "
+            f"({before_sg[:48]!r} → {reply!r})"
+        )
 
     # Soft: Spanglish / wrong language — may spend the one creative rewrite
     if language.is_mixed_or_wrong(reply, want_spanish=want_spanish):
