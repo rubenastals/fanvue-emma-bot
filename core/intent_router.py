@@ -200,6 +200,34 @@ def _hard_route(
             "reward_purchase", d, facts, {"reward_purchase": True}
         )
 
+    # Just unlocked / recent purchase window — reward, don't re-sell or deny the lock
+    if facts.recent_purchase and not facts.ppv_unpaid:
+        facts.hard_pack = "reward_purchase"
+        d = _decision(
+            MODE_TEASE,
+            "recent purchase — reward/thank, no new pitch",
+            allow_price=False,
+            allow_ppv_talk=False,
+            allow_free_tease=False,
+        )
+        return RouteResult(
+            "reward_purchase", d, facts, {"reward_purchase": True}
+        )
+
+    # He sent a selfie/photo — react to HIS body first, never pitch this turn
+    if facts.fan_sent_media:
+        facts.hard_pack = "react_fan_media"
+        d = _decision(
+            MODE_TEASE,
+            "fan sent media — react to him, no PPV pitch",
+            allow_price=False,
+            allow_ppv_talk=False,
+            allow_free_tease=False,
+        )
+        return RouteResult(
+            "react_fan_media", d, facts, {"react_fan_media": True}
+        )
+
     # First 1–2 fan messages: warm subscribe welcome — no sell / no free tease
     if (
         facts.msgs <= 2
@@ -343,6 +371,9 @@ def _soft_active(facts: TurnFacts, mem: dict) -> Dict[str, bool]:
     if facts.recent_purchase:
         active["reward_purchase"] = True
 
+    if facts.fan_sent_media:
+        active["react_fan_media"] = True
+
     # Reject / "caro" / can't afford → 4-step objection script (beats generic pull)
     if facts.recent_reject and not facts.recent_purchase:
         active["price_objection"] = True
@@ -418,6 +449,17 @@ def _decision_for_pack(
             max_bubbles=2,
         )
 
+    # Fan selfie/media — heat on HIM, never pitch
+    if pack_id == "react_fan_media":
+        return _decision(
+            MODE_TEASE,
+            reason,
+            allow_price=False,
+            allow_ppv_talk=False,
+            allow_free_tease=False,
+            max_bubbles=2,
+        )
+
     # Creative packs — CAN sell (Group A pack→price ban removed)
     if pack_id in (
         "escalate_paid",
@@ -427,7 +469,6 @@ def _decision_for_pack(
         "phase_spiral",
         "tease_heat",
         "phase_reengage",
-        "react_fan_media",
         "phase_hook",
         "rapport",
         "price_objection",

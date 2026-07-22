@@ -311,7 +311,13 @@ def run_llm_archetype(name: str, *, run_idx: int = 0) -> Dict[str, Any]:
                 )
             except Exception as exc:
                 print(f"  (purchase memory warn: {exc})")
-            ppv_status = {"active": False, "purchased": True}
+            ppv_status = {
+                "active": False,
+                "purchased": True,
+                "price": float(pending_lock.get("price") or 0),
+                "label": str(pending_lock.get("label") or "your locked photo"),
+                "ago": "just now",
+            }
             delivery_truth = {"ppv_unpaid": False}
             offer = None
             pending_lock = None
@@ -332,9 +338,15 @@ def run_llm_archetype(name: str, *, run_idx: int = 0) -> Dict[str, Any]:
             fan_vision = (
                 fan_vision_for_selfie() if fan_action == "send_photo" else None
             )
-            # Never pitch PPV on the same turn he sends a selfie — react first
+            # Tag media so intent_router hard-routes react_fan_media
+            if fan_action == "send_photo" and "[fan sent a photo]" not in fan_text.lower():
+                fan_text = f"{fan_text}\n[fan sent a photo]"
+            # Never pitch PPV on the selfie turn, nor the turn right after
             offer = None
-            if fan_action != "send_photo":
+            cool_after_selfie = fan_action == "send_photo" or any(
+                (t.get("fan_action") == "send_photo") for t in turns_out[-1:]
+            )
+            if fan_action != "send_photo" and not cool_after_selfie:
                 offer = maybe_attach_offer(
                     turn_index=i,
                     fan_text=fan_text,

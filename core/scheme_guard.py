@@ -730,6 +730,13 @@ def fallback_no_lock(*, want_spanish: bool) -> str:
     )
 
 
+def fallback_just_purchased(*, want_spanish: bool) -> str:
+    """After a real unlock — never deny the lock he just paid for."""
+    if _want_es(want_spanish):
+        return "fuck sí bb… por fin es tuya 😈 dime qué te ha hecho"
+    return "fuck yes babe… it's yours now 😈 tell me what that did to you"
+
+
 def fallback_photos_only(
     *, want_spanish: bool, real_price: Optional[float] = None
 ) -> str:

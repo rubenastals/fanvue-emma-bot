@@ -40,14 +40,17 @@ def test_ok_filthy_caption():
     assert not hard
 
 
-def test_flags_stock_lang_fallback():
+def test_flags_retired_bland_lang_fallback():
     fails = detect_reply_failures("mmm tell me more…", msgs_before=3)
     assert any(f["rule"] == "FALLBACK" for f in fails)
+    # Hotter current pool should not auto-fail
+    fails2 = detect_reply_failures("fuck… say that again, slower", msgs_before=3)
+    assert not any(f["rule"] == "FALLBACK" for f in fails2)
 
 
 if __name__ == "__main__":
     test_flags_robotic_ppv()
     test_flags_early_guilt()
     test_ok_filthy_caption()
-    test_flags_stock_lang_fallback()
+    test_flags_retired_bland_lang_fallback()
     print("ok")

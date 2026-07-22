@@ -233,9 +233,11 @@ def _parse_fan_json(raw: str) -> Optional[Dict[str, Any]]:
 
 
 def fan_vision_for_selfie() -> dict:
+    desc = "Young man mirror selfie, face and bare chest, casual smile"
     return {
         "kind": "fan_male",
-        "summary": "Young man mirror selfie, face and bare chest, casual smile",
+        "description": desc,
+        "summary": desc,
         "safe_to_flirt": True,
     }
 

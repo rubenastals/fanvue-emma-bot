@@ -10,7 +10,16 @@ from typing import Any, Dict, List, Optional
 
 from config import config
 from core import scheme_guard
-from core.reply_sanitize import _EN_LANG_FALLBACKS
+
+# Retired bland stamps that killed hook when lang-rewrite wiped the draft
+_RETIRED_LANG_STAMPS = (
+    "hey… stay with me a sec",
+    "mmm tell me more…",
+    "look at you… you got me smiling",
+    "say that again… slower",
+    "you're trouble, you know that?",
+    "come here… talk to me properly",
+)
 
 # Store / sales-caption energy (banned for PPV) — tight; "just for you" alone is fine
 _ROBOTIC_PPV = re.compile(
@@ -162,14 +171,14 @@ def detect_reply_failures(
                 }
             )
 
-    # Lang rewrite emptied the draft → canned EN fallback (kills hook)
+    # Retired bland lang stamps (draft wiped) — current hotter pool is OK
     norm = text.lower().strip()
-    if any(norm == fb.lower() for fb in _EN_LANG_FALLBACKS):
+    if any(norm == fb.lower() for fb in _RETIRED_LANG_STAMPS):
         errs.append(
             {
                 "rule": "FALLBACK",
                 "severity": 2,
-                "what": "shipped stock lang-fallback (draft was wiped)",
+                "what": "shipped retired bland lang-fallback (draft was wiped)",
             }
         )
 

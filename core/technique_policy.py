@@ -390,20 +390,44 @@ def score_move(
             score -= 4
             why.append("heat-not-crisis")
 
-    # Unpaid lock → point at it / rival / guilt
+    # Unpaid lock → point at it / hold frame (scarcity). Guilt/crisis only later.
     if unpaid or eff_pack == "ppv_unpaid":
-        if "SCARCITY" in up or "FOMO" in up or "RIVAL" in up or "GUILT" in up:
-            score += 9
-            why.append("unpaid-pressure")
+        if "SCARCITY" in up or "FOMO" in up:
+            score += 11
+            why.append("unpaid-hold-frame")
+        if "RIVAL" in up and sig["reject_step"] >= 1:
+            score += 6
+            why.append("unpaid-rival-after-push")
+        if "GUILT" in up:
+            if sig["reject_step"] >= 2:
+                score += 6
+                why.append("unpaid-guilt-late")
+            else:
+                score -= 10
+                why.append("unpaid-guilt-too-soon")
         if up == "FAKE EMERGENCY":
-            score += 4
-            why.append("unpaid-crisis-ok")
+            if sig["reject_step"] >= 2 or sig["msgs"] >= 12:
+                score += 3
+                why.append("unpaid-crisis-late-ok")
+            else:
+                score -= 18
+                why.append("unpaid-crisis-too-soon")
 
-    # Price pushback → ladder + emergency + rival
+    # Price pushback → hold frame / ego first; emergency only after repeated rejects
     if objection_live:
-        if "GUILT" in up or "EGO" in up or "FOMO" in up or "EMERGENCY" in up:
-            score += 8
-            why.append("objection-ladder")
+        if "EGO" in up or ("FOMO" in up and "EMERGENCY" not in up) or "SCARCITY" in up:
+            score += 10
+            why.append("objection-hold-frame")
+        if "GUILT" in up and sig["reject_step"] >= 1:
+            score += 4
+            why.append("objection-soft-guilt")
+        if "EMERGENCY" in up:
+            if sig["reject_step"] >= 2:
+                score += 5
+                why.append("objection-crisis-late")
+            else:
+                score -= 16
+                why.append("objection-crisis-too-soon")
         if "WITHDRAWAL" in up and sig["reject_step"] >= 3:
             score += 10
             why.append("objection-exit")
@@ -471,13 +495,13 @@ def score_move(
             score -= 6
             why.append("rival-early")
 
-    # Fake emergency: better when stalled / objection, not first flirts
+    # Fake emergency: only when truly stalled (2+ rejects or long unpaid)
     if "EMERGENCY" in up:
-        if sig["reject_step"] >= 1 or sig["price_push"] or (unpaid and sig["msgs"] >= 10):
+        if sig["reject_step"] >= 2 or (unpaid and sig["msgs"] >= 12):
             score += 7
             why.append("crisis-when-stalled")
-        elif sig["msgs"] < 8:
-            score -= 8
+        elif sig["msgs"] < 10 or sig["reject_step"] < 2:
+            score -= 14
             why.append("crisis-too-soon")
 
     # No lock → don't prefer lock-scarcity names (filter usually drops them)

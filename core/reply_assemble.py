@@ -826,9 +826,13 @@ def assemble_emma_turn(
         )
 
     vision_desc = None
-    if fan_vision and fan_vision.get("description"):
-        vision_desc = fan_vision["description"]
-    elif mem.get("last_fan_image_desc") and re.search(
+    if fan_vision:
+        vision_desc = (
+            fan_vision.get("description")
+            or fan_vision.get("summary")
+            or ""
+        ).strip() or None
+    if not vision_desc and mem.get("last_fan_image_desc") and re.search(
         r"(?i)\b(qu[eé] (es|ves|hay)|what (is|do you see|do u see)|dime que|describe)\b",
         fan_message or "",
     ):
