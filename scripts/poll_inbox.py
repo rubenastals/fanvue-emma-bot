@@ -815,14 +815,79 @@ def _handle_fan_chat_body(
                 f"   SELL: gratis refused ({frees_done} free already) — force paid path"
             )
 
-        from core import voice_notes as _vn
+        from core import ppv_concede, voice_notes as _vn
         from core.turn_action import (
             ACTION_ATTACH_FREE,
             ACTION_ATTACH_PPV,
             ACTION_COMFORT,
             ACTION_SEND_VOICE,
+            TurnAction,
             plan_turn_action,
         )
+
+        # Defend expensive unpaid lock → then unsend + cheaper L1–L2
+        defending_price = False
+        forced_concede_offer = None
+        if unpaid and ppv_concede.fan_asks_cheaper(text):
+            cplan = ppv_concede.evaluate(
+                mem=mem,
+                fan_message=text,
+                unpaid=unpaid,
+                ppv_status=ppv_status,
+                history_turns=turns,
+            )
+            if cplan.phase == ppv_concede.PHASE_DEFEND:
+                ppv_concede.bump_defend_hits(
+                    fan_uuid, fan_handle=fan_handle, hits=cplan.hits
+                )
+                mem = fan_memory.get(fan_uuid) or mem
+                defending_price = True
+                print(f"   PPV DEFEND: {cplan.reason}")
+            elif cplan.phase == ppv_concede.PHASE_CONCEDE:
+                print(f"   PPV CONCEDE try: {cplan.reason}")
+                uns = False
+                if cplan.msg_uuid:
+                    uns = ppv_expiry.unsend_lock(
+                        fv,
+                        fan_uuid,
+                        cplan.msg_uuid,
+                        handle=fan_handle,
+                        label=str(
+                            (ppv_status or {}).get("label")
+                            or mem.get("last_ppv_label")
+                            or ""
+                        ),
+                    )
+                if uns and cplan.cheap_offer:
+                    fan_memory.clear_pending_ppv(
+                        fan_uuid,
+                        fan_handle=fan_handle,
+                        reason="price_concede",
+                    )
+                    ppv_concede.mark_conceded(
+                        fan_uuid, fan_handle=fan_handle
+                    )
+                    unpaid = False
+                    delivery_truth["ppv_unpaid"] = False
+                    ppv_status = None
+                    forced_concede_offer = cplan.cheap_offer
+                    want_sell = True
+                    want_free = False
+                    mem = fan_memory.get(fan_uuid) or mem
+                    print(
+                        f"   PPV CONCEDE: unsent expensive → "
+                        f"L{forced_concede_offer.get('level')} "
+                        f"${float(forced_concede_offer.get('price') or 0):.0f}"
+                    )
+                else:
+                    ppv_concede.bump_defend_hits(
+                        fan_uuid, fan_handle=fan_handle, hits=cplan.hits
+                    )
+                    mem = fan_memory.get(fan_uuid) or mem
+                    defending_price = True
+                    print(
+                        "   PPV CONCEDE failed (unsend/inventory) — keep defending"
+                    )
 
         # ACTION-FIRST (R5): one resolver before LLM — voice > comfort > attach > flirt
         turn_action = plan_turn_action(
@@ -834,21 +899,43 @@ def _handle_fan_chat_body(
             pack_id=route_result.pack_id,
             unpaid=unpaid,
             history_turns=turns,
-            want_sell=want_sell,
-            want_free=want_free,
+            want_sell=want_sell and not defending_price,
+            want_free=want_free and not defending_price,
             facts=route_result.facts,
         )
         mem = turn_action.mem or mem
         offer = turn_action.offer
         voice_planned = (turn_action.voice_will_send, turn_action.reason)
         _voice_blocks_photo = bool(turn_action.blocks_photo)
-        print(
-            f"   ACTION={turn_action.action}: {turn_action.reason[:120]} "
-            f"| commitment={mem.get('open_commitment')}"
-        )
+
+        # Code-owned concede attach (bypass selector reject on "caro")
+        if forced_concede_offer and not (
+            turn_action.action == ACTION_SEND_VOICE or _voice_blocks_photo
+        ):
+            offer = forced_concede_offer
+            turn_action = TurnAction(
+                action=ACTION_ATTACH_PPV,
+                reason=(
+                    f"price concede → "
+                    f"${float(offer.get('price') or 0):.0f}"
+                ),
+                offer=offer,
+                mem=mem,
+                pack_id="phase_close",
+            )
+            print(
+                f"   ACTION={turn_action.action}: {turn_action.reason} "
+                f"| commitment={mem.get('open_commitment')}"
+            )
+        else:
+            print(
+                f"   ACTION={turn_action.action}: {turn_action.reason[:120]} "
+                f"| commitment={mem.get('open_commitment')}"
+            )
         if turn_action.action == ACTION_SEND_VOICE or _voice_blocks_photo:
             want_sell = False
             want_free = False
+            forced_concede_offer = None
             if decision and getattr(decision, "allow_price", False):
                 decision.allow_price = False
             if turn_action.action == ACTION_SEND_VOICE or (
@@ -861,36 +948,47 @@ def _handle_fan_chat_body(
         if turn_action.action == ACTION_COMFORT:
             want_sell = False
             want_free = False
+            forced_concede_offer = None
             if decision and getattr(decision, "allow_price", False):
                 decision.allow_price = False
             print("   SELL HARD-BLOCKED: comfort ACTION (no attach)")
 
-        if unpaid:
+        if unpaid and not forced_concede_offer:
             offer = None  # never attach a second lock
             print("   SELL: skipped (unpaid lock already in chat)")
-            # Force router pack so creative gets ppv_unpaid rails
-            if route_result.pack_id != "ppv_unpaid":
-                from core.turn_policy import MODE_TEASE, TurnDecision
-                from core.intent_router import RouteResult as _RR
+            from core.turn_policy import MODE_TEASE, TurnDecision
+            from core.intent_router import RouteResult as _RR
 
+            pack = "price_objection" if defending_price else "ppv_unpaid"
+            reason = (
+                "unpaid expensive lock — defend price before conceding"
+                if defending_price
+                else "unpaid PPV still open — push unlock, don't stack"
+            )
+            if route_result.pack_id != pack:
                 decision = TurnDecision(
                     mode=MODE_TEASE,
-                    reason="unpaid PPV still open — push unlock, don't stack",
+                    reason=reason,
                     max_bubbles=2,
                     allow_ppv_talk=True,
                     allow_price=False,
                     allow_free_tease=False,
                 )
                 route_result = _RR(
-                    "ppv_unpaid",
+                    pack,
                     decision,
                     route_result.facts,
-                    {**(route_result.active or {}), "ppv_unpaid": True},
+                    {
+                        **(route_result.active or {}),
+                        "ppv_unpaid": True,
+                        "price_objection": bool(defending_price),
+                    },
                 )
                 try:
                     route_result.facts.ppv_unpaid = True
                 except Exception:
                     pass
+                print(f"   SELL: pack forced → {pack}")
         elif turn_action.action == ACTION_ATTACH_FREE and offer:
             print(
                 f"   SELL FREE L0: {offer['label'][:50]} "
@@ -901,6 +999,24 @@ def _handle_fan_chat_body(
                 f"   SELL: L{offer['level']} ${float(offer['price']):.0f} "
                 f"{offer['label'][:50]} ({offer['media_uuid'][:8]}…)"
             )
+            if forced_concede_offer:
+                from core.turn_policy import MODE_SOFT_SELL, TurnDecision
+                from core.intent_router import RouteResult as _RR
+
+                decision = TurnDecision(
+                    mode=MODE_SOFT_SELL,
+                    reason="price concede — cheaper lock after defending",
+                    max_bubbles=2,
+                    allow_ppv_talk=True,
+                    allow_price=True,
+                    allow_free_tease=False,
+                )
+                route_result = _RR(
+                    "phase_close",
+                    decision,
+                    route_result.facts,
+                    {**(route_result.active or {}), "ppv_unpaid": False},
+                )
         elif turn_action.extras.get("demote_reason"):
             from core.turn_policy import MODE_TEASE, TurnDecision
             from core.intent_router import RouteResult as _RR

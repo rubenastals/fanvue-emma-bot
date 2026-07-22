@@ -133,6 +133,9 @@ def _blank(fan_handle: str) -> dict:
         # Protocol state (code-owned). Not Soft memory — hard turn commitments.
         # e.g. {"type": "voice", "since": iso, "source": "fan_ask", "hits": 2}
         "open_commitment": None,
+        # Defend expensive unpaid lock → then concede cheaper (ppv_concede)
+        "price_defend_hits": 0,
+        "price_concede_done": False,
         "note": "",
         "status": "new",
         # Permanent client card (hybrid memory)
@@ -185,6 +188,10 @@ def _ensure_card_fields(mem: dict) -> None:
         mem["interaction_digest"] = {}
     if "open_commitment" not in mem:
         mem["open_commitment"] = None
+    if "price_defend_hits" not in mem:
+        mem["price_defend_hits"] = 0
+    if "price_concede_done" not in mem:
+        mem["price_concede_done"] = False
 
 
 _MAX_SENT_UUIDS = 200
@@ -605,6 +612,9 @@ def set_last_offer(
             pass
         mem["last_offer_at"] = _now()
         mem["offers_today"] = int(mem.get("offers_today", 0)) + 1
+        # New lock episode — reset defend/concede FSM
+        mem["price_defend_hits"] = 0
+        mem["price_concede_done"] = False
         _put(fan_uuid, mem)
 
 
@@ -688,7 +698,38 @@ def clear_pending_ppv(
         mem["last_ppv_pending"] = False
         mem["last_ppv_expired_at"] = _now()
         mem["last_ppv_expire_reason"] = reason
+        # Reset defend counter; concede_done stays if we just conceded
+        # (new attach via set_last_offer clears it for the next lock).
+        if reason != "price_concede":
+            mem["price_defend_hits"] = 0
+            mem["price_concede_done"] = False
+        else:
+            mem["price_defend_hits"] = 0
+            mem["price_concede_done"] = True
         # Allow a fresh lock after expiry (cooloff uses last_ppv_at — keep it)
+        _put(fan_uuid, mem)
+
+
+def set_price_defend_hits(
+    fan_uuid: str,
+    *,
+    hits: int,
+    fan_handle: str = "",
+) -> int:
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        mem["price_defend_hits"] = max(0, int(hits))
+        _put(fan_uuid, mem)
+        return int(mem["price_defend_hits"])
+
+
+def mark_price_conceded(fan_uuid: str, *, fan_handle: str = "") -> None:
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        mem["price_concede_done"] = True
+        mem["price_defend_hits"] = 0
         _put(fan_uuid, mem)
 
 

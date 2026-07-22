@@ -155,6 +155,9 @@ class Config:
     ]
     PPV_EXPIRE_ENABLED = os.getenv("PPV_EXPIRE_ENABLED", "1") == "1"
     PPV_EXPIRE_MINUTES = int(os.getenv("PPV_EXPIRE_MINUTES", "30"))
+    # Unpaid expensive lock + "más barato": defend N asks, then unsend→cheap L1–L2
+    PPV_PRICE_DEFEND_HITS = int(os.getenv("PPV_PRICE_DEFEND_HITS", "2"))
+    PPV_CONCEDE_MIN_PRICE = float(os.getenv("PPV_CONCEDE_MIN_PRICE", "15"))
     # On poller boot: wipe every unpaid lock in recent chats (clean slate), then new ones time out
     PPV_PURGE_ACTIVE_ON_START = os.getenv("PPV_PURGE_ACTIVE_ON_START", "1") == "1"
     DIGEST_WEBHOOK_URL = os.getenv("DIGEST_WEBHOOK_URL", "")  # Discord/Slack incoming webhook
