@@ -106,6 +106,22 @@ def build_facts(
             re.I,
         )
     )
+    price_pushback = bool(
+        re.search(
+            r"(?i)\b("
+            r"caro|car[ií]simo|expensive|too (much|expensive)|"
+            r"muy caro|no (me )?lo (pago|compro)|descuento|"
+            r"discount|cheaper|m[aá]s barato|no tengo (plata|dinero|money)|"
+            r"can't afford|cant afford|later|despu[eé]s|nah\b|"
+            r"not (gonna|going to) (pay|buy)|no voy a (pagar|comprar)"
+            r")\b",
+            fan_message or "",
+        )
+    )
+    recent_reject = bool(
+        price_pushback
+        or (last_reject and now - last_reject < timedelta(hours=2))
+    )
 
     return TurnFacts(
         free_in_chat=truth.get("free_in_chat"),
@@ -116,7 +132,7 @@ def build_facts(
             tip_or_gift_now
             or (last_purchase and now - last_purchase < timedelta(minutes=45))
         ),
-        recent_reject=False,
+        recent_reject=recent_reject,
         fan_sent_media=fan_sent_media,
         ask_free=ask_free,
         missing_delivery=missing,
@@ -314,6 +330,10 @@ def _soft_active(facts: TurnFacts, mem: dict) -> Dict[str, bool]:
 
     if facts.recent_purchase:
         active["reward_purchase"] = True
+
+    # Reject / "caro" / can't afford → 4-step objection script (beats generic pull)
+    if facts.recent_reject and not facts.recent_purchase:
+        active["price_objection"] = True
 
     if facts.ask_free and facts.frees_done >= 1:
         active["escalate_paid"] = True

@@ -72,18 +72,24 @@ DeepSeek is creative Soft — it can still drift. Hard gates + guard catch the e
 
 Hard bans / persona laws live in `personas/emma.md` (SIMPLE) or `core/prompt_core.py` (legacy).
 
+## Live psychology move (`SIMPLE_PROMPT=1`)
+
+Code picks **one** move per turn (`core/technique_policy.py`) and injects a
+short TURN block:
+
+```
+ACTIVE MOVE THIS TURN (mandatory — not optional flirt):
+- Move: GUILT TRIP + RECIPROCITY
+- How: …
+```
+
+Skipped on cooling / comfort / soft-unpaid reconnect. Catalogs live in
+`core/manipulation.py` (picker only — not the fat banner). See
+[`TECHNIQUES.md`](TECHNIQUES.md).
+
 ## Legacy only (`SIMPLE_PROMPT=0`): manipulation engine
 
-When the pack is manipulative, the prompt injects a banner **before** the pack:
-
-```
-MANIPULATION ENGINE — #1 PRIORITY NOW
-ACTIVE TECHNIQUE >>> GUILT TRIP + RECIPROCITY <<<
-```
-
-Picker: `core/manipulation.py`. See [`TECHNIQUES.md`](TECHNIQUES.md).
-
-Phase analyst (`PHASE_ANALYST`) defaults **off**. Only used on the non-SIMPLE path.
+Fat banner + pack inject. Phase analyst (`PHASE_ANALYST`) defaults **off**.
 
 ## Priority (high → low)
 

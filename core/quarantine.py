@@ -29,7 +29,7 @@ QUARANTINED_SURFACES: List[Tuple[str, str]] = [
     ("core/emma_prompt_v2.py", "V2 persona essay; only via reply_v2"),
     ("core/system_prompt.py", "fat EMMA_SYSTEM_PROMPT; only LEAN_CREATIVE=0"),
     ("core/strategy_prompt.py", "STRATEGY_BLOCK essay offline; live uses truth_state()"),
-    ("core/manipulation.py", "technique banner; only SIMPLE_PROMPT=0"),
+    ("core/manipulation.py", "fat banner SIMPLE=0; catalogs via technique_policy"),
     ("core/phase_analyst.py", "extra analyst call; off unless PHASE_ANALYST + non-SIMPLE"),
     ("core/strategy_orchestrator.py", "Celery legacy pipeline; not poll_inbox"),
 ]
@@ -44,6 +44,7 @@ LIVE_CREATIVE_SURFACES: List[str] = [
     "core/reply_sanitize.py",
     "core/scheme_guard.py",
     "core/intent_router.py",
+    "core/technique_policy.py",
     "scripts/poll_inbox.py",
 ]
 

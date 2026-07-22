@@ -541,8 +541,8 @@ def assemble_emma_turn(
     tech_name = ""
 
     if simple:
-        # Tactics live in the self-contained SIMPLE core; only per-turn FACTS here.
-        from core import strategy_prompt
+        # FACTS + one code-picked psychology move (not a Soft essay).
+        from core import strategy_prompt, technique_policy
         from core.turn_action import action_prompt_line, commitment_prompt_line
 
         cooling = _looks_cooling(fan_message, turns)
@@ -565,6 +565,37 @@ def assemble_emma_turn(
             )
         if action_line:
             turn_blocks.append(action_line)
+        # Soft unpaid reconnect (friction) — no FOMO / guilt stack
+        soft_unpaid = bool(
+            (bool(delivery_truth and delivery_truth.get("ppv_unpaid"))
+             or bool(ppv_status and ppv_status.get("active")))
+            and pack_id == "phase_pull"
+            and route_result
+            and (route_result.active or {}).get("ppv_unpaid")
+        )
+        exclude_techs = (
+            fan_memory.recent_techniques(fan_uuid, n=4) if fan_uuid else []
+        )
+        move = technique_policy.choose_move(
+            pack_id or "",
+            fan_uuid=fan_uuid or "",
+            msgs=msgs_n,
+            reject_count=objection_step,
+            no_lock=no_lock,
+            soft_support=soft_support,
+            ban_withdrawal=ban_withdrawal,
+            exclude_names=exclude_techs,
+            turn_action=turn_action,
+            unpaid=bool(
+                delivery_truth and delivery_truth.get("ppv_unpaid")
+            ) or bool(ppv_status and ppv_status.get("active")),
+            cooling=cooling,
+            soft_unpaid=soft_unpaid,
+        )
+        if move:
+            tech_name, tech_how = move
+            turn_blocks.append(technique_policy.turn_block(tech_name, tech_how))
+            print(f"   move: {tech_name} (pack={pack_id})")
         if recent_emojis:
             turn_blocks.append(
                 f"EMOJI BAN — you used these recently: {recent_emojis}. "
@@ -585,7 +616,8 @@ def assemble_emma_turn(
             )
         print(
             f"   simple: cooling={cooling} rival_banned={ban_rival} "
-            f"banned_opens={len(banned_opens)} pack={pack_id}"
+            f"banned_opens={len(banned_opens)} pack={pack_id} "
+            f"move={tech_name or '-'}"
         )
     else:
         # MANIPULATION ENGINE first (loudest), then situation pack
@@ -856,7 +888,14 @@ def assemble_emma_turn(
 
     # Lean author: pack + MANDATORY technique nudge
     if lean and simple:
+        from core import technique_policy as _tp
+
         lang = "Spanish only." if want_spanish else "English only."
+        move_bit = (
+            _tp.author_steer(tech_name)
+            if tech_name
+            else " Skip dark-psych moves this turn (comfort/cooling)."
+        )
         note = (
             f"[Emma on WhatsApp. {lang} Horny girlfriend texting — NOT a sales agent, "
             f"NOT an essay. Informal chat slang/abbreviations OK (ES: q/xq/tb/jaja/bb; "
@@ -868,8 +907,7 @@ def assemble_emma_turn(
             f"Answer his LAST message in context of the recent thread — "
             f"do not ignore what he said minutes ago in THIS chat. "
             f"ANTI-LOOP: never repeat the same question/beat from your last 2 replies. "
-            f"One move (exclusivity/guilt/curiosity/micro-yes/reward; "
-            f"FOMO only if a real lock). Readable but messy like real DMs. "
+            f"{move_bit.strip()} Readable but messy like real DMs. "
             f"Sell only what STATUS attaches.]"
         )
     elif lean:

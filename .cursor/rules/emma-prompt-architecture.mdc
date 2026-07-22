@@ -25,8 +25,8 @@ AUTO_APPROVE_SOFT_LESSONS=0
 1. **CORE** — `personas/emma.md` via `prompt_core.get_active_persona()`. Replace a rule to add one; do not append forever.
 2. **CLIENT CARD** — durable facts about this fan.
 3. **HISTORY** — recent messages.
-4. **TURN** — code-derived facts only (TRUTH STATE, SELL/LOCK STATUS, delivery, vision, voice). Budget-capped in `prompt_layers.py`.
-5. **AUTHOR** — one short steer line.
+4. **TURN** — code-derived facts only (TRUTH STATE, ACTIVE MOVE, SELL/LOCK STATUS, delivery, vision, voice). Budget-capped in `prompt_layers.py`. Active psychology move = `core/technique_policy.py` (short block, not fat banner).
+5. **AUTHOR** — one short steer line (names the ACTIVE MOVE when set).
 
 Hard money/media truth stays in **code** (`intent_router`, `offer_selector`, `poll_inbox`, `scheme_guard`). Creativity is DeepSeek; lies are caught by gates + guards.
 
@@ -39,7 +39,7 @@ Registry: `core/quarantine.py`. Banner marker: `QUARANTINED — not the live SIM
 - `core/reply_v2.py` / `core/emma_prompt_v2.py` (ignored when SIMPLE=1)
 - `core/system_prompt.py` fat essay (only LEAN=0)
 - `STRATEGY_BLOCK` in `core/strategy_prompt.py` (live uses `truth_state()` only)
-- `core/manipulation.py` / `core/phase_analyst.py` (legacy SIMPLE=0)
+- `core/manipulation.py` fat banner / `core/phase_analyst.py` (legacy SIMPLE=0; catalogs OK via technique_policy)
 - `core/strategy_orchestrator.py` (Celery; not poll_inbox)
 
 ## Packs under SIMPLE
