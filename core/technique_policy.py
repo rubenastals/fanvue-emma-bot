@@ -284,6 +284,14 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
             low,
         )
     ) or (len(low) <= 28 and low.endswith("?") and not prove_ask)
+    # Shy / low-effort: short dry texts — never guilt/crisis/rival
+    shy_short = bool(
+        len(low) <= 40
+        and not buying
+        and not horny
+        and not price_push
+        and not venting
+    )
     return {
         "spent": spent,
         "purchases": purchases,
@@ -300,6 +308,7 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
         "venting": venting,
         "flirting": flirting,
         "soft_clarify": soft_clarify,
+        "shy_short": shy_short,
         "zero_spender": spent <= 0 and purchases <= 0,
     }
 
@@ -390,62 +399,61 @@ def score_move(
             score -= 4
             why.append("heat-not-crisis")
 
-    # Unpaid lock → point at it / hold frame (scarcity). Guilt/crisis only later.
+    # Unpaid lock → hold frame (scarcity/heat). Guilt/crisis removed from catalog;
+    # still hard-penalize if they leak from elsewhere.
     if unpaid or eff_pack == "ppv_unpaid":
-        if "SCARCITY" in up or "FOMO" in up:
-            score += 11
+        if "SCARCITY" in up or ("FOMO" in up and "RIVAL" not in up):
+            score += 12
             why.append("unpaid-hold-frame")
-        if "RIVAL" in up and sig["reject_step"] >= 1:
-            score += 6
-            why.append("unpaid-rival-after-push")
+        if up in ("HOT FLIRT", "MICRO COMMITMENT"):
+            score += 8
+            why.append("unpaid-heat-hold")
+        if "RIVAL" in up:
+            if sig["reject_step"] >= 2 and not sig.get("shy_short") and sig["purchases"] <= 0:
+                score += 4
+                why.append("unpaid-rival-late")
+            else:
+                score -= 16
+                why.append("unpaid-rival-banned")
         if "GUILT" in up:
-            if sig["reject_step"] >= 2:
-                score += 6
-                why.append("unpaid-guilt-late")
-            else:
-                score -= 10
-                why.append("unpaid-guilt-too-soon")
-        if up == "FAKE EMERGENCY":
-            if sig["reject_step"] >= 2 or sig["msgs"] >= 12:
-                score += 3
-                why.append("unpaid-crisis-late-ok")
-            else:
-                score -= 18
-                why.append("unpaid-crisis-too-soon")
+            score -= 22
+            why.append("unpaid-guilt-banned")
+        if "EMERGENCY" in up:
+            score -= 22
+            why.append("unpaid-crisis-banned")
 
-    # Price pushback → hold frame / ego first; emergency only after repeated rejects
+    # Price pushback → hold frame / ego; never crisis; rival only late
     if objection_live:
         if "EGO" in up or ("FOMO" in up and "EMERGENCY" not in up) or "SCARCITY" in up:
             score += 10
             why.append("objection-hold-frame")
-        if "GUILT" in up and sig["reject_step"] >= 1:
-            score += 4
-            why.append("objection-soft-guilt")
-        if "EMERGENCY" in up:
-            if sig["reject_step"] >= 2:
-                score += 5
-                why.append("objection-crisis-late")
-            else:
-                score -= 16
-                why.append("objection-crisis-too-soon")
+        if "GUILT" in up or "EMERGENCY" in up:
+            score -= 20
+            why.append("objection-guilt-crisis-banned")
+        if "RIVAL" in up and sig["reject_step"] < 2:
+            score -= 12
+            why.append("objection-rival-too-soon")
         if "WITHDRAWAL" in up and sig["reject_step"] >= 3:
             score += 10
             why.append("objection-exit")
 
-    # HARD: abandonment / "guys leave" guilt only for unpaid/objection — never
-    # mid-chat while he's actively writing (live loop: "poof they're gone").
-    if "GUILT" in up and not unpaid and not objection_live and eff_pack != "ppv_unpaid":
-        score -= 25
-        why.append("ban-midchat-abandonment-guilt")
+    # HARD: guilt never mid-chat while he's writing; never on shy/short
+    if "GUILT" in up:
+        if not unpaid and not objection_live:
+            score -= 25
+            why.append("ban-midchat-abandonment-guilt")
+        if sig.get("shy_short") or sig.get("soft_clarify"):
+            score -= 20
+            why.append("ban-guilt-on-shy")
 
-    # Soft clarify ("pq lo dices?", "a grabar?") → bond/mirror, not crisis/rival
-    if sig.get("soft_clarify"):
-        if "EMERGENCY" in up or name in manipulation._RIVAL_TECHS:
-            score -= 14
-            why.append("clarify-not-crisis")
-        if up in ("MIRRORING", "GASLIGHTING (soft)") or "LOVE BOMBING" in up:
-            score += 6
-            why.append("clarify-soft")
+    # Soft clarify / shy short → bond/mirror/heat, not crisis/rival/guilt
+    if sig.get("soft_clarify") or sig.get("shy_short"):
+        if "EMERGENCY" in up or "GUILT" in up or name in manipulation._RIVAL_TECHS:
+            score -= 18
+            why.append("shy-not-dark")
+        if up in ("MIRRORING", "HOT FLIRT", "ASK HIS PHOTO") or "LOVE BOMBING" in up:
+            score += 8
+            why.append("shy-soft-heat")
 
     # Reward pack
     if eff_pack == "reward_purchase":
@@ -486,23 +494,22 @@ def score_move(
             score -= 15
             why.append("no-therapy-during-flirt")
 
-    # Rival stronger when warm/spender or stuck zero after many msgs
+    # Rival: never after he already paid (breaks "chosen" fantasy); rare otherwise
     if name in manipulation._RIVAL_TECHS:
-        if sig["msgs"] >= 8 and (sig["status"] in ("warm", "spender", "whale") or sig["zero_spender"]):
-            score += 7
-            why.append("rival-fit")
-        if sig["msgs"] < 6:
-            score -= 6
+        if sig["purchases"] > 0 or sig["spent"] > 0:
+            score -= 20
+            why.append("rival-after-purchase-banned")
+        elif sig["msgs"] >= 10 and sig["reject_step"] >= 2 and sig["zero_spender"]:
+            score += 5
+            why.append("rival-fit-stalled-zero")
+        if sig["msgs"] < 8 or sig.get("shy_short"):
+            score -= 12
             why.append("rival-early")
 
-    # Fake emergency: only when truly stalled (2+ rejects or long unpaid)
+    # Fake emergency: effectively banned (catalog removed); keep hammer if leaked
     if "EMERGENCY" in up:
-        if sig["reject_step"] >= 2 or (unpaid and sig["msgs"] >= 12):
-            score += 7
-            why.append("crisis-when-stalled")
-        elif sig["msgs"] < 10 or sig["reject_step"] < 2:
-            score -= 14
-            why.append("crisis-too-soon")
+        score -= 20
+        why.append("crisis-banned")
 
     # No lock → don't prefer lock-scarcity names (filter usually drops them)
     if no_lock and "SCARCITY + FOMO" in up and "RIVAL" not in up:
@@ -588,6 +595,19 @@ def choose_move(
             principle=principle,
         )
 
+    sig = _fan_signals(mem, fan_message)
+    # Prefer live mem message count when present
+    if mem is not None and int(mem.get("messages") or 0):
+        sig["msgs"] = int(mem.get("messages") or msgs or 0)
+    elif msgs:
+        sig["msgs"] = msgs
+
+    # After he paid / shy short → never rival FOMO
+    if int(sig.get("purchases") or 0) > 0 or float(sig.get("spent") or 0) > 0:
+        ban_rival_fan = True
+    if sig.get("shy_short") or sig.get("soft_clarify"):
+        ban_rival_fan = True
+
     catalog = manipulation._filter_catalog(
         list(manipulation._TECH_BY_PACK.get(eff) or []),
         no_lock=force_no_lock,
@@ -597,16 +617,18 @@ def choose_move(
     exclude_u = {n.strip().upper() for n in (exclude_names or []) if n and n.strip()}
     if ban_withdrawal:
         exclude_u.add("LOVE BOMBING + WITHDRAWAL")
+    # Structural ban: guilt + fake emergency never chosen from live catalogs
+    for banned in (
+        "GUILT TRIP + RECIPROCITY",
+        "GUILT TRIP + SCARCITY",
+        "GUILT TRIP (STEP 1)",
+        "FAKE EMERGENCY",
+        "LOVE BOMBING + GUILT + FOMO",
+    ):
+        exclude_u.add(banned)
     pool = [(n, h) for n, h in catalog if n.upper() not in exclude_u] or list(catalog)
     if not pool:
         return None
-
-    sig = _fan_signals(mem, fan_message)
-    # Prefer live mem message count when present
-    if mem is not None and int(mem.get("messages") or 0):
-        sig["msgs"] = int(mem.get("messages") or msgs or 0)
-    elif msgs:
-        sig["msgs"] = msgs
 
     # Early romance: force the warm/hot catalog (not phase_pull guilt/rival).
     early_romance = (

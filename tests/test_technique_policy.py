@@ -75,7 +75,8 @@ def test_price_objection_beats_unpaid():
         turn_action=SimpleNamespace(action="flirt"),
     )
     assert move is not None
-    assert "GUILT" in move.name.upper()
+    assert "SCARCITY" in move.name.upper() or "FOMO" in move.name.upper()
+    assert "GUILT" not in move.name.upper()
     assert "objection-step" in move.why
 
 
@@ -89,7 +90,8 @@ def test_price_objection_steps():
     m4 = technique_policy.choose_move(
         "price_objection", reject_count=3, unpaid=True
     )
-    assert "GUILT" in m1.name.upper()
+    assert "SCARCITY" in m1.name.upper() or "FOMO" in m1.name.upper()
+    assert "GUILT" not in m1.name.upper()
     assert "EGO" in m2.name.upper()
     assert "WITHDRAWAL" in m4.name.upper()
 

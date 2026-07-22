@@ -200,12 +200,18 @@ def _hard_route(
             "reward_purchase", d, facts, {"reward_purchase": True}
         )
 
-    # Just unlocked / recent purchase window — reward, don't re-sell or deny the lock
-    if facts.recent_purchase and not facts.ppv_unpaid:
+    # Just unlocked — short thank-you beat only (~8 min). Do NOT hard-lock
+    # reward for 45m or long chats can't sell a 2nd lock. (Tips already handled above.)
+    last_purchase = _parse_iso((mem or {}).get("last_purchase_at"))
+    purchase_thanks = bool(
+        last_purchase and (_now() - last_purchase) < timedelta(minutes=8)
+    )
+    if purchase_thanks and not facts.ppv_unpaid:
         facts.hard_pack = "reward_purchase"
+        facts.recent_purchase = True
         d = _decision(
             MODE_TEASE,
-            "recent purchase — reward/thank, no new pitch",
+            "fresh purchase — reward/thank, no new pitch",
             allow_price=False,
             allow_ppv_talk=False,
             allow_free_tease=False,
