@@ -52,29 +52,55 @@ _BLOCK_PACKS = frozenset(
 )
 
 _ASK_VOICE = re.compile(
-    r"(?i)\b("
-    r"audio|audios|voice note|voice memo|voz|nota de voz|"
-    r"gr\u00e1bame|grabame|m\u00e1ndame audio|mandame audio|"
-    r"env\u00edame audio|enviame audio|escucharte|"
-    r"whisper|susurra|al o\u00eddo|al oido"
-    r")\b"
+    r"(?i)("
+    r"\b("
+    r"audio|audios|voice\s*notes?|voice\s*memo|voz|nota\s+de\s+voz|"
+    r"gr[aá]bame|m[aá]ndame\s+audio|mandame\s+audio|"
+    r"env[ií]ame\s+audio|enviame\s+audio|escucharte|"
+    r"whisper|susurra|al\s+o[ií]do|"
+    r"el\s+audio|la\s+nota|lo\s+del\s+audio|ese\s+audio|"
+    r"me\s+lo\s+mandas|me\s+lo\s+grabas|cuando\s+el\s+audio|"
+    r"still\s+waiting|waiting\s+for\s+(the\s+)?(audio|voice)|"
+    r"y\s+el\s+audio|and\s+the\s+audio"
+    r")\b|"
+    r"gr[aá]ba\s*melo|mandamelo|m[aá]ndamelo"
+    r")"
 )
 
 # She already stalled with "ask me for it" / promised a voice note.
-# Require audio/voice context so photo "pídemela" doesn't force a random VN.
+# Also catch standalone pídemelo / quieres audio (the 20-msg beg loop).
 _EMMA_OWED_VOICE = re.compile(
     r"(?i)("
-    r"(?:p[ií]demel[oa]|ask\s+me\s+nicely).{0,100}"
+    r"p[ií]demel[oa]\b|"
+    r"ask\s+me\s+nicely|"
+    r"ask\s+me\s+(?:for\s+it|to\s+ask)|"
+    r"quieres\s+(?:un\s+)?(?:audio|voice)|"
+    r"want\s+(?:a\s+)?(?:voice\s*note|audio)\??|"
+    r"(?:p[ií]demel[oa]|ask\s+me\s+nicely).{0,120}"
     r"(?:audio|voz|voice|grab|whisper|susurr)|"
-    r"(?:audio|voz|voice|grab|whisper|susurr).{0,100}"
+    r"(?:audio|voz|voice|grab|whisper|susurr).{0,120}"
     r"(?:p[ií]demel[oa]|ask\s+me\s+nicely)|"
     r"d[eé]jame\s+grabarte|"
     r"give\s+me\s+a\s+sec.{0,40}(?:voice|audio|whisper)|"
-    r"voy\s+a\s+grabar(?:te|te\s+algo|un\s+audio)?|"
+    r"voy\s+a\s+grabar|"
     r"te\s+(?:grabo|mando|env[ií]o)\s+(?:un\s+)?(?:audio|voice)|"
     r"i(?:'?ll| will)\s+(?:send|record|drop)\s+(?:you\s+)?(?:a\s+)?(?:voice|audio)|"
     r"want\s+(?:me\s+to\s+)?(?:record|send)\s+(?:you\s+)?(?:a\s+)?(?:voice|audio)|"
     r"quieres\s+(?:que\s+)?(?:te\s+)?(?:grabe|mande\s+(?:un\s+)?audio)"
+    r")"
+)
+
+# Emma asking AGAIN for him to beg / offer audio (ban when debt is open)
+_EMMA_VOICE_BEG = re.compile(
+    r"(?i)("
+    r"p[ií]demel[oa]\b|"
+    r"ask\s+me\s+nicely|"
+    r"quieres\s+(?:un\s+)?(?:audio|voice)|"
+    r"want\s+(?:a\s+)?(?:voice\s*note|audio)\??|"
+    r"si\s+me\s+lo\s+pides|"
+    r"if\s+you\s+ask\s+(?:me\s+)?nicely|"
+    r"d[eé]jame\s+grabarte\??|"
+    r"te\s+grabo\s+(?:algo|un\s+audio)\s*\?"
     r")"
 )
 
@@ -83,7 +109,19 @@ _COMPLY_AFTER_VOICE_STALL = re.compile(
     r"por\s*favor|please|vale|ok|okay|dale|venga|"
     r"s[ií]+|manda|env[ií]|pasa|quiero|hazlo|vamos|"
     r"audio|voz|voice|gr[aá]ba|"
-    r"ganas|gatas"
+    r"ganas|gatas|ya|now|esperando|waiting"
+    r")\b"
+)
+
+_VOICE_DELIVERED = re.compile(
+    r"(?i)(\[you sent a VOICE NOTE|voice note attached|/audio\]|🎙)"
+)
+
+_FAN_REJECT_VOICE = re.compile(
+    r"(?i)\b("
+    r"no\s+quiero\s+(audio|voz|voice)|"
+    r"no\s+audio|forget\s+(the\s+)?audio|"
+    r"nah|pass|luego|later|otro\s+d[ií]a"
     r")\b"
 )
 
@@ -138,21 +176,107 @@ def _recent_assistant_text(
     return "\n".join(reversed(chunks))
 
 
+def _recent_user_text(
+    history_turns: Optional[List[Dict[str, Any]]], *, n: int = 8
+) -> str:
+    if not history_turns:
+        return ""
+    chunks: List[str] = []
+    seen = 0
+    for turn in reversed(history_turns):
+        if (turn.get("role") or "") != "user":
+            continue
+        chunks.append(str(turn.get("content") or ""))
+        seen += 1
+        if seen >= n:
+            break
+    return "\n".join(reversed(chunks))
+
+
+def voice_delivered_recently(
+    history_turns: Optional[List[Dict[str, Any]]] = None,
+    *,
+    n: int = 24,
+) -> bool:
+    """True if a voice note already appears in recent chat history."""
+    if not history_turns:
+        return False
+    for turn in history_turns[-n:]:
+        if _VOICE_DELIVERED.search(str(turn.get("content") or "")):
+            return True
+    return False
+
+
+def thread_voice_debt(
+    history_turns: Optional[List[Dict[str, Any]]] = None,
+    *,
+    lookback: int = 20,
+) -> tuple[bool, str]:
+    """
+    Open voice debt across the recent thread (not just last message).
+
+    True when fan asked / Emma promised-or-begged for audio multiple times
+    and no voice note was delivered yet — the 20-msg pídemelo loop.
+    """
+    if not history_turns:
+        return False, ""
+    window = history_turns[-lookback:]
+    if voice_delivered_recently(window, n=lookback):
+        return False, "already delivered"
+
+    fan_hits = 0
+    emma_hits = 0
+    for turn in window:
+        body = str(turn.get("content") or "")
+        role = turn.get("role") or ""
+        if role == "user" and _ASK_VOICE.search(body):
+            fan_hits += 1
+        if role == "assistant" and (
+            _EMMA_OWED_VOICE.search(body) or _EMMA_VOICE_BEG.search(body)
+        ):
+            emma_hits += 1
+
+    # Also count fan asks in current-looking short complies if Emma already begged
+    if emma_hits >= 2 or (emma_hits >= 1 and fan_hits >= 1) or fan_hits >= 2:
+        return True, f"thread debt fan={fan_hits} emma={emma_hits}"
+    if emma_hits >= 1:
+        # Single pídemelo / audio tease still counts as owed
+        return True, f"emma voice stall x{emma_hits}"
+    return False, ""
+
+
 def emma_owed_voice(
     history_turns: Optional[List[Dict[str, Any]]] = None,
 ) -> bool:
-    """True if Emma just promised audio / asked him to beg for the voice note."""
-    emma = _recent_assistant_text(history_turns, n=4)
+    """True if Emma promised audio / asked him to beg (wider lookback)."""
+    emma = _recent_assistant_text(history_turns, n=8)
     if not emma:
         return False
-    # Must be about voice/audio OR a naked "pídemelo" while thread is on audio
-    if _EMMA_OWED_VOICE.search(emma):
-        return True
-    return False
+    return bool(_EMMA_OWED_VOICE.search(emma) or _EMMA_VOICE_BEG.search(emma))
 
 
 def fan_complied_for_voice(fan_message: str) -> bool:
     return bool(_COMPLY_AFTER_VOICE_STALL.search(fan_message or ""))
+
+
+def fan_asked_voice_in_thread(
+    history_turns: Optional[List[Dict[str, Any]]] = None,
+    *,
+    n: int = 12,
+) -> bool:
+    return bool(_ASK_VOICE.search(_recent_user_text(history_turns, n=n)))
+
+
+def reply_is_voice_beg(reply: str) -> bool:
+    """True if this draft asks him again to beg for / want audio."""
+    return bool(_EMMA_VOICE_BEG.search(reply or ""))
+
+
+def forced_voice_close_line(*, want_spanish: bool) -> str:
+    """Short text when audio attaches — never another pídemelo."""
+    if want_spanish:
+        return "Ven aquí un segundo… esto es solo para ti"
+    return "Come here a sec… this one's just for you"
 
 
 def should_send(
@@ -174,13 +298,23 @@ def should_send(
         return False, "barge-in"
     if media_sent_this_turn:
         return False, "photo turn"
+    if _FAN_REJECT_VOICE.search(fan_message or ""):
+        return False, "fan rejected audio"
 
     asked = fan_asked_voice(fan_message)
+    asked_thread = fan_asked_voice_in_thread(history_turns, n=12)
     owed = emma_owed_voice(history_turns)
     complied = fan_complied_for_voice(fan_message)
-    # She said "pídemelo" / promised audio → he complied → SEND. No beg loop.
-    # Free audio must not die behind an unpaid photo lock.
-    committed = asked or (owed and complied)
+    debt, debt_why = thread_voice_debt(history_turns, lookback=20)
+
+    # Hard commit: current ask, OR open debt + any comply/engage, OR thread loop
+    committed = bool(
+        asked
+        or (owed and complied)
+        or (debt and complied)
+        or (debt and asked_thread and not _FAN_REJECT_VOICE.search(fan_message or ""))
+        or (asked_thread and complied and owed)
+    )
 
     if not committed and (unpaid or pack_id in _BLOCK_PACKS):
         return False, "sell/objection/reengage block"
@@ -200,10 +334,14 @@ def should_send(
 
     trigger = False
     reason = ""
-    if committed and owed and complied:
+    if debt and (complied or asked or asked_thread):
+        trigger, reason = True, f"kill beg-loop ({debt_why})"
+    elif owed and complied:
         trigger, reason = True, "owed voice after stall (pídemelo→comply)"
     elif asked:
         trigger, reason = True, "fan asked voice"
+    elif asked_thread and owed:
+        trigger, reason = True, "fan asked voice in thread + emma stall"
     elif reward:
         trigger, reason = True, "post-purchase reward"
     elif horny >= 2:
@@ -216,7 +354,7 @@ def should_send(
     if not trigger:
         return False, "no key moment"
 
-    # Never roll-miss a committed ask / owed close
+    # Never roll-miss a committed ask / owed / debt close
     if apply_roll and not committed:
         chance = float(getattr(config, "VOICE_NOTES_CHANCE", 0.55) or 0.55)
         if random.random() > chance:
@@ -379,14 +517,26 @@ def maybe_send(
     if not ok:
         return False
 
-    # Don't drop a random filthy audio after an apology / cooling text
-    if not fan_asked_voice(fan_message) and re.search(
-        r"(?i)\b("
-        r"sorry|perdon|perd[o\u00f3]n|disculp|spam|pressure|presi[o\u00f3]n|"
-        r"you're right|tienes raz[o\u00f3]n|me equivoqu|my bad|"
-        r"no (quer[i\u00ed]a|queria) |didn't mean"
-        r")\b",
-        reply or "",
+    # Don't drop a random filthy audio after an apology / cooling text —
+    # BUT never skip when the thread already owes him a voice note.
+    debt_open, _ = thread_voice_debt(history_turns, lookback=20)
+    committed_now = (
+        fan_asked_voice(fan_message)
+        or (emma_owed_voice(history_turns) and fan_complied_for_voice(fan_message))
+        or debt_open
+        or (why or "").startswith("kill beg-loop")
+        or "owed voice" in (why or "")
+    )
+    if (
+        not committed_now
+        and re.search(
+            r"(?i)\b("
+            r"sorry|perdon|perd[o\u00f3]n|disculp|spam|pressure|presi[o\u00f3]n|"
+            r"you're right|tienes raz[o\u00f3]n|me equivoqu|my bad|"
+            r"no (quer[i\u00ed]a|queria) |didn't mean"
+            r")\b",
+            reply or "",
+        )
     ):
         print("   voice skipped: text is apology/cooling ? wrong beat for audio")
         return False

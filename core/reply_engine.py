@@ -1282,6 +1282,16 @@ def generate_emma_reply(
         want_spanish=want_spanish,
     )
 
+    # Kill audio pídemelo loops in CODE — history already has the ask 20×
+    from core import voice_notes as _vn_loop
+
+    _voice_debt, _ = _vn_loop.thread_voice_debt(turns, lookback=20)
+    if _vn_loop.reply_is_voice_beg(reply) and (
+        voice_will_send or _voice_debt or _vn_loop.emma_owed_voice(turns)
+    ):
+        print("   🎙️ voice-beg loop in draft — forcing close line (no pídemelo)")
+        reply = _vn_loop.forced_voice_close_line(want_spanish=want_spanish)
+
     # Continuity: kill loops / repeated questions / same-beat replies
     if scheme_guard.continuity_loop(reply, turns):
         print("   continuity: loop/repeat detected — rewriting")

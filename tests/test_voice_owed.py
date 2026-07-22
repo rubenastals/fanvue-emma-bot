@@ -47,7 +47,12 @@ def test_should_send_owed_bypasses_unpaid():
             history_turns=history,
         )
         assert ok, why
-        assert "owed" in why or "pídemelo" in why
+        assert (
+            "owed" in why
+            or "pídemelo" in why
+            or "beg-loop" in why
+            or "stall" in why
+        ), why
     finally:
         vn._enabled = ok_orig  # type: ignore
 
@@ -90,7 +95,11 @@ def test_thread_beat_flags_pidemelo_loop():
         {"role": "user", "content": "por favor"},
     ]
     beat = sg.thread_beat_block(turns, {})
-    assert "pídemelo loop" in beat.lower() or "Voice/stall debt" in beat
+    assert (
+        "pídemelo" in beat.lower()
+        or "VOICE DEBT" in beat
+        or "voice debt" in beat.lower()
+    )
 
 
 if __name__ == "__main__":

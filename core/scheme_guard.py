@@ -898,19 +898,26 @@ def thread_beat_block(
             + " | ".join(f'"{q[:70]}"' for q in asked)
         )
 
-    # Detect pídemelo / voice-stall loop from recent YOU lines
+    # Detect pídemelo / voice-stall loop across a wider window (20-msg beg loops)
     you_blob = " ".join(
         str(t.get("content") or "")
-        for t in (history_turns or [])[-4:]
+        for t in (history_turns or [])[-12:]
         if (t.get("role") or "") == "assistant"
     )
+    him_blob = " ".join(
+        str(t.get("content") or "")
+        for t in (history_turns or [])[-12:]
+        if (t.get("role") or "") == "user"
+    )
     if re.search(
-        r"(?i)\b(p[ií]demel[oa]|ask\s+me\s+nicely|grab(o|arte)|voice\s+note|audio)\b",
-        you_blob,
+        r"(?i)\b(p[ií]demel[oa]|ask\s+me\s+nicely|grab(o|arte)|voice\s+note|audio|voz)\b",
+        you_blob + " " + him_blob,
     ):
         lines.append(
-            "- Voice/stall debt: if you already asked him to beg for audio/it, "
-            "do NOT ask again — deliver or move on. No pídemelo loop."
+            "- VOICE DEBT OPEN: this thread already covered audio / pídemelo. "
+            "HARD BAN: ask him to beg again, 'pídemelo', 'quieres un audio?'. "
+            "If audio attaches this turn, just talk normally. If not, flirt without "
+            "promising or re-asking — never restart the audio beg loop."
         )
 
     lines.append(
