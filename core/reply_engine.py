@@ -751,11 +751,12 @@ def generate_emma_reply(
             f"vary or skip; never repeat the same emoji combo from your last replies. "
             f"Filthy when he's hot; bratty then warm. "
             f"No Ay…/Mmm… openers. No would-you-like / exclusive content / special offer. "
-            f"React to his LAST message. Stay consistent with YOUR history. "
+            f"Answer his LAST message in context of the recent thread (last few turns) — "
+            f"do not ignore what he said minutes ago in THIS chat. "
             f"ANTI-LOOP: never repeat the same question or beat you already asked "
             f"in your last 2 replies — advance the thread. "
             f"One move (exclusivity/guilt/curiosity/micro-yes/reward; "
-            f"FOMO only if a real lock). Prefer <~120 chars. "
+            f"FOMO only if a real lock). Short (~120-180 chars) but FINISH every sentence. "
             f"Sell only what STATUS attaches.]"
         )
     elif lean:
@@ -1258,6 +1259,13 @@ def generate_emma_reply(
         messages=messages,
         want_spanish=want_spanish,
     )
+    # Finish dangling clauses (token/budget chops) before other style rewrites
+    reply = _ensure_complete_reply(
+        reply,
+        call=_call,
+        messages=messages,
+        want_spanish=want_spanish,
+    )
 
     # Continuity: kill loops / repeated questions / same-beat replies
     if scheme_guard.continuity_loop(reply, turns):
@@ -1313,6 +1321,11 @@ def generate_emma_reply(
             ]
             reply = _call(fix_msgs)
             print("   grammar: second Spanish polish")
+
+    # Last safety: never return a mid-clause chop after rewrite cascade
+    if looks_incomplete_text(reply):
+        reply = _trim_dangling_clause(reply)
+        print("   ✂ incomplete: final trim before send")
 
     # Scheme meta + deterministic guard
     decision.pack_id = pack_id or ""
@@ -1886,13 +1899,72 @@ def _enforce_delivery_truth(
 
 def _char_budgets() -> tuple[int, int, int]:
     """max_len per bubble, max bubbles, soft total chars for one reply."""
-    max_len = max(80, int(getattr(config, "BUBBLE_MAX_CHARS", 140) or 140))
+    max_len = max(80, int(getattr(config, "BUBBLE_MAX_CHARS", 160) or 160))
     max_bubbles = max(1, int(getattr(config, "MAX_BUBBLES", 2) or 2))
     soft_total = max(
         max_len,
-        int(getattr(config, "REPLY_SOFT_MAX_CHARS", 220) or 220),
+        int(getattr(config, "REPLY_SOFT_MAX_CHARS", 200) or 200),
     )
     return max_len, max_bubbles, soft_total
+
+
+# Dangling clause / mid-thought tails (stylistic "…" alone is OK; "and then" is not)
+_INCOMPLETE_TAIL = re.compile(
+    r"(?i)("
+    r"\b(and|but|or|so|because|if|when|with|for|to|that|which|"
+    r"about|into|from|over|under|onto|than|then|"
+    r"y|pero|porque|si|cuando|con|para|que|de|en|como|aunque|"
+    r"sobre|desde|hasta|hacia)\s*$|"
+    r"[,:;]\s*$|"
+    r"[—–-]\s*$"
+    r")"
+)
+# Strip trailing emoji / soft ellipsis for incompleteness check
+_TRAIL_EMOJI = re.compile(
+    r"(?:[\U0001F300-\U0001FAFF\u2600-\u27BF\uFE0F\u200D]+\s*)+$"
+)
+
+
+def looks_incomplete_text(text: str) -> bool:
+    """True if the reply looks cut mid-clause (not a finished short DM)."""
+    t = (text or "").strip()
+    if not t:
+        return False
+    core = _TRAIL_EMOJI.sub("", t).rstrip()
+    if not core:
+        return True
+    # Strong terminator = finished (incl. stylistic ellipsis)
+    if re.search(r"[.!?…][\"')\]]*$", core):
+        return False
+    if _INCOMPLETE_TAIL.search(core):
+        return True
+    # Ends with an open quote / unmatched parenthesis
+    if core[-1] in "\"'(¿¡":
+        return True
+    return False
+
+
+def _trim_dangling_clause(text: str) -> str:
+    """
+    Drop an unfinished trailing clause at the last strong end (.!?…).
+    Prefer a shorter finished thought over shipping a half sentence.
+    """
+    t = (text or "").strip()
+    if not t or not looks_incomplete_text(t):
+        return t
+    # Find last strong terminator (keep ellipsis as a valid end)
+    best = -1
+    for i, ch in enumerate(t):
+        if ch in ".!?…":
+            best = i
+    if best < 8:
+        return t
+    kept = t[: best + 1].strip()
+    # Preserve a short emoji tail after the terminator if present
+    rest = t[best + 1 :].strip()
+    if rest and _TRAIL_EMOJI.fullmatch(rest):
+        kept = f"{kept} {rest}".strip()
+    return kept if kept else t
 
 
 def _reply_needs_shorten(reply: str) -> bool:
@@ -1927,13 +1999,13 @@ def _rewrite_if_too_long(
         f"REWRITE SHORTER — same meaning, same dirty/sweet tone, same price if any. "
         f"Max {max_bubbles} short bubbles (newline between). Each bubble under "
         f"{max_len} characters. Whole reply under ~{soft_total} characters. "
-        f"Finish every sentence — never trail off mid-thought."
+        f"Finish every sentence completely — never trail off mid-thought or mid-clause."
         if not want_spanish
         else (
             f"REESCRIBE MÁS CORTO — mismo significado, mismo tono guarro/dulce, "
             f"mismo precio si hay. Máx {max_bubbles} burbujas cortas (salto de línea). "
             f"Cada burbuja bajo {max_len} caracteres. Todo el reply bajo ~{soft_total} "
-            f"caracteres. Termina cada frase — nunca cortes a mitad."
+            f"caracteres. Termina cada frase completa — nunca cortes a mitad de idea."
         )
     )
     try:
@@ -1946,14 +2018,64 @@ def _rewrite_if_too_long(
         )
     except Exception as exc:
         print(f"   ⚠️ length-rewrite failed: {exc}")
-        return reply
-    if (shorter or "").strip() and len(shorter.strip()) < len(reply.strip()):
-        print(
-            f"   ✂️ length-rewrite {len(reply)}→{len(shorter.strip())}c "
-            f"(budget ~{soft_total})"
+        return _trim_dangling_clause(reply)
+    out = (shorter or "").strip()
+    if out and len(out) <= soft_total + 40:
+        # Accept even if not shorter when it finishes a thought cleanly
+        if len(out) < len(reply.strip()) or (
+            looks_incomplete_text(reply) and not looks_incomplete_text(out)
+        ):
+            print(
+                f"   ✂️ length-rewrite {len(reply.strip())}→{len(out)}c "
+                f"(budget ~{soft_total})"
+            )
+            return _trim_dangling_clause(out)
+    return _trim_dangling_clause(reply)
+
+
+def _ensure_complete_reply(
+    reply: str,
+    *,
+    call,
+    messages: List[Dict[str, str]],
+    want_spanish: bool,
+) -> str:
+    """One pass to finish a mid-clause reply without growing into an essay."""
+    text = (reply or "").strip()
+    if not text or not looks_incomplete_text(text):
+        return text
+    trimmed = _trim_dangling_clause(text)
+    if trimmed != text and not looks_incomplete_text(trimmed):
+        print("   ✂ incomplete: trimmed dangling clause")
+        return trimmed
+    max_len, max_bubbles, soft_total = _char_budgets()
+    instr = (
+        f"REWRITE: Your draft cuts off mid-sentence. Finish the thought cleanly. "
+        f"Keep it short (≤{soft_total} chars, ≤{max_bubbles} bubbles, each ≤{max_len}). "
+        f"Same meaning/tone. Do not start over. Do not add a new pitch."
+        if not want_spanish
+        else (
+            f"REESCRIBE: Tu borrador corta a mitad de frase. Termina la idea limpia. "
+            f"Corto (≤{soft_total} chars, ≤{max_bubbles} burbujas, cada una ≤{max_len}). "
+            f"Mismo significado/tono. No reinicies. No añadas un pitch nuevo."
         )
-        return shorter.strip()
-    return reply
+    )
+    try:
+        fixed = call(
+            messages
+            + [
+                {"role": "assistant", "content": text},
+                {"role": "user", "content": instr},
+            ]
+        )
+    except Exception as exc:
+        print(f"   ⚠️ complete-rewrite failed: {exc}")
+        return trimmed
+    out = (fixed or "").strip()
+    if out and not looks_incomplete_text(out) and len(out) <= soft_total + 40:
+        print(f"   ✓ complete-rewrite {len(text)}→{len(out)}c")
+        return out
+    return _trim_dangling_clause(out or trimmed)
 
 
 def split_into_messages(
@@ -2035,7 +2157,23 @@ def split_into_messages(
     default_cap = int(getattr(config, "MAX_BUBBLES", 3) or 3)
     hard_cap = max(1, max_bubbles if max_bubbles is not None else default_cap)
     if len(parts) > hard_cap:
-        # Keep first N complete bubbles; drop the rest (no glue + "…" chop)
-        parts = parts[:hard_cap]
+        # Keep first N bubbles; if the last kept one is mid-clause, merge the
+        # next fragment in (better a slightly long finished thought than a chop).
+        kept = parts[:hard_cap]
+        if looks_incomplete_text(kept[-1]) and len(parts) > hard_cap:
+            extra = parts[hard_cap]
+            merged = f"{kept[-1]} {extra}".strip()
+            if len(merged) <= int(soft_len * 1.35):
+                kept[-1] = merged
+                print("   split: merged overflow into last bubble (finish thought)")
+            else:
+                kept[-1] = _trim_dangling_clause(kept[-1])
+        parts = kept
+
+    # Final safety: never ship a dangling last bubble
+    if parts and looks_incomplete_text(parts[-1]):
+        parts[-1] = _trim_dangling_clause(parts[-1])
+        if not parts[-1]:
+            parts = parts[:-1]
 
     return parts

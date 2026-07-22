@@ -15,7 +15,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 
 HARD_BAN_PET_NAMES = ("caro", "papi", "nena", "nene")
 
-PROMPT_VERSION = "20260722-simple-stabilize-v9"
+PROMPT_VERSION = "20260722-continuity-complete-v10"
 
 # Legacy non-simple prompt (kept for REPLY_V2 path)
 EMMA_CORE_PROMPT = """

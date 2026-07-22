@@ -71,13 +71,15 @@ class Config:
     FREQUENCY_PENALTY = float(os.getenv("DEEPSEEK_FREQUENCY_PENALTY", "0.4"))
     PRESENCE_PENALTY = float(os.getenv("DEEPSEEK_PRESENCE_PENALTY", "0.5"))
     # Ceiling so the API can finish the thought; length rewrite + splitter keep it short.
-    MAX_RESPONSE_TOKENS = int(os.getenv("MAX_RESPONSE_TOKENS", "220"))
+    # Too low → API hard-cuts mid-sentence ("frases a medias").
+    MAX_RESPONSE_TOKENS = int(os.getenv("MAX_RESPONSE_TOKENS", "280"))
     DEEPSEEK_DISABLE_THINKING = os.getenv("DEEPSEEK_DISABLE_THINKING", "1") == "1"
     # Per Fanvue bubble. Over-long replies are REWRITTEN short — not mid-cut with "…".
-    BUBBLE_MAX_CHARS = int(os.getenv("BUBBLE_MAX_CHARS", "140"))
+    BUBBLE_MAX_CHARS = int(os.getenv("BUBBLE_MAX_CHARS", "160"))
     MAX_BUBBLES = int(os.getenv("MAX_BUBBLES", "2"))
-    # Soft total for the whole reply (triggers length rewrite before send)
-    REPLY_SOFT_MAX_CHARS = int(os.getenv("REPLY_SOFT_MAX_CHARS", "160"))
+    # Soft total for the whole reply (triggers length rewrite before send).
+    # Keep short/human, but room to finish a thought (was 160 → mid-sentence chops).
+    REPLY_SOFT_MAX_CHARS = int(os.getenv("REPLY_SOFT_MAX_CHARS", "200"))
 
     # Chat history fed to DeepSeek (not the whole inbox — recent window only).
     # Too much history → model imitates old bland turns and loses voice consistency.
