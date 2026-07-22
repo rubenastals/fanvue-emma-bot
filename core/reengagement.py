@@ -63,126 +63,248 @@ _HEAT_WORDS = re.compile(
 
 # ---------------------------------------------------------------------------
 # Template nudges — zero DeepSeek calls
+# Keep angles DISTINCT (not all "me dejaste en visto"). WhatsApp-short.
 # ---------------------------------------------------------------------------
 _TEMPLATES: Dict[str, Dict[str, List[str]]] = {
     "unfinished_thread": {
         "es": [
-            "Oye… te perdí por el camino 😏 ¿Sigues ahí?",
-            "Me dejaste con las ganas… ¿qué pasó? 👀",
-            "Te fuiste justo cuando se estaba poniendo interesante 😒",
-            "Hola?? estás desaparecido 🙄",
+            "oye y eso? te callaste a la mitad jaja",
+            "espera que no terminamos eso",
+            "volvé un toque, me quedé a medias",
+            "jaj ok seguimos o lo dejamos ahí?",
+            "a ver, respondeme eso nomás",
+            "te perdí justo en lo bueno, dale",
         ],
         "en": [
-            "Hey… you disappeared on me 😏 Still there?",
-            "You left me hanging… what happened? 👀",
-            "You vanished right when it was getting good 😒",
-            "Hello?? you went ghost on me 🙄",
+            "wait what — you went quiet mid-sentence lol",
+            "hold up we didn't finish that",
+            "come back a sec, I was mid-thought",
+            "ok so are we still on that or what",
+            "just answer that one thing",
+            "lost you right at the good part, c'mon",
         ],
     },
     "soft_checkin": {
         "es": [
-            "¿Todo bien? Te quedaste callado de repente 🥺",
-            "Oye, ¿estás bien? Pensé que seguíamos hablando…",
-            "¿Se te fue la luz o me ignoras? 😏",
-            "Eh, ¿sigues vivo? 😂",
+            "eh todo bien?",
+            "seguís ahí o te fumaste jaja",
+            "hola? solo un hola cuenta",
+            "che, apareciste?",
+            "estás ocupado o me invento una historia",
+            "oye, ¿sigues por acá?",
         ],
         "en": [
-            "Hey, you good? You went quiet on me 🥺",
-            "Everything okay? I thought we were still talking…",
-            "Did you lose signal or are you ignoring me? 😏",
-            "Oi, still alive? 😂",
+            "hey you good?",
+            "still there or did you vanish lol",
+            "hello? even a hi counts",
+            "yo, you around?",
+            "busy or should I invent a story",
+            "hey, still here?",
         ],
     },
     "playful_brat": {
         "es": [
-            "Me dejaste con el mensaje en visto y te fuiste… qué malo eres 😒",
-            "Vaya con el hombre misterioso… ¿dónde te metiste? 🙄",
-            "Hey babe, you can't just disappear like that 😤",
-            "¿Me ignorás o se te olvidó que estábamos hablando? 😏",
+            "ok misterio, dale un signo de vida",
+            "jaj qué silencio más raro eh",
+            "no seas así, un mensajito",
+            "te estoy mirando el chat como tonta",
+            "mmm… te portás mal a veces",
+            "bueno ya, aparecé un segundo",
         ],
         "en": [
-            "Left me on read and just bounced… rude 😒",
-            "Look at Mr. Mysterious vanishing… where'd you go? 🙄",
-            "Hey babe, you can't just disappear like that 😤",
-            "Are you ignoring me or did you forget we were talking? 😏",
+            "ok mystery man, give me a sign",
+            "lol this silence is weird",
+            "don't be like that, one little text",
+            "I'm staring at the chat like an idiot",
+            "mmm… you're being naughty",
+            "alright come back for a sec",
         ],
     },
     "almost_sent": {
         "es": [
-            "Estaba a punto de mandarte algo… y desapareciste 👀",
-            "Iba a sorprenderte con algo pero… ¿te fuiste? 😏",
-            "Tenía algo especial para ti y te esfumaste 😒",
-            "Casi te mando algo muy bueno… ¿apareces o qué? 😏",
+            "iba a mandarte algo y me trabé jaja",
+            "tengo una cosa en la cabeza y no sé si decírtela",
+            "casi te mando una foto… casi",
+            "estaba eligiendo algo para ti y me distraje",
+            "umm tengo un secreto tonto, ¿lo quieres?",
+            "pensé en mandarte algo y después dije nah",
         ],
         "en": [
-            "Was just about to send you something… and you vanished 👀",
-            "Had a little surprise for you but… you disappeared? 😏",
-            "Had something special and you ghosted me 😒",
-            "Almost sent you something good… you coming back or what? 😏",
+            "was about to send you something and froze lol",
+            "got something on my mind not sure if I should say",
+            "almost sent you a pic… almost",
+            "was picking something for you and got distracted",
+            "umm tiny secret, want it?",
+            "thought about sending something then said nah",
+        ],
+    },
+    "share_moment": {
+        "es": [
+            "acabo de hacer café y pensé en ti random",
+            "estoy aburrida, entreténeme un toque",
+            "mira, me pasó algo tonto hoy",
+            "estaba en la cama y me acordé de vos",
+            "jaja estoy viendo una serie malísima, qué hacés",
+            "tengo sueño pero no quiero dormir sola en el chat",
+        ],
+        "en": [
+            "just made coffee and thought of you random",
+            "I'm bored, entertain me a sec",
+            "ok something dumb happened today",
+            "was in bed and you popped into my head",
+            "lol watching a terrible show, what you doing",
+            "sleepy but don't wanna sleep alone in this chat",
+        ],
+    },
+    "curious_hook": {
+        "es": [
+            "pregunta rápida: qué estás haciendo ahora?",
+            "a ver una cosa… preferís dulce o salado jaja",
+            "ok dime la verdad, estás en el cel y me ignorás?",
+            "si pudieras estar acá ahora, qué harías",
+            "contame algo random de tu día",
+            "una sola pregunta y te dejo en paz… o no",
+        ],
+        "en": [
+            "quick q: what are you doing rn?",
+            "ok one thing… sweet or salty lol",
+            "be honest, phone in hand and ignoring me?",
+            "if you were here right now what would you do",
+            "tell me one random thing about your day",
+            "one question then I'll leave you alone… or not",
+        ],
+    },
+    "flirty_tease": {
+        "es": [
+            "estaba pensando una cosa mala y te callaste jaja",
+            "ojo que me pongo creativa cuando me dejan sola",
+            "tú te perdés y yo me pongo peor 😏",
+            "bueno… me estoy imaginando cosas, culpa tuya",
+            "si volvés te cuento lo que estaba pensando",
+            "no digas nada serio, solo vení a jugar un toque",
+        ],
+        "en": [
+            "was thinking something bad and you went quiet lol",
+            "careful I get creative when left alone",
+            "you disappear and I get worse 😏",
+            "ok… imagining things, your fault",
+            "come back and I'll tell you what I was thinking",
+            "nothing serious, just come play a bit",
         ],
     },
     "busy_withdrawal": {
         "es": [
-            "Bueno… me voy que tengo cosas que hacer 😏 Escríbeme cuando puedas.",
-            "Oye, me voy un rato. Si vuelves, aquí estaré 😉",
-            "Vale, me pierdo. No tardes mucho 😏",
-            "Me voy, que si no voy a estar esperando toda la noche 😒",
+            "bueno me voy un rato, escribime cuando puedas",
+            "ok me pierdo un toque, no tardes mucho",
+            "me voy a hacer cosas, después hablamos",
+            "te dejo, pero avisame cuando vuelvas",
+            "chau por ahora… o no del todo 😏",
+            "me voy que si no me quedo mirando el chat",
         ],
         "en": [
-            "Okay… I'm heading out, got things to do 😏 Write me when you're back.",
-            "Hey, stepping away for a bit. I'll be here if you come back 😉",
-            "Alright, I'm off. Don't keep me waiting too long 😏",
-            "I'm going — I'm not waiting all night you know 😒",
+            "ok stepping away a bit, text when you can",
+            "gonna disappear a sec, don't take forever",
+            "going to do stuff, talk later",
+            "leaving you but ping me when you're back",
+            "bye for now… or not really 😏",
+            "heading out before I just stare at the chat",
         ],
     },
     "victim_soft": {
         "es": [
-            "Lo viste y no contestaste… eso duele un poquito 🥺",
-            "Me dejaste en visto… ¿en serio? 😢",
-            "Vaya, lo leíste y nada… pensé que éramos algo especial 😏",
-            "¿Tan malo fue lo que dije? 🥺",
+            "lo viste y nada… ok jaja raro",
+            "umm leíste y silencio, qué pasó",
+            "visto y paz? qué fuerte",
+            "pensé que ibas a decir algo…",
         ],
         "en": [
-            "You read it and didn't answer… that stings a little 🥺",
-            "Left me on read… seriously? 😢",
-            "Wow, you read it and nothing… thought we had something special 😏",
-            "Was what I said that bad? 🥺",
+            "you saw it and nothing… ok lol weird",
+            "umm you read it and silence, what happened",
+            "read and peace? damn",
+            "thought you were gonna say something…",
         ],
     },
     "goodmorning": {
         "es": [
-            "Good morning babe… you were the first thing I thought of 😏",
-            "Buenas… ¿dormiste bien? Yo soñé cosas muy malas 😈",
-            "Morning 😏 ¿Sigues ahí o te perdí para siempre?",
-            "Despertándome y ya pensando en ti… eso es tu culpa 😒",
+            "buenas… dormiste?",
+            "ey buenos días, pensé en ti recién",
+            "morning jaja qué tal la noche",
+            "desperté y el chat eras tú, típico",
+            "hola, café y tú en la cabeza",
+            "buenas babe, apareces hoy o qué",
         ],
         "en": [
-            "Good morning… you were the first thing I thought of 😏",
-            "Morning… did you sleep well? I had very bad dreams 😈",
-            "Morning 😏 Still there or did I lose you forever?",
-            "Waking up already thinking about you… that's your fault 😒",
+            "morning… sleep ok?",
+            "hey good morning, just thought of you",
+            "morning lol how was the night",
+            "woke up and the chat was you, classic",
+            "hi, coffee and you on my mind",
+            "morning babe, you showing up today or what",
         ],
     },
 }
 
+# Guilt / "en visto" vibes — rotate away from these if used recently.
+_GUILT_MARKERS = re.compile(
+    r"(?i)(en visto|left me on read|me dejaste|qué malo|ghost|desaparec|"
+    r"te fuiste|vanished|ignor)"
+)
+
+
+def _recent_nudge_texts(mem: dict) -> List[str]:
+    raw = mem.get("last_nudge_texts")
+    if isinstance(raw, list):
+        return [str(x) for x in raw if x][-8:]
+    last = (mem.get("last_nudge_text") or "").strip()
+    return [last] if last else []
+
+
+def _remember_nudge_text(fan_uuid: str, fan_handle: str, text: str) -> None:
+    mem = fan_memory.get(fan_uuid) or {}
+    recent = _recent_nudge_texts(mem)
+    recent.append(text)
+    recent = recent[-8:]
+    try:
+        fan_memory.patch_fanvue_platform(
+            fan_uuid,
+            {"last_nudge_text": text, "last_nudge_texts": recent},
+            fan_handle=fan_handle,
+        )
+    except Exception:
+        pass
+
 
 def _pick_nudge_template(style: str, want_spanish: bool, mem: dict) -> str:
-    """Pick a template line, avoiding the last used one."""
+    """Pick a template line, avoiding recent texts and guilt repeats."""
     pool = _TEMPLATES.get(style, _TEMPLATES["soft_checkin"])
-    lines = pool["es"] if want_spanish else pool["en"]
-    last = (mem.get("last_nudge_text") or "")
-    choices = [l for l in lines if l != last] or lines
+    lines = list(pool["es"] if want_spanish else pool["en"])
+    recent = set(_recent_nudge_texts(mem))
+    recent_guilt = any(_GUILT_MARKERS.search(t) for t in recent)
+
+    def _ok(line: str) -> bool:
+        if line in recent:
+            return False
+        if recent_guilt and _GUILT_MARKERS.search(line):
+            return False
+        return True
+
+    choices = [l for l in lines if _ok(l)]
+    if not choices:
+        choices = [l for l in lines if l not in recent] or lines
     return random.choice(choices)
 
 
 # Keep angle metadata for step/weight routing (no trigger string needed).
 NUDGE_ANGLES: Dict[str, dict] = {
-    "unfinished_thread": {"steps": (1,), "weight": 3},
+    "unfinished_thread": {"steps": (1,), "weight": 2},
     "soft_checkin": {"steps": (1, 2), "weight": 3},
-    "playful_brat": {"steps": (1,), "weight": 3},
+    "playful_brat": {"steps": (1,), "weight": 2},
     "almost_sent": {"steps": (1, 2), "weight": 2},
+    "share_moment": {"steps": (1, 2), "weight": 3},
+    "curious_hook": {"steps": (1, 2), "weight": 3},
+    "flirty_tease": {"steps": (1,), "weight": 2},
     "busy_withdrawal": {"steps": (2,), "weight": 3},
-    "victim_soft": {"steps": (2,), "weight": 2},
+    "victim_soft": {"steps": (2,), "weight": 1},  # rare; only when visto window
 }
 
 GOODMORNING_TRIGGER = "goodmorning"
@@ -304,16 +426,22 @@ def pick_nudge_angle(
 ) -> str:
     """
     Pick a re-engagement angle for this step.
-    Avoid last style; victim_soft only when victim_ok (visto ≤1h).
+    Avoid the last 2 styles; victim_soft only when victim_ok (visto ≤1h).
     """
     last = (mem.get("last_nudge_style") or "").strip()
+    recent_styles = mem.get("last_nudge_styles")
+    avoid: set = set()
+    if isinstance(recent_styles, list):
+        avoid.update(str(s) for s in recent_styles[-2:] if s)
+    elif last:
+        avoid.add(last)
     candidates: List[Tuple[str, int]] = []
     for name, meta in NUDGE_ANGLES.items():
         if step not in meta["steps"]:
             continue
         if name == "victim_soft" and not victim_ok:
             continue
-        if name == last and len(NUDGE_ANGLES) > 1:
+        if name in avoid:
             continue
         candidates.append((name, int(meta.get("weight") or 1)))
     if not candidates:
@@ -363,10 +491,20 @@ def _send_generated(
     # Template path — no DeepSeek call needed for nudges
     nudge_style = style or kind
     reply = _pick_nudge_template(nudge_style, want_spanish, mem)
-    # Store last nudge text to avoid repetition next time
+    _remember_nudge_text(fan_uuid, fan_handle, reply)
+    # Rolling style history so we don't loop the same 1–2 angles
     try:
-        from core import fan_memory as _fm
-        _fm.patch_fanvue_platform(fan_uuid, {"last_nudge_text": reply}, fan_handle=fan_handle)
+        styles = mem.get("last_nudge_styles")
+        if not isinstance(styles, list):
+            styles = [mem.get("last_nudge_style")] if mem.get("last_nudge_style") else []
+        styles = [str(s) for s in styles if s]
+        if nudge_style:
+            styles.append(nudge_style)
+        fan_memory.patch_fanvue_platform(
+            fan_uuid,
+            {"last_nudge_styles": styles[-4:]},
+            fan_handle=fan_handle,
+        )
     except Exception:
         pass
     if not reply.strip():
