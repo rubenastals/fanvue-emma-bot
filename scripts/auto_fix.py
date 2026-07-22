@@ -48,61 +48,25 @@ def _smoke_test() -> bool:
 
 
 def _run_fix(item: dict) -> bool:
-    api_key = (os.getenv("CURSOR_API_KEY") or "").strip()
-    if not api_key:
+    from core import cursor_agent
+
+    if not cursor_agent.cursor_api_key():
         print("❌ CURSOR_API_KEY missing. Create one at cursor.com/dashboard → Integrations")
         print("   and add CURSOR_API_KEY=... to fanvue-emma-bot/.env")
-        return False
-
-    import tempfile
-
-    runner = os.path.join(_ROOT, "tools", "fixer", "run_fix.mjs")
-    if not os.path.exists(runner):
-        print(f"❌ runner missing: {runner}")
         return False
 
     prompt = auto_fix.build_fix_prompt(item)
     print(f"→ [{item['id']}] {item['rule']} x{item['count']} — launching Cursor agent...")
     auto_fix.update_item(item["id"], status="running")
 
-    with tempfile.NamedTemporaryFile(
-        "w", suffix=".txt", delete=False, encoding="utf-8"
-    ) as f:
-        f.write(prompt)
-        prompt_file = f.name
+    code, out = cursor_agent.launch_local_fix(prompt, timeout_sec=1800)
+    summary = (out or "")[:1500]
 
-    env = dict(os.environ)
-    env["CURSOR_API_KEY"] = api_key
-    env["FIX_REPO"] = _ROOT
-    try:
-        proc = subprocess.run(
-            ["node", runner, prompt_file],
-            cwd=os.path.dirname(runner),
-            env=env,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=1800,  # agents editing code can take a while
-        )
-    except subprocess.TimeoutExpired:
-        print("  ❌ agent timed out (30 min)")
-        auto_fix.update_item(item["id"], status="pending")
-        return False
-    finally:
-        try:
-            os.unlink(prompt_file)
-        except OSError:
-            pass
-
-    out = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
-    summary = out.strip()[:1500]
-
-    if proc.returncode == 1:
+    if code == 1 and "STARTUP_ERROR" in summary:
         print(f"  ❌ agent failed to start: {summary[:300]}")
         auto_fix.update_item(item["id"], status="pending")
         return False
-    if proc.returncode != 0:
+    if code != 0:
         print(f"  ❌ agent run failed: {summary[:300]}")
         auto_fix.update_item(item["id"], status="failed", result=summary)
         return False

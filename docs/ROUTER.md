@@ -42,10 +42,17 @@ Never dump Soft lessons or fat essays into the live prompt.
 | **Hard gates** | Code chooses pack, blocks 2nd PPV, attaches media, unsends locks | every turn |
 | **Loud prompt** | LOCK / SELL STATUS + persona (SIMPLE) or MANIP + 1 pack (legacy) | every turn |
 | **scheme_guard** | Deterministic check after reply (invented candado, bluff, sell sync) | every turn → logs `⚠ scheme_fail` |
-| **Critic SCHEME** | DeepSeek scores pack/lock/technique obedience | async after turn |
+| **Hour review** | Cursor **cloud** agent audits last-hour turns → code PR | every ~60 min (async) |
 | **scheme_check** | Offline report of packs/techs/guard hits | `python scripts/scheme_check.py [--critic]` |
 
-DeepSeek is creative Soft — it can still drift. Hard gates + guard catch the expensive lies; critic/board catch soft drift for pack enrichment (offline / legacy).
+DeepSeek is creative Soft only — it can drift. Hard gates + guard catch expensive lies.
+Hourly review is **Cursor**, not DeepSeek (critic was unreliable). Needs `CURSOR_API_KEY`
+on the poller; optional `HOUR_REVIEW_AUTO_PR=1` (default). Never auto-merges.
+
+```bash
+python scripts/hour_review_once.py --brief   # write docs/briefs/hour_review_LATEST.md
+python scripts/hour_review_once.py           # launch Cursor cloud agent now
+```
 
 ## Pipeline
 

@@ -1980,20 +1980,23 @@ def main():
                     except Exception as e:
                         print(f"\n⚠️ Welcome error: {e}")
 
-                # Every hour: DeepSeek reviews ONLY last-hour turns → Soft/Hard board
-                # Soft stays PENDING (no live prompt inject unless AUTO_APPROVE_SOFT_LESSONS=1)
+                # Every hour: Cursor CLOUD agent reviews last-hour turns → code PR.
+                # DeepSeek critic is NOT used here (unreliable). Soft board refresh
+                # stays local/deterministic (ask_deepseek=False).
                 if not shutting_down() and time.time() - last_fix_scan >= 3600:
                     last_fix_scan = time.time()
                     try:
                         from core import auto_fix, hour_review, improve_board
 
-                        hr = hour_review.run_hourly_review()
-                        if not hr.get("skipped"):
+                        hr = hour_review.run_hourly_review_async()
+                        if hr.get("started"):
                             print(
-                                f"\n⏱ hourly review done — "
-                                f"fails={hr.get('failures', 0)} "
-                                f"soft+={hr.get('soft_proposed', 0)} "
-                                f"hard={hr.get('hard', 0)}\n"
+                                "\n⏱ hourly review: Cursor CLOUD agent launched "
+                                "(async — will open a PR if it finds fixes)\n"
+                            )
+                        elif hr.get("skipped"):
+                            print(
+                                f"\n⏱ hourly review skipped: {hr.get('reason')}\n"
                             )
                         new = auto_fix.scan_and_queue()
                         if new:
@@ -2002,7 +2005,7 @@ def main():
                                 f"\n🧠 self-repair queue: {len(new)} ({rules}) "
                                 f"— Soft pending unless AUTO_APPROVE; code autofix manual\n"
                             )
-                        result = improve_board.run_soft_autopilot(ask_deepseek=True)
+                        result = improve_board.run_soft_autopilot(ask_deepseek=False)
                         n_act = len(result.get("activated") or [])
                         if n_act:
                             print(
