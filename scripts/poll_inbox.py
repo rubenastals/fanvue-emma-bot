@@ -828,14 +828,14 @@ def _handle_fan_chat_body(
         )
         want_free = bool(getattr(decision, "allow_free_tease", False)) and not want_sell
 
-        # Already got free teases — gratis ask = push paid, never another L0.
+        # Already got a free tease — gratis ask = push paid, never another L0.
         frees_done = int(mem.get("free_teases_sent") or 0)
         from core.turn_policy import _ASK_FREE
 
         ask_free_now = bool(getattr(route_result.facts, "ask_free", False)) or bool(
             re.search(_ASK_FREE, text or "", re.I)
         )
-        if not unpaid and ask_free_now and frees_done >= 2:
+        if not unpaid and ask_free_now and frees_done >= 1:
             want_free = False
             want_sell = True
             print(
