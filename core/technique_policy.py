@@ -244,6 +244,23 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
             low,
         )
     )
+    # Soft "not now" / clear no — stop unlock chase (not the same as haggling)
+    soft_decline = bool(
+        re.search(
+            r"(?i)\b("
+            r"no,?\s*sorry|not\s+now|maybe\s+later|another\s+moment|"
+            r"otro\s+momento|next\s+time|otro\s+d[ií]a|"
+            r"not\s+so\s+horny|don'?t\s+want\s+to\s+spend|"
+            r"spend\s+(my\s+)?money|no\s+thanks|no\s+gracias|"
+            r"maybe\s+in\s+another|don'?t\s+worry.*another"
+            r")\b",
+            low,
+        )
+        or re.fullmatch(
+            r"(?i)\s*(no|nope|nah|pass|not\s+now)\s*[.!,]?\s*(sorry)?\s*",
+            low,
+        )
+    )
     # Asking what's IN the unpaid lock — tease/describe, not price fight
     ask_lock_tease = bool(
         re.search(
@@ -325,6 +342,7 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
         "cardish": cardish,
         "buying": buying,
         "price_push": price_push,
+        "soft_decline": soft_decline,
         "ask_lock_tease": ask_lock_tease,
         "horny": horny,
         "compliment": compliment,

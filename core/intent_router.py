@@ -265,6 +265,12 @@ def _hard_route(
                 r"deja de|para ya|basta|shut up|enough|"
                 r"no (me )?interes|no quiero|caro|expensive|"
                 r"masivo|presión|presion|venderme|vender|"
+                # Soft decline / not now — stop unlock nag (chase kills conversion)
+                r"no,?\s*sorry|not\s+now|maybe\s+later|another\s+moment|"
+                r"otro\s+momento|despu[eé]s|later|nah\b|pass\b|"
+                r"not\s+so\s+horny|don'?t\s+want\s+to\s+spend|"
+                r"spend\s+my\s+money|no\s+money|can'?t\s+afford|"
+                r"maybe\s+in\s+another|next\s+time|otro\s+d[ií]a|"
                 # Emotional / wants to talk — do NOT nag the unpaid lock
                 r"hablar|talk|prefieres\s+hablar|solo\s+vender|only\s+sell|"
                 r"qu[eé]\s+te\s+pas|what\s+happened|mam[aá]|familia|family|"
@@ -272,6 +278,14 @@ def _hard_route(
                 r"cuento|cu[eé]ntame|tell\s+me"
                 r")\b",
                 fan_message or "",
+            )
+            # Bare soft nos
+            or bool(
+                re.fullmatch(
+                    r"(?i)\s*(no|nope|nah|pass|not\s+now|no\s+thanks|no\s+gracias)"
+                    r"\s*[.!,]?\s*(sorry)?\s*",
+                    fan_message or "",
+                )
             )
             # Bare "si/ok/bien" after a check-in — reconnect, don't FOMO the lock
             or bool(
@@ -364,7 +378,9 @@ def _hard_route(
     return None
 
 
-def _soft_active(facts: TurnFacts, mem: dict) -> Dict[str, bool]:
+def _soft_active(
+    facts: TurnFacts, mem: dict, *, fan_message: str = ""
+) -> Dict[str, bool]:
     """
     Light intent → pack. No rigid msg ladder / daily sell cap.
     Prefer packs that CAN attach so DeepSeek isn't stuck in flirt-only.
@@ -586,7 +602,7 @@ def route(
     if hard:
         return hard
 
-    active = _soft_active(facts, mem)
+    active = _soft_active(facts, mem, fan_message=fan_message or "")
     facts.ambiguous = is_ambiguous(facts, active)
 
     # Optional JSON classifier
@@ -627,7 +643,9 @@ def route(
                         setattr(facts, key, hint[key])
                 # Rebuild soft from updated facts if no pack_hint
                 if not pid:
-                    active = _soft_active(facts, mem)
+                    active = _soft_active(
+                        facts, mem, fan_message=fan_message or ""
+                    )
         except Exception:
             pass
 

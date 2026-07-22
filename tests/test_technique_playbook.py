@@ -96,6 +96,38 @@ def test_reject_step_alone_does_not_force_hold():
     assert move.name == "SELL LOCK"
 
 
+def test_soft_decline_exits_sell_lock():
+    move, why = pb.pick_playbook_move(
+        pack_id="ppv_unpaid",
+        sig={"msgs": 14, "soft_decline": True, "price_push": False},
+        unpaid=True,
+        recent_techs=["SELL LOCK", "SELL LOCK"],
+    )
+    assert move.name == "SOFT EXIT"
+    assert "decline" in why
+
+
+def test_sell_streak_soft_exits():
+    move, why = pb.pick_playbook_move(
+        pack_id="ppv_unpaid",
+        sig={"msgs": 14, "soft_decline": False, "buying": False, "horny": False},
+        unpaid=True,
+        recent_techs=["SELL LOCK", "SELL LOCK"],
+    )
+    assert move.name == "SOFT EXIT"
+
+
+def test_after_soft_exit_bonds_not_resell():
+    move, why = pb.pick_playbook_move(
+        pack_id="ppv_unpaid",
+        sig={"msgs": 14, "soft_decline": False},
+        unpaid=True,
+        recent_techs=["SOFT EXIT"],
+    )
+    assert move.name == "BOND"
+    assert "post-exit" in why
+
+
 def test_shy_graduates_to_heat_after_rapport():
     move = technique_policy.choose_move(
         "phase_pull",
