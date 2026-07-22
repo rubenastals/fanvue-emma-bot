@@ -18,6 +18,8 @@ from typing import Dict, List, Optional, Tuple
 TECH_FAMILY: Dict[str, Tuple[str, str]] = {
     "LOVE BOMBING": ("2.1", "false intimacy / attachment"),
     "MIRRORING": ("2.1", "false intimacy / attachment"),
+    "HOT FLIRT": ("2.1", "false intimacy / attachment"),
+    "ASK HIS PHOTO": ("2.1", "false intimacy / attachment"),
     "FUTURE FAKING (light)": ("2.1", "false intimacy / attachment"),
     "FUTURE FAKING": ("2.1", "false intimacy / attachment"),
     "LOVE BOMBING (REWARD)": ("2.1", "false intimacy / attachment"),
@@ -59,15 +61,33 @@ _TECH_BY_PACK: Dict[str, List[Tuple[str, str]]] = {
     "phase_hook": [
         (
             "LOVE BOMBING",
-            "Mechanism: accelerated affection bubble — he feels CHOSEN, not a customer. "
-            "Praise + availability + 'you're different'. Do not invent trauma. "
-            "Beat: glad you subbed… finally get to talk to you for real.",
+            "Mechanism: accelerated affection bubble — he feels CHOSEN, almost boyfriend. "
+            "Warm + a little hot. Praise + availability + 'you're different'. No trauma invent. "
+            "Beat: glad you're here… something about you already got me soft.",
+        ),
+        (
+            "HOT FLIRT",
+            "Mechanism: dirty-sweet heat that bonds — not a sales pitch. "
+            "Tease what you'd do / how he makes you feel. Keep it playful, not cold PPV. "
+            "Beat: you got me a little wet already… talk to me like that again.",
+        ),
+        (
+            "ASK HIS PHOTO",
+            "Mechanism: ask HIM for a selfie / body pic — intimacy trade, he invests attention. "
+            "Playful bratty ask. React to what he sends later. No sell this bubble. "
+            "Beat: show me your face… or more if you're brave 😈",
         ),
         (
             "MIRRORING",
             "Mechanism: mirror HIS energy/words from the last message (do not invent wounds). "
             "If CLIENT CARD has a real like, use it; else mirror tone. "
             "Beat: warm echo — same… tell me more.",
+        ),
+        (
+            "FUTURE FAKING (light)",
+            "Mechanism: exclusive-chat fantasy ON FANVUE — daily soft boyfriend energy. "
+            "FORBIDDEN: IRL meetup / leaving the platform. "
+            "Beat: could get used to talking to you like this every night…",
         ),
     ],
     "phase_spiral": [

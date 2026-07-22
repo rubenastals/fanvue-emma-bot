@@ -615,6 +615,21 @@ def assemble_emma_turn(
         beat = scheme_guard.thread_beat_block(turns, mem)
         if beat:
             turn_blocks.append(beat)
+        _early_unpaid = bool(
+            (delivery_truth and delivery_truth.get("ppv_unpaid"))
+            or (ppv_status and ppv_status.get("active"))
+        )
+        if msgs_n < 8 and not _early_unpaid:
+            turn_blocks.append(
+                "EARLY ROMANCE THIS TURN (first ~8 messages — strategy law):\n"
+                "- Goal: make him fall for you — warm, hot, chosen, almost-boyfriend.\n"
+                "- DO: compliments, dirty-sweet flirt, ask about him, ASK for HIS selfie/pic, "
+                "mirror his energy, build heat.\n"
+                "- DON'T: guilt, abandonment ('guys leave / poof they're gone'), rival jealousy, "
+                "fake emergency, ego challenges, pressure-sell.\n"
+                "- Those darker cards come LATER when he's hooked. Right now you seduce.\n"
+                "- English only. One short WhatsApp bubble."
+            )
         if pack_id == "phase_hook" and msgs_n <= 2:
             turn_blocks.append(
                 "WELCOME THIS TURN (first messages):\n"
@@ -922,6 +937,7 @@ def assemble_emma_turn(
             "do not ignore what he said minutes ago in THIS chat. "
             "ANTI-LOOP: never repeat the same question/beat from your last 2 replies. "
             "Never loop abandonment lines (most guys leave / poof they're gone / you're quiet). "
+            "Early chat: seduce / ask his pics — save guilt-rival-emergency for later. "
             f"{move_bit.strip()} Readable but messy like real DMs. "
             "Sell only what STATUS attaches.]"
         )
