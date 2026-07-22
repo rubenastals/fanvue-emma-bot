@@ -255,7 +255,7 @@ _TECH_BY_PACK: Dict[str, List[Tuple[str, str]]] = {
     "price_objection": [
         (
             "SCARCITY + FOMO",
-            "Mechanism STEP 1: hold frame on the real lock — value, not guilt. Filthy tease. "
+            "Mechanism: STEP 1 hold frame on the real lock — value, not guilt. Filthy tease. "
             "No landlord/rent crisis. No 'i made it for you and now expensive'. "
             "Beat: that one's still there… i don't drop this price for everyone.",
         ),
