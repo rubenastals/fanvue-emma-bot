@@ -114,6 +114,7 @@ def test_later_can_pick_darker_from_pull():
         "ASK PIC",
         "SELL LOCK",
         "HOLD FRAME",
+        "SOFT EXIT",
         "REWARD",
     }
     assert "GUILT" not in move.name.upper()

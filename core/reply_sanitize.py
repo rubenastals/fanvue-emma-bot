@@ -511,6 +511,22 @@ _CRISIS_FALLBACKS = (
     "you want it yes or yes? it's still yours to claim",
 )
 
+# Mean prize-shade on price fight — kills cheap fans
+_DISMISS_BROKE = re.compile(
+    r"(?i)\b("
+    r"go\s+find\s+someone|"
+    r"find\s+someone\s+else|"
+    r"flea\s+market|"
+    r"if\s+you\s+want\s+the\s+cheap\s+stuff|"
+    r"broke\s+boys?"
+    r")\b"
+)
+_HOLD_FRAME_FALLBACKS = (
+    "i hear you… still, that one's special and it's yours if you want me",
+    "i get it babe… i don't drop this for everyone though — still waiting on you",
+    "mm fair… that photo's still yours when you're ready for me",
+)
+
 _HEAT_FALLBACKS = (
     "fuck… keep talking like that, you're getting me wet",
     "say that again… slower… while i touch myself",
@@ -1115,6 +1131,19 @@ def apply_post_draft(
             f"({before_cr[:56]!r} → {reply!r})"
         )
 
+    # Mean "go find someone else" / flea-market shade on price fights
+    if _DISMISS_BROKE.search(reply or ""):
+        before_db = reply
+        banned = {
+            _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
+        }
+        opts = [p for p in _HOLD_FRAME_FALLBACKS if _norm_bubble(p) not in banned]
+        reply = random.choice(opts or list(_HOLD_FRAME_FALLBACKS))
+        print(
+            "   🚫 dismiss-broke shade — replaced "
+            f"({before_db[:56]!r} → {reply!r})"
+        )
+
     # Soft: Spanglish / wrong language — strip first; LLM rewrite only if still wrong
     if language.is_mixed_or_wrong(reply, want_spanish=want_spanish):
         if not want_spanish:
@@ -1206,7 +1235,8 @@ def apply_post_draft(
     if fan_uuid:
         fan_memory.set_last_mode(fan_uuid, decision.mode, fan_handle=fan_handle)
         if re.search(
-            r"\b(too expensive|caro|expensive|can'?t|no money|later|nah|pass|"
+            r"\b(too expensive|too much|caro|expensive|can'?t|no money|later|nah|pass|"
+            r"cheaper|discount|half|final offer|"
             r"pelado|pelá|sin (plata|dinero|pasta)|no tengo (plata|dinero))\b",
             fan_message.lower(),
         ):

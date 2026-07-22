@@ -355,6 +355,10 @@ def run_llm_archetype(
             delivery_truth = {"ppv_unpaid": True}
             offer = None
             fan_vision = None
+            try:
+                fan_memory.record_reject(fan_uuid, fan_handle=handle)
+            except Exception as exc:
+                print(f"  (reject memory warn: {exc})")
         else:
             ppv_status = (
                 {"active": True, "purchased": False} if pending_lock else None

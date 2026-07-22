@@ -12,13 +12,14 @@ from core import technique_playbook as pb
 from core import technique_policy
 
 
-def test_playbook_has_six_moves():
-    assert set(pb.PLAYBOOK) == {
+def test_playbook_has_core_moves():
+    assert set(pb.PLAYBOOK) >= {
         "BOND",
         "HEAT",
         "ASK PIC",
         "SELL LOCK",
         "HOLD FRAME",
+        "SOFT EXIT",
         "REWARD",
     }
 
@@ -45,6 +46,41 @@ def test_price_objection_holds_frame():
     assert move.name == "HOLD FRAME"
     assert "GUILT" not in move.name
     assert "EMERGENCY" not in move.name
+
+
+def test_price_objection_soft_exit_after_rejects():
+    move = technique_policy.choose_move(
+        "price_objection",
+        unpaid=True,
+        reject_count=3,
+        turn_action=SimpleNamespace(action="flirt"),
+    )
+    assert move is not None
+    assert move.name == "SOFT EXIT"
+
+
+def test_soft_exit_after_hold_frame_streak():
+    move, why = pb.pick_playbook_move(
+        pack_id="ppv_unpaid",
+        sig={"msgs": 14, "reject_step": 1, "price_push": True},
+        unpaid=True,
+        recent_techs=["HOLD FRAME", "HOLD FRAME"],
+    )
+    assert move.name == "SOFT EXIT"
+    assert "soft-exit" in why
+
+
+def test_shy_graduates_to_heat_after_rapport():
+    move = technique_policy.choose_move(
+        "phase_pull",
+        msgs=9,
+        mem={"messages": 9, "total_spent": 0, "free_teases_sent": 1},
+        no_lock=True,
+        fan_message="ok cute",
+        turn_action=SimpleNamespace(action="flirt"),
+    )
+    assert move is not None
+    assert move.name in {"HEAT", "BOND", "ASK PIC"}
 
 
 def test_reward_pack():

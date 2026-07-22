@@ -226,13 +226,21 @@ _COOL_RE = re.compile(
 )
 
 
-def _looks_cooling(fan_message: str, turns: List[Dict[str, str]]) -> bool:
-    """Cheap cooling read: short/non-committal last message or a run of tiny replies."""
+def _looks_cooling(
+    fan_message: str,
+    turns: List[Dict[str, str]],
+    *,
+    msgs: int = 0,
+) -> bool:
+    """Cheap cooling read: cool words, or a run of tiny replies early on."""
     msg = (fan_message or "").strip()
     if not msg:
         return True
     if _COOL_RE.search(msg):
         return True
+    # After rapport, short polite texts ≠ cooling (shy fans stay short).
+    if int(msgs or 0) >= 8:
+        return False
     fan_turns = [t.get("content") or "" for t in turns if t.get("role") == "user"]
     recent = [t for t in fan_turns[-3:] if not t.startswith("[")]
     if len(recent) >= 2 and all(len(t.strip()) <= 12 for t in recent):
@@ -549,7 +557,7 @@ def assemble_emma_turn(
         from core import strategy_prompt, technique_policy
         from core.turn_action import action_prompt_line, commitment_prompt_line
 
-        cooling = _looks_cooling(fan_message, turns)
+        cooling = _looks_cooling(fan_message, turns, msgs=msgs_n)
         banned_opens = scheme_guard.recent_openings(turns, n=5)
         recent_emojis = scheme_guard.recent_emojis(turns, n=4)
         ts = strategy_prompt.truth_state(

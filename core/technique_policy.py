@@ -289,13 +289,16 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
             low,
         )
     ) or (len(low) <= 28 and low.endswith("?") and not prove_ask)
-    # Shy / low-effort: short dry texts — never guilt/crisis/rival
+    # Shy / low-effort: short dry texts — never guilt/crisis/rival.
+    # Age out after rapport so we can heat / soft-close (was stalling shy sims).
     shy_short = bool(
         len(low) <= 40
         and not buying
         and not horny
         and not price_push
         and not venting
+        and msgs < 8
+        and frees < 1
     )
     return {
         "spent": spent,

@@ -17,7 +17,8 @@ Code picks ONE move via a clear WHEN tree; DeepSeek only writes the bubble.
 | **HEAT** | Horny / flirting / compliments | Therapist tone, cold sell stamp |
 | **ASK PIC** | Msgs ~2–10, no fan photo yet | Same turn as paid lock pitch |
 | **SELL LOCK** | REAL unpaid lock in chat | Invent lock, guilt, fake emergency |
-| **HOLD FRAME** | Price / discount pushback | Begging, rent crisis, guilt |
+| **HOLD FRAME** | Price / discount pushback (reject 0–2) | Begging, rent crisis, guilt |
+| **SOFT EXIT** | Rejected price 3+ times — cool sell, door open | Guilt, crisis, chase |
 | **REWARD** | Just tipped / unlocked | Instant upsell, rival FOMO |
 
 Train execution (most important KPI):
