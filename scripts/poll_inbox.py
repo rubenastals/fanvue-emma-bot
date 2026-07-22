@@ -37,7 +37,6 @@ from core import (
     language,
     lorebook,
     memory_extractor,
-    offer_selector,
     ppv_expiry,
     reengagement,
     vault_catalog,
@@ -817,10 +816,16 @@ def _handle_fan_chat_body(
             )
 
         from core import voice_notes as _vn
-        from core.turn_action import ACTION_SEND_VOICE
+        from core.turn_action import (
+            ACTION_ATTACH_FREE,
+            ACTION_ATTACH_PPV,
+            ACTION_COMFORT,
+            ACTION_SEND_VOICE,
+            plan_turn_action,
+        )
 
-        # ACTION-FIRST: sync commitment + decide send_voice BEFORE any offer select.
-        _voice_ok, _voice_why, mem, _voice_blocks_photo = _vn.resolve_voice_action(
+        # ACTION-FIRST (R5): one resolver before LLM — voice > comfort > attach > flirt
+        turn_action = plan_turn_action(
             fan_uuid=fan_uuid,
             fan_handle=fan_handle,
             fan_message=text,
@@ -829,24 +834,36 @@ def _handle_fan_chat_body(
             pack_id=route_result.pack_id,
             unpaid=unpaid,
             history_turns=turns,
+            want_sell=want_sell,
+            want_free=want_free,
+            facts=route_result.facts,
         )
-        voice_planned = (_voice_ok, _voice_why)
-        if voice_planned[0]:
-            print(
-                f"   ACTION={ACTION_SEND_VOICE}: {voice_planned[1]} "
-                f"| commitment={mem.get('open_commitment')}"
-            )
-        # HARD: voice debt / ask → never sell PPV this turn (even if audio API is down)
-        if _voice_blocks_photo or voice_planned[0]:
+        mem = turn_action.mem or mem
+        offer = turn_action.offer
+        voice_planned = (turn_action.voice_will_send, turn_action.reason)
+        _voice_blocks_photo = bool(turn_action.blocks_photo)
+        print(
+            f"   ACTION={turn_action.action}: {turn_action.reason[:120]} "
+            f"| commitment={mem.get('open_commitment')}"
+        )
+        if turn_action.action == ACTION_SEND_VOICE or _voice_blocks_photo:
             want_sell = False
             want_free = False
-            offer = None
             if decision and getattr(decision, "allow_price", False):
                 decision.allow_price = False
-            print(
-                f"   SELL HARD-BLOCKED: voice protocol "
-                f"(send={voice_planned[0]} why={_voice_why[:80]})"
-            )
+            if turn_action.action == ACTION_SEND_VOICE or (
+                _voice_blocks_photo and turn_action.action != ACTION_COMFORT
+            ):
+                print(
+                    f"   SELL HARD-BLOCKED: voice protocol "
+                    f"(send={voice_planned[0]} why={turn_action.reason[:80]})"
+                )
+        if turn_action.action == ACTION_COMFORT:
+            want_sell = False
+            want_free = False
+            if decision and getattr(decision, "allow_price", False):
+                decision.allow_price = False
+            print("   SELL HARD-BLOCKED: comfort ACTION (no attach)")
 
         if unpaid:
             offer = None  # never attach a second lock
@@ -874,62 +891,50 @@ def _handle_fan_chat_body(
                     route_result.facts.ppv_unpaid = True
                 except Exception:
                     pass
-        elif _voice_blocks_photo or voice_planned[0]:
-            offer = None  # protocol belt — no free/paid photo while voice debt open
-        elif want_free:
-            offer = vault_catalog.select_free_tease(mem)
-            if offer:
-                print(
-                    f"   SELL FREE L0: {offer['label'][:50]} "
-                    f"({offer['media_uuid'][:8]}…)"
-                )
-            else:
-                print("   SELL FREE L0: none left — flirt only")
-        elif want_sell:
-            selection = offer_selector.choose_offer(
-                mem,
-                text,
-                history_turns=turns,
-                facts=route_result.facts,
+        elif turn_action.action == ACTION_ATTACH_FREE and offer:
+            print(
+                f"   SELL FREE L0: {offer['label'][:50]} "
+                f"({offer['media_uuid'][:8]}…)"
             )
-            offer = selection.offer if selection.sell_now else None
-            if offer is not None:
-                print(
-                    f"   SELL: L{offer['level']} ${float(offer['price']):.0f} "
-                    f"{offer['label'][:50]} ({offer['media_uuid'][:8]}…) "
-                    f"[{selection.source} {selection.confidence:.2f}]"
-                )
-            else:
-                # Demote — selector says timing is wrong OR inventory exhausted.
-                from core.turn_policy import MODE_TEASE, TurnDecision
-                from core.intent_router import RouteResult as _RR
+        elif turn_action.action == ACTION_ATTACH_PPV and offer:
+            print(
+                f"   SELL: L{offer['level']} ${float(offer['price']):.0f} "
+                f"{offer['label'][:50]} ({offer['media_uuid'][:8]}…)"
+            )
+        elif turn_action.extras.get("demote_reason"):
+            from core.turn_policy import MODE_TEASE, TurnDecision
+            from core.intent_router import RouteResult as _RR
 
-                print(
-                    f"   SELL demote: {selection.reason[:100]} "
-                    "→ phase_pull (no price)"
-                )
-                decision = TurnDecision(
-                    mode=MODE_TEASE,
-                    reason=f"demote: {selection.reason[:120]}",
-                    max_bubbles=2,
-                    allow_ppv_talk=True,
-                    allow_price=False,
-                    allow_free_tease=False,
-                )
-                route_result = _RR(
-                    "phase_pull",
-                    decision,
-                    route_result.facts,
-                    {**(route_result.active or {}), "phase_pull": True},
-                )
+            demote = str(turn_action.extras["demote_reason"])
+            print(f"   SELL demote: {demote[:100]} → phase_pull (no price)")
+            decision = TurnDecision(
+                mode=MODE_TEASE,
+                reason=f"demote: {demote[:120]}",
+                max_bubbles=2,
+                allow_ppv_talk=True,
+                allow_price=False,
+                allow_free_tease=False,
+            )
+            route_result = _RR(
+                "phase_pull",
+                decision,
+                route_result.facts,
+                {**(route_result.active or {}), "phase_pull": True},
+            )
+        elif want_free and not offer and turn_action.action == "flirt":
+            print("   SELL FREE L0: none left — flirt only")
 
-        # Final belt: never keep an offer if voice protocol is open
-        if offer and (_voice_blocks_photo or voice_planned[0]):
+        # Final belt: never keep an offer if ACTION forbids photo
+        if offer and (
+            turn_action.blocks_photo
+            or turn_action.action in (ACTION_SEND_VOICE, ACTION_COMFORT)
+        ):
             print(
                 f"   🚫 drop offer ${float(offer.get('price') or 0):.0f} — "
-                "voice debt blocks all photo attaches"
+                f"ACTION={turn_action.action} blocks photo"
             )
             offer = None
+            turn_action.offer = None
         _will_attach_photo = bool(offer and not unpaid)
 
         try:
@@ -974,6 +979,7 @@ def _handle_fan_chat_body(
                         pack_id=route_result.pack_id,
                         route_result=route_result,
                         voice_will_send=voice_planned[0],
+                        turn_action=turn_action,
                     )
         except Exception as e:
             import traceback

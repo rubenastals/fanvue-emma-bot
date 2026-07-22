@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import random
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
 
@@ -264,6 +264,7 @@ def generate_emma_reply(
     pack_id: Optional[str] = None,
     route_result: Optional[RouteResult] = None,
     voice_will_send: bool = False,
+    turn_action: Optional[Any] = None,
 ) -> Tuple[str, TurnDecision]:
     """
     Prompt + memory + ONE situation pack + mode-aware author's note.
@@ -271,9 +272,17 @@ def generate_emma_reply(
     Returns (raw_reply, decision). If `offer` is set, Emma must tease that photo only.
     `fan_vision` = Grok description of a photo the fan just sent.
     `delivery_truth` = Fanvue API checks (e.g. free_in_chat True/False).
+    `turn_action` = code-owned ACTION from plan_turn_action (R5); optional.
     """
     history_turns = history_turns or []
     mem = fan_memory.get(fan_uuid) if fan_uuid else {}
+    # Prefer ACTION from the poller resolver when provided
+    if turn_action is not None:
+        voice_will_send = bool(
+            getattr(turn_action, "voice_will_send", voice_will_send)
+        )
+        if getattr(turn_action, "offer", None) is not None and offer is None:
+            offer = turn_action.offer
 
     # Router: hard gates + soft intents → one pack (unless caller pre-routed)
     if route_result is None and (decision is None or not pack_id):
@@ -444,7 +453,7 @@ def generate_emma_reply(
     if simple:
         # Tactics live in the self-contained SIMPLE core; only per-turn FACTS here.
         from core import strategy_prompt
-        from core.turn_action import commitment_prompt_line
+        from core.turn_action import action_prompt_line, commitment_prompt_line
 
         cooling = _looks_cooling(fan_message, turns)
         banned_opens = scheme_guard.recent_openings(turns, n=5)
@@ -458,10 +467,14 @@ def generate_emma_reply(
         )
         if ts:
             turn_blocks.append(ts)
-        # Code-owned protocol (not Soft memory) — one line, before other TURN noise
-        commit_line = commitment_prompt_line(mem, voice_will_send=voice_will_send)
-        if commit_line:
-            turn_blocks.append(commit_line)
+        # Code-owned protocol (not Soft memory) — ACTION line before other TURN noise
+        action_line = action_prompt_line(turn_action, mem=mem)
+        if not action_line:
+            action_line = commitment_prompt_line(
+                mem, voice_will_send=voice_will_send
+            )
+        if action_line:
+            turn_blocks.append(action_line)
         if recent_emojis:
             turn_blocks.append(
                 f"EMOJI BAN — you used these recently: {recent_emojis}. "

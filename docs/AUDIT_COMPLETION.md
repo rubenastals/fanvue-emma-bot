@@ -16,22 +16,30 @@ Principle: **protocol = code**. DeepSeek only writes text for an ACTION the poll
 | A8 | Hard-block PPV while voice debt open | ✅ |
 | **R1** | **Dumb voice FSM** — open_voice → SEND (no rolls/packs/horny) | ✅ |
 <<<<<<< HEAD
+<<<<<<< HEAD
 | **R3** | **Quarantine dead brains** — banners + `core/quarantine.py` + autofix/docs | ✅ |
 =======
 | **R2** | **Cap rewrite cascade** — `MAX_CREATIVE_REWRITES=1`; hard lies → strip/fallback only | ✅ |
 >>>>>>> origin/main
+=======
+| **R5** | **TurnAction resolver** — voice > comfort > attach_ppv/free > flirt before LLM | ✅ |
+>>>>>>> origin/cursor/audit-r5-turn-action-resolver-c46b
 
 ## Remaining (finish BEFORE polish)
 
 | # | Item | Why it matters |
 |---|------|----------------|
 <<<<<<< HEAD
+<<<<<<< HEAD
 | **R2** | Cap rewrite cascade — 1 creative call; only deterministic strips for hard lies | Rewrites wipe good replies / context (PR #9 if open) |
 =======
 | **R3** | Quarantine dead brains (`reply_v2`, fat `system_prompt`, unused STRATEGY essay) | Agents patch the wrong surface |
 >>>>>>> origin/main
+=======
+| **R2** | Cap rewrite cascade — 1 creative call; only deterministic strips for hard lies | Rewrites wipe good replies / context (PR #9) |
+| **R3** | Quarantine dead brains (`reply_v2`, fat `system_prompt`, unused STRATEGY essay) | Agents patch the wrong surface (PR #10) |
+>>>>>>> origin/cursor/audit-r5-turn-action-resolver-c46b
 | **R4** | Split `reply_engine` seams: assemble / generate / sanitize | God-object = every fix breaks another |
-| **R5** | Generalize `TurnAction` (flirt / send_voice / attach_ppv / comfort) — one resolver before LLM | Same class of bugs as voice/PPV |
 | **R6** | Expand matrix tests alongside each R | Prevent regression while refactoring |
 
 ## Explicitly NOT doing now
@@ -44,6 +52,7 @@ Principle: **protocol = code**. DeepSeek only writes text for an ACTION the poll
 ## Order of work
 
 1. R1 (voice WHEN) ✅  
+<<<<<<< HEAD
 <<<<<<< HEAD
 2. R2 (rewrite cap) — see PR #9  
 3. R3 (quarantine) ✅  
@@ -70,3 +79,17 @@ Principle: **protocol = code**. DeepSeek only writes text for an ACTION the poll
 - Hard lies never call DeepSeek again: delivery, sell sync, wait timing, purchase bluff, invented lock/video, ghost stall, blame, wrong `$`, continuity question strip.
 - Helpers: `RewriteBudget`, `_fix_invented_wait_minutes`; tests in `tests/test_rewrite_budget.py`.
 >>>>>>> origin/main
+=======
+2. R2 (rewrite cap) — PR #9  
+3. R3 (quarantine) — PR #10  
+4. R5 lite (action resolver) ✅  
+5. R6 tests  
+6. R4 split (larger; after R1–R3 stable)
+
+## R5 notes
+
+- `core/turn_action.py`: `plan_turn_action` / `classify_turn_action` / `action_prompt_line`
+- Priority: `send_voice` > `comfort` > `attach_ppv` > `attach_free` > `flirt`
+- `poll_inbox` logs `ACTION=…` from one resolver; `generate_emma_reply(turn_action=…)`
+- Tests: `tests/test_turn_action.py`
+>>>>>>> origin/cursor/audit-r5-turn-action-resolver-c46b
