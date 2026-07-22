@@ -23,14 +23,64 @@ _EMOJI = re.compile(
     flags=re.UNICODE,
 )
 
+# Stage / TTS-direction words models invent (often translated tags).
+# Spoken aloud by ElevenLabs if left in the script — never keep these as labels.
+_TTS_STAGE_WORD = (
+    r"bajito|suave|susurro|susurrando|suspiro|jadeo|risita|gemido|"
+    r"voz\s+baj[ao]|entre\s+dientes|"
+    r"whispers?|whispering|sighs?|sighing|breathy|softly|soft|"
+    r"chuckles?|moans?|exhales?|gasps?|pauses?|laughs?"
+)
+
+
+def scrub_tts_stage_directions(text: str) -> str:
+    """
+    Remove stage directions the model dumps into voice scripts.
+
+    Live bug: "Bajito, solo para ti…" — TTS reads "Bajito" aloud.
+    Also strips [whispers], (suspiro), *sigh*, etc.
+    Keeps real dialogue like "házmelo bajito" (not a leading label).
+    """
+    s = (text or "").strip()
+    if not s:
+        return s
+    s = re.sub(r"\[.*?\]", "", s)
+    s = re.sub(rf"(?i)\*\s*(?:{_TTS_STAGE_WORD})\s*\*", " ", s)
+    s = re.sub(
+        rf"(?i)\(\s*(?:{_TTS_STAGE_WORD})"
+        rf"(?:\s*[,;/]\s*(?:{_TTS_STAGE_WORD}|\w+)){{0,4}}\s*\)",
+        " ",
+        s,
+    )
+    # Leading label: "Bajito, …" / "Suspiro…" / "Whispers: …"
+    for _ in range(3):
+        nxt = re.sub(
+            rf"(?i)^\s*(?:{_TTS_STAGE_WORD})\s*[,:.\-…]+?\s*",
+            "",
+            s,
+        )
+        if nxt == s:
+            break
+        s = nxt
+    # Lone beat after ellipsis: "… suspiro …" / "... soft ..."
+    s = re.sub(
+        rf"(?i)(\.\.\.|…)\s*(?:{_TTS_STAGE_WORD})\s*(?=(\.\.\.|…)|$|,)",
+        r"\1 ",
+        s,
+    )
+    s = re.sub(r"[ \t]{2,}", " ", s)
+    s = re.sub(r"\s+([,.!?…])", r"\1", s)
+    return s.strip(" \t\"'-,.")
+
 
 def is_configured() -> bool:
     return bool((getattr(config, "ELEVENLABS_API_KEY", "") or "").strip())
 
 
 def _clean_script(text: str) -> str:
-    """Strip emojis; keep [audio tags] for v3."""
+    """Strip emojis + spoken stage labels; no TTS tags in our pipeline."""
     s = _EMOJI.sub("", text or "").strip()
+    s = scrub_tts_stage_directions(s)
     s = re.sub(r"\s{2,}", " ", s)
     return s
 
