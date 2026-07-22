@@ -102,7 +102,9 @@ Train / catch failures without opening real chats:
 
 ```bash
 python scripts/sim_mass.py                  # scripted fans × 1 run
-python scripts/sim_mass.py --llm-fan        # REALISTIC: LLM plays the fan + score
+python scripts/sim_mass.py --llm-fan        # REALISTIC: all archetypes (long arcs)
+python scripts/sim_mass.py --llm-fan --long # force ≥16 turns each
+python scripts/sim_mass.py --llm-fan --turns 20 -a whale_spender -a night_owl
 python scripts/sim_mass.py --llm-fan -a horny_buyer --runs 3
 python scripts/sim_mass.py --list
 python scripts/sim_mass.py --json out/sim.json
