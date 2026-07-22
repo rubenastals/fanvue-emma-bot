@@ -442,6 +442,7 @@ def generate_emma_reply(
     if simple:
         # Tactics live in the self-contained SIMPLE core; only per-turn FACTS here.
         from core import strategy_prompt
+        from core.turn_action import commitment_prompt_line
 
         cooling = _looks_cooling(fan_message, turns)
         banned_opens = scheme_guard.recent_openings(turns, n=5)
@@ -455,6 +456,10 @@ def generate_emma_reply(
         )
         if ts:
             turn_blocks.append(ts)
+        # Code-owned protocol (not Soft memory) — one line, before other TURN noise
+        commit_line = commitment_prompt_line(mem, voice_will_send=voice_will_send)
+        if commit_line:
+            turn_blocks.append(commit_line)
         if recent_emojis:
             turn_blocks.append(
                 f"EMOJI BAN — you used these recently: {recent_emojis}. "
