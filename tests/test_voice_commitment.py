@@ -69,7 +69,7 @@ def test_resolve_forces_send_with_db_commitment():
     orig = vn._enabled
     vn._enabled = lambda: True  # type: ignore
     try:
-        ok, why, mem2 = vn.resolve_voice_action(
+        ok, why, mem2, blocks = vn.resolve_voice_action(
             fan_uuid=fid,
             fan_handle="tester",
             fan_message="por favor",
@@ -80,6 +80,7 @@ def test_resolve_forces_send_with_db_commitment():
             history_turns=history,
         )
         assert ok, why
+        assert blocks, "voice debt must hard-block PPV"
         assert "commitment" in why.lower() or "beg-loop" in why or "owed" in why
         assert (mem2.get("open_commitment") or {}).get("type") == "voice"
     finally:
@@ -96,10 +97,40 @@ def test_commitment_prompt_line_short():
     assert len(line) < 400
 
 
+def test_voice_blocks_photo_even_when_api_disabled():
+    """Audio API down must NOT open the door to a random $40 PPV."""
+    history = [
+        {"role": "assistant", "content": "quieres un audio? pídemelo"},
+        {"role": "user", "content": "por favor el audio"},
+    ]
+    mem = {"open_commitment": {"type": "voice", "hits": 3, "source": "fan_ask"}}
+    blocks, why = vn.voice_blocks_photo(mem, history, "por favor")
+    assert blocks, why
+    orig = vn._enabled
+    vn._enabled = lambda: False  # type: ignore
+    try:
+        ok, why2, mem2, blocks2 = vn.resolve_voice_action(
+            fan_uuid=_fan(),
+            fan_handle="tester",
+            fan_message="por favor",
+            mem=mem,
+            decision=SimpleNamespace(mode="soft_sell"),
+            pack_id="phase_close",
+            unpaid=False,
+            history_turns=history,
+        )
+        assert not ok
+        assert blocks2, why2
+        assert "photo-blocked" in why2 or blocks2
+    finally:
+        vn._enabled = orig  # type: ignore
+
+
 if __name__ == "__main__":
     test_set_clear_commitment()
     test_record_voice_clears_commitment()
     test_sync_sets_commitment_from_pidemelo_thread()
     test_resolve_forces_send_with_db_commitment()
     test_commitment_prompt_line_short()
+    test_voice_blocks_photo_even_when_api_disabled()
     print("ok")

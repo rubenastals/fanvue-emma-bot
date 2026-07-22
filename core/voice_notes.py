@@ -446,6 +446,35 @@ def sync_commitment_from_thread(
     )
 
 
+def voice_blocks_photo(
+    mem: Optional[dict],
+    history_turns: Optional[List[Dict[str, Any]]],
+    fan_message: str,
+) -> tuple[bool, str]:
+    """
+    HARD rule: open voice debt / ask → never attach PPV or free photo this turn.
+
+    Independent of whether ElevenLabs can actually send. Selling a $40 lock
+    while the thread is about audio is a protocol failure.
+    """
+    if _FAN_REJECT_VOICE.search(fan_message or ""):
+        return False, ""
+    mem = mem or {}
+    c = mem.get("open_commitment")
+    if isinstance(c, dict) and c.get("type") == "voice":
+        return True, "DB commitment=voice"
+    debt, debt_why = thread_voice_debt(history_turns, lookback=20)
+    if debt:
+        return True, f"thread voice debt ({debt_why})"
+    if fan_asked_voice(fan_message):
+        return True, "fan asked voice this turn"
+    if fan_asked_voice_in_thread(history_turns, n=12):
+        return True, "fan asked voice in recent thread"
+    if emma_owed_voice(history_turns):
+        return True, "emma voice stall in recent thread"
+    return False, ""
+
+
 def resolve_voice_action(
     *,
     fan_uuid: str,
@@ -456,13 +485,15 @@ def resolve_voice_action(
     pack_id: str,
     unpaid: bool,
     history_turns: Optional[List[Dict[str, Any]]],
-) -> tuple[bool, str, dict]:
+) -> tuple[bool, str, dict, bool]:
     """
     Action-first voice gate.
 
     1) Sync DB commitment from thread (code)
     2) Decide send_voice from commitment + heuristics
-    Returns (must_send, reason, mem_after)
+    3) Decide whether photo/PPV is HARD-blocked (even if send fails)
+
+    Returns (must_send, reason, mem_after, blocks_photo)
     """
     sync_commitment_from_thread(
         fan_uuid,
@@ -472,6 +503,7 @@ def resolve_voice_action(
         mem=mem,
     )
     mem2 = fan_memory.get(fan_uuid) or mem
+    blocks, block_why = voice_blocks_photo(mem2, history_turns, fan_message)
     ok, why = plan_send(
         fan_message=fan_message,
         mem=mem2,
@@ -493,7 +525,15 @@ def resolve_voice_action(
                 bump=False,
             )
             mem2 = fan_memory.get(fan_uuid) or mem2
-    return ok, why, mem2
+            blocks = True
+            block_why = block_why or "send_voice planned"
+    # Re-check after possible commitment write
+    if not blocks:
+        blocks, block_why = voice_blocks_photo(mem2, history_turns, fan_message)
+    if blocks and not ok:
+        # Debt open but cannot send (API down, etc.) — still never sell a PPV
+        why = f"{why}; photo-blocked ({block_why})"
+    return ok, why, mem2, blocks
 
 
 def _generate_script(
