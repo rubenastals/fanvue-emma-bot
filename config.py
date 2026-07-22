@@ -80,6 +80,9 @@ class Config:
     # Soft total for the whole reply (triggers length rewrite before send).
     # Keep short/human, but room to finish a thought (was 160 → mid-sentence chops).
     REPLY_SOFT_MAX_CHARS = int(os.getenv("REPLY_SOFT_MAX_CHARS", "200"))
+    # After the creative draft: at most this many LLM rewrites (lang/length/grammar).
+    # Hard lies (delivery/lock/price/bluff/ghost) never spend this — strip/fallback only.
+    MAX_CREATIVE_REWRITES = int(os.getenv("MAX_CREATIVE_REWRITES", "1"))
 
     # Chat history fed to DeepSeek (not the whole inbox — recent window only).
     # Too much history → model imitates old bland turns and loses voice consistency.
