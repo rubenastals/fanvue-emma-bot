@@ -175,7 +175,14 @@ def is_mixed_or_wrong(text: str, *, want_spanish: bool) -> bool:
         if es == 0 and re.search(r"[A-Za-z]{4,}", text or ""):
             return True
         return en >= 4 and es >= 1 and en > es
-    return es >= 1
+    # English required: accents / real Spanish = rewrite.
+    # A single cognate (foto, bebé) with English glue → strip in sanitize, don't
+    # burn the rewrite budget (that path was looping a sticky EN stamp live).
+    if re.search(r"[áéíóúñ¿¡]", text or ""):
+        return True
+    if en >= 2 and es <= 1:
+        return False
+    return es >= 2
 
 
 def language_system_block(want_spanish: bool) -> str:

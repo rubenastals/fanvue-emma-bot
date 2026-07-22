@@ -423,10 +423,95 @@ def _sanitize_reply(
 _BANNED_ADDRESS = _BANNED_ALWAYS
 
 
-def _force_english_cleanup(text: str) -> str:
-    """Drop lines that are mostly Spanish; keep English-looking lines."""
+# Stock line that looped live ("Hey... look at me when I'm talking to you.") — gone.
+_EN_LANG_FALLBACKS = (
+    "hey… don't go quiet on me now",
+    "mmm stay with me a sec…",
+    "look at you… you got me smiling",
+    "say that again… slower",
+    "you're trouble, you know that?",
+    "come here… talk to me properly",
+)
+_ES_LANG_FALLBACKS = (
+    "ey… no te me calles ahora",
+    "mmm quédate un seg…",
+    "mira cómo me tienes…",
+    "dime eso otra vez… más despacio",
+    "eres un problema, lo sabes?",
+    "ven aquí… háblame bien",
+)
+
+# Extra Spanish crumbs to strip in EN mode before nuking the whole bubble
+_SPANISH_TOKEN_STRIP = re.compile(
+    r"(?i)(?:\s*[,.]?\s*)\b("
+    r"mira|hola|por\s*favor|gracias|quiero|puedes|est[aá]s|estoy|"
+    r"tambi[eé]n|ma[nñ]ana|contigo|caliente|gustado|encant[oó]|"
+    r"m[aá]nda(me|la)?|env[ií]a(me|la)?|candado|[aá]bre(lo|la)|"
+    r"vale|venga|dale|siquiera|visto|ahora|mucho|poco|nada|"
+    r"d[oó]lares?|mentiros[ao]|enfado|masivo|llamado|guarr\w*|"
+    r"cielito|mi cielo|beb[eé]|guapo|guapa|cari[nñ]o|mi rey|bonito|cielo|"
+    r"fotos?|polla|nacho|nena|papi|caro"
+    r")\b\.?"
+)
+
+
+def _norm_bubble(text: str) -> str:
+    t = (text or "").lower()
+    t = re.sub(r"[^\w\s]", " ", t, flags=re.UNICODE)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def _lang_fallback(
+    *,
+    want_spanish: bool,
+    history_turns: Optional[List[Dict[str, Any]]] = None,
+) -> str:
+    """Short human line when lang cleanup empties the draft — never one sticky stamp."""
+    pool = _ES_LANG_FALLBACKS if want_spanish else _EN_LANG_FALLBACKS
+    banned: set[str] = set()
+    for turn in (history_turns or [])[-10:]:
+        if (turn.get("role") or "") != "assistant":
+            continue
+        banned.add(_norm_bubble(str(turn.get("content") or "")))
+    for fp in scheme_guard.recent_openings(history_turns, n=6):
+        banned.add(_norm_bubble(fp))
+    opts = [p for p in pool if _norm_bubble(p) not in banned]
+    return random.choice(opts or list(pool))
+
+
+def _force_english_cleanup(
+    text: str,
+    *,
+    history_turns: Optional[List[Dict[str, Any]]] = None,
+) -> str:
+    """Strip Spanish crumbs; keep English. Never the old sticky 'look at me' stamp."""
+    raw = (text or "").strip()
+    if not raw:
+        return _lang_fallback(want_spanish=False, history_turns=history_turns)
+
+    # 1) Token strip first — often enough to salvage a flirty EN bubble
+    stripped = _SPANISH_TOKEN_STRIP.sub("", raw)
+    stripped = _BANNED_SPANISH_IN_ENGLISH.sub("", stripped)
+    stripped = re.sub(r"[ \t]{2,}", " ", stripped)
+    stripped = re.sub(r" +([,.!?…])", r"\1", stripped)
+    stripped = stripped.strip(" \t,;.-")
+
     keep: List[str] = []
-    for line in (text or "").split("\n"):
+    for line in stripped.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if language.is_mixed_or_wrong(line, want_spanish=False):
+            continue
+        keep.append(line)
+    if keep:
+        out = "\n".join(keep).strip()
+        if len(out) >= 8:
+            return out
+
+    # 2) Line filter on original (pre-strip) English-only lines
+    keep = []
+    for line in raw.split("\n"):
         line = line.strip()
         if not line:
             continue
@@ -435,8 +520,9 @@ def _force_english_cleanup(text: str) -> str:
         keep.append(line)
     if keep:
         return "\n".join(keep).strip()
-    # absolute fallback — never send Spanglish garbage
-    return "Hey... look at me when I'm talking to you."
+
+    print("   lang: EN cleanup emptied draft → fresh fallback (no sticky stamp)")
+    return _lang_fallback(want_spanish=False, history_turns=history_turns)
 
 
 # Trailing emoji / emoji-presentation chars at end of a line
@@ -906,7 +992,15 @@ def apply_post_draft(
         if (not want_spanish) and language.is_mixed_or_wrong(
             reply, want_spanish=False
         ):
-            reply = _force_english_cleanup(reply)
+            reply = _force_english_cleanup(reply, history_turns=turns)
+        elif (not want_spanish) and reply:
+            # Soft strip leftover pet-name crumbs without nuking the bubble
+            soft = _SPANISH_TOKEN_STRIP.sub("", reply)
+            soft = _BANNED_SPANISH_IN_ENGLISH.sub("", soft)
+            soft = re.sub(r"[ \t]{2,}", " ", soft)
+            soft = re.sub(r" +([,.!?…])", r"\1", soft).strip(" \t,;.-")
+            if soft and len(soft) >= 8:
+                reply = soft
 
     # Delivery gate: strip false "I sent it" claims — never another LLM call
     reply = _enforce_delivery_truth(
@@ -1126,12 +1220,29 @@ def apply_post_draft(
             reply = stripped_vn
             print("   🎙️ stripped residual voice stage crumbs")
 
-    # Continuity: strip repeated trailing questions — no LLM rewrite
+    # Continuity: never resend the same short stamp / near-duplicate bubble
     if scheme_guard.continuity_loop(reply, turns):
-        if scheme_guard.repeats_recent_question(reply, turns):
+        if scheme_guard.too_similar_to_last_assistant(
+            reply, turns
+        ) or (
+            scheme_guard.opening_repeats_recent(reply, turns)
+            and len((reply or "").strip()) < 90
+        ):
+            reply = _lang_fallback(want_spanish=want_spanish, history_turns=turns)
+            print("   continuity: duplicate bubble → fresh fallback")
+        elif scheme_guard.repeats_recent_question(reply, turns):
             reply = re.sub(r"[¿?][^¿?]*[?¿]\s*$", "", reply).strip()
             reply = re.sub(r"\?\s*$", "", reply).strip()
-        print("   continuity: loop/repeat — stripped sticky question (no LLM)")
+            print("   continuity: loop/repeat — stripped sticky question (no LLM)")
+        else:
+            print("   continuity: loop/repeat — noted (no LLM)")
+
+    # Kill the retired sticky EN stamp if it ever reappears from history/model
+    if _norm_bubble(reply) == _norm_bubble(
+        "Hey... look at me when I'm talking to you."
+    ):
+        reply = _lang_fallback(want_spanish=want_spanish, history_turns=turns)
+        print("   lang: retired sticky 'look at me' stamp → fresh fallback")
 
     # Grammar: one polish only if creative rewrite budget remains
     if want_spanish and language.looks_broken_spanish(reply):
