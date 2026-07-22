@@ -35,23 +35,45 @@ def test_maybe_attach_paid_when_asking():
         fan_text="send me a private pic please",
         pending_lock=None,
         already_free=False,
-        already_paid=False,
+        paid_count=0,
         archetype=arch,
+        max_turns=16,
     )
     assert offer and float(offer["price"]) > 0
 
 
-def test_no_stack_second_lock():
+def test_no_stack_second_lock_while_pending():
     arch = FAN_ARCHETYPES["horny_buyer"]
     offer = maybe_attach_offer(
         turn_index=4,
         fan_text="another one",
         pending_lock={"price": 8, "label": "x"},
         already_free=False,
-        already_paid=True,
+        paid_count=0,
         archetype=arch,
+        max_turns=16,
     )
     assert offer is None
+
+
+def test_second_paid_later_in_long_chat():
+    arch = FAN_ARCHETYPES["horny_buyer"]
+    offer = maybe_attach_offer(
+        turn_index=12,
+        fan_text="send me another hotter one",
+        pending_lock=None,
+        already_free=True,
+        paid_count=1,
+        archetype=arch,
+        max_turns=16,
+    )
+    assert offer and float(offer["price"]) > 0
+
+
+def test_long_archetypes_exist():
+    assert "whale_spender" in list_archetypes()
+    assert "night_owl" in list_archetypes()
+    assert int(FAN_ARCHETYPES["horny_buyer"]["turns"]) >= 14
 
 
 def test_score_parse():
@@ -64,6 +86,8 @@ if __name__ == "__main__":
     test_archetypes_exist()
     test_parse_fan_json()
     test_maybe_attach_paid_when_asking()
-    test_no_stack_second_lock()
+    test_no_stack_second_lock_while_pending()
+    test_second_paid_later_in_long_chat()
+    test_long_archetypes_exist()
     test_score_parse()
     print("ok")

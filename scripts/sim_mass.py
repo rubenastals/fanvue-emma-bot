@@ -7,11 +7,14 @@ Catches scheme / caption / early-guilt / ENGLISH_ONLY failures fast.
 
 Modes:
   scripted (default)  — fixed fan lines in core/sim_scenarios.py
-  --llm-fan           — DeepSeek plays the fan (realistic) + engagement score
+  --llm-fan           — DeepSeek plays the fan (long multi-phase) + score
+  --long / --turns N  — force longer chats across multiple scenarios
 
 Usage:
   python scripts/sim_mass.py                       # all scripted scenarios
-  python scripts/sim_mass.py --llm-fan             # all LLM fan archetypes
+  python scripts/sim_mass.py --llm-fan             # all LLM fan archetypes (long)
+  python scripts/sim_mass.py --llm-fan --long
+  python scripts/sim_mass.py --llm-fan --turns 20 -a whale_spender
   python scripts/sim_mass.py --llm-fan -a horny_buyer --runs 2
   python scripts/sim_mass.py --list
   python scripts/sim_mass.py --json out/sim_report.json
@@ -226,7 +229,12 @@ def run_scenario(scenario: dict, *, run_idx: int = 0) -> Dict[str, Any]:
     }
 
 
-def run_llm_archetype(name: str, *, run_idx: int = 0) -> Dict[str, Any]:
+def run_llm_archetype(
+    name: str,
+    *,
+    run_idx: int = 0,
+    turns_override: Optional[int] = None,
+) -> Dict[str, Any]:
     """Multi-turn chat: LLM fan ↔ live Emma path + end score."""
     arch = get_archetype(name)
     if not arch:
@@ -238,13 +246,15 @@ def run_llm_archetype(name: str, *, run_idx: int = 0) -> Dict[str, Any]:
     turns_out: List[Dict[str, Any]] = []
     pending_lock: Optional[dict] = None
     already_free = False
-    already_paid = False
+    paid_count = 0
+    unlocked_count = 0
     unlocked = False
     left = False
-    max_turns = int(arch.get("turns") or 7)
+    max_turns = int(turns_override or arch.get("turns") or 12)
 
     print(f"\n{'='*60}")
-    print(f"LLM-FAN {name}  run={run_idx+1}  @{handle}")
+    print(f"LLM-FAN {name}  run={run_idx+1}  @{handle}  turns={max_turns}")
+    print(f"phases: {arch.get('phases') or '?'}")
     print(f"brief: {(arch.get('brief') or '')[:120]}…")
     print(f"fan_uuid={fan_uuid}")
 
@@ -261,6 +271,8 @@ def run_llm_archetype(name: str, *, run_idx: int = 0) -> Dict[str, Any]:
                     emma_last=emma_last,
                     pending_lock=pending_lock,
                     turn_index=i,
+                    max_turns=max_turns,
+                    unlocked_count=unlocked_count,
                 )
             except Exception as exc:
                 print(f"  FAN-LLM CRASH: {exc}")
@@ -269,7 +281,7 @@ def run_llm_archetype(name: str, *, run_idx: int = 0) -> Dict[str, Any]:
             fan_action = nxt["action"]
             print(
                 f"\n--- turn {i+1}/{max_turns} --- "
-                f"fan_action={fan_action} ({nxt.get('reason')})"
+                f"fan_action={fan_action} unlocks={unlocked_count} ({nxt.get('reason')})"
             )
         else:
             print(f"\n--- turn {i+1}/{max_turns} --- fan_action=open")
@@ -293,7 +305,9 @@ def run_llm_archetype(name: str, *, run_idx: int = 0) -> Dict[str, Any]:
 
         if fan_action == "unlock" and pending_lock:
             unlocked = True
-            print(f"  FAN UNLOCKED ${pending_lock.get('price')}: {fan_text}")
+            unlocked_count += 1
+            paid_count = max(paid_count, unlocked_count)
+            print(f"  FAN UNLOCKED #{unlocked_count} ${pending_lock.get('price')}: {fan_text}")
             # Mirror real purchase webhook so reward path isn't "nothing waiting"
             try:
                 fan_memory.record_purchase(
@@ -352,12 +366,12 @@ def run_llm_archetype(name: str, *, run_idx: int = 0) -> Dict[str, Any]:
                     fan_text=fan_text,
                     pending_lock=pending_lock,
                     already_free=already_free,
-                    already_paid=already_paid,
+                    paid_count=paid_count,
                     archetype=arch,
+                    max_turns=max_turns,
                 )
             if offer:
                 if float(offer.get("price") or 0) > 0:
-                    already_paid = True
                     pending_lock = dict(offer)
                     ppv_status = {"active": True, "purchased": False}
                     delivery_truth = {"ppv_unpaid": True}
@@ -458,8 +472,11 @@ def run_llm_archetype(name: str, *, run_idx: int = 0) -> Dict[str, Any]:
         "scenario_id": f"llm:{name}",
         "handle": handle,
         "goal": (arch.get("brief") or "")[:80],
+        "phases": arch.get("phases"),
         "run": run_idx + 1,
         "fan_uuid": fan_uuid,
+        "max_turns": max_turns,
+        "turns_played": len(turns_out),
         "turns": turns_out,
         "hard_fails": hard,
         "soft_fails": soft,
@@ -468,6 +485,7 @@ def run_llm_archetype(name: str, *, run_idx: int = 0) -> Dict[str, Any]:
         "mode": "llm-fan",
         "score": score,
         "unlocked": unlocked,
+        "unlocked_count": unlocked_count,
         "left": left,
     }
 
@@ -495,6 +513,17 @@ def main() -> int:
         help="LLM fan archetype id (with --llm-fan)",
     )
     ap.add_argument("--runs", type=int, default=1, help="Repeats per scenario")
+    ap.add_argument(
+        "--turns",
+        type=int,
+        default=0,
+        help="Override turns per LLM-fan chat (0 = archetype default)",
+    )
+    ap.add_argument(
+        "--long",
+        action="store_true",
+        help="Long chats: at least 16 turns per archetype (or --turns if higher)",
+    )
     ap.add_argument("--json", type=str, default="", help="Write full report JSON")
     ap.add_argument(
         "--fail-soft",
@@ -516,12 +545,21 @@ def main() -> int:
         print("LLM-FAN (--llm-fan -a …):")
         for name in list_archetypes():
             a = get_archetype(name) or {}
-            print(f"  {name:20}  {(a.get('brief') or '')[:70]}")
+            print(
+                f"  {name:22} t={a.get('turns')}  "
+                f"{a.get('phases') or ''} — {(a.get('brief') or '')[:50]}"
+            )
         return 0
 
     if not (os.getenv("DEEPSEEK_API_KEY") or "").strip():
         print("❌ DEEPSEEK_API_KEY missing")
         return 2
+
+    turns_override: Optional[int] = None
+    if args.turns and args.turns > 0:
+        turns_override = int(args.turns)
+    if args.long:
+        turns_override = max(int(turns_override or 0), 16)
 
     reports: List[Dict[str, Any]] = []
     t0 = time.time()
@@ -533,7 +571,12 @@ def main() -> int:
                 print(f"❌ unknown archetype: {name}")
                 return 2
             for r in range(max(1, args.runs)):
-                rep = run_llm_archetype(name, run_idx=r)
+                # Per-archetype floor when --long and no explicit --turns
+                tovr = turns_override
+                if args.long and not (args.turns and args.turns > 0):
+                    base = int((get_archetype(name) or {}).get("turns") or 12)
+                    tovr = max(base, 16)
+                rep = run_llm_archetype(name, run_idx=r, turns_override=tovr)
                 # Re-apply min-avg threshold from CLI
                 avg = float((rep.get("score") or {}).get("avg") or 0)
                 rep["ok"] = (
@@ -557,6 +600,8 @@ def main() -> int:
     warn_total = sum(r.get("warns") or 0 for r in reports)
     ok_n = sum(1 for r in reports if r["ok"])
     unlocked_n = sum(1 for r in reports if r.get("unlocked"))
+    unlock_buys = sum(int(r.get("unlocked_count") or 0) for r in reports)
+    turns_played = sum(int(r.get("turns_played") or 0) for r in reports)
     avgs = [
         float((r.get("score") or {}).get("avg") or 0)
         for r in reports
@@ -568,7 +613,7 @@ def main() -> int:
     print(
         f"DONE {ok_n}/{len(reports)} clean | "
         f"hard={hard_total} soft={soft_total} warn={warn_total} "
-        f"unlocked={unlocked_n}"
+        f"unlocked_chats={unlocked_n} buys={unlock_buys} turns={turns_played}"
         + (f" avg_score={sum(avgs)/len(avgs):.1f}" if avgs else "")
         + f" | {elapsed:.1f}s"
     )
@@ -580,7 +625,8 @@ def main() -> int:
             extra = (
                 f" avg={sc.get('avg')} hook={sc.get('hook')} "
                 f"human={sc.get('human')} sell={sc.get('sell')} "
-                f"unlock={r.get('unlocked')}"
+                f"buys={r.get('unlocked_count') or 0} "
+                f"t={r.get('turns_played')}/{r.get('max_turns')}"
             )
         print(
             f"  [{flag}] {r['scenario_id']} run={r['run']} "
@@ -599,6 +645,8 @@ def main() -> int:
             "soft_fails": soft_total,
             "warns": warn_total,
             "unlocked": unlocked_n,
+            "buys": unlock_buys,
+            "turns_played": turns_played,
             "avg_score": round(sum(avgs) / len(avgs), 2) if avgs else None,
             "seconds": round(elapsed, 2),
         },
