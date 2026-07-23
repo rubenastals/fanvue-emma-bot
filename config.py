@@ -166,7 +166,7 @@ class Config:
         if h.strip()
     ]
     PPV_EXPIRE_ENABLED = os.getenv("PPV_EXPIRE_ENABLED", "1") == "1"
-    PPV_EXPIRE_MINUTES = int(os.getenv("PPV_EXPIRE_MINUTES", "30"))
+    PPV_EXPIRE_MINUTES = int(os.getenv("PPV_EXPIRE_MINUTES", "60"))
     # Unpaid expensive lock + "más barato": defend N asks, then unsend→cheap L1–L2
     PPV_PRICE_DEFEND_HITS = int(os.getenv("PPV_PRICE_DEFEND_HITS", "2"))
     PPV_CONCEDE_MIN_PRICE = float(os.getenv("PPV_CONCEDE_MIN_PRICE", "15"))

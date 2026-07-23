@@ -638,7 +638,7 @@ def set_last_offer(
 
             mins = expire_minutes
             if mins is None:
-                mins = int(getattr(_cfg, "PPV_EXPIRE_MINUTES", 30) or 30)
+                mins = int(getattr(_cfg, "PPV_EXPIRE_MINUTES", 60) or 60)
             if mins > 0 and media_uuid:
                 mem["last_ppv_expires_at"] = (
                     datetime.now(timezone.utc).replace(microsecond=0)
@@ -785,7 +785,7 @@ def set_pending_ppv_from_chat(
 
             mins = expire_minutes
             if mins is None:
-                mins = int(getattr(_cfg, "PPV_EXPIRE_MINUTES", 30) or 30)
+                mins = int(getattr(_cfg, "PPV_EXPIRE_MINUTES", 60) or 60)
             base = None
             if sent_at:
                 try:

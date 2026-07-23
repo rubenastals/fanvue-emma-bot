@@ -870,10 +870,9 @@ def assemble_emma_turn(
         )
     ):
         ago = ppv_status.get("ago") or "recently"
-        left = ppv_status.get("minutes_left")
-        left_bit = f" ~{left} min left on the clock." if left is not None else ""
         turn_blocks.append(
-            f"TIMING: lock sent {ago}.{left_bit} Use only that real timing — no invented wait."
+            f"TIMING: lock sent {ago}. If he challenges timing, agree with 'sent {ago}' only — "
+            "do NOT quote minutes left; say limited time / rápido."
         )
 
     # Fan bluffs that he saw/liked a lock he never paid for (common after expiry)

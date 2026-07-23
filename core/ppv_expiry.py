@@ -1,7 +1,7 @@
 """
 Timed unpaid PPV — scarcity unsend + chat hygiene.
 
-- New locks get last_ppv_expires_at (PPV_EXPIRE_MINUTES, default 30).
+- New locks get last_ppv_expires_at (PPV_EXPIRE_MINUTES, default 60).
 - run_pass: unsend expired unpaid locks; drop stacked extras (keep newest only).
 - purge_all_unpaid: wipe every unpaid lock in recent chats (clean slate).
 - Emma gets LOCK STATUS via build_lock_status() (active + minutes left, or none).
@@ -20,9 +20,9 @@ if TYPE_CHECKING:
 
 def expire_minutes() -> int:
     try:
-        return max(1, int(getattr(config, "PPV_EXPIRE_MINUTES", 30) or 30))
+        return max(1, int(getattr(config, "PPV_EXPIRE_MINUTES", 60) or 60))
     except (TypeError, ValueError):
-        return 30
+        return 60
 
 
 def _parse_iso(s: Optional[str]) -> Optional[datetime]:
@@ -311,23 +311,23 @@ def lock_status_prompt_block(status: Dict[str, Any]) -> str:
             "'glad you liked it' / 'esa era solo un poquito'. Call the bluff playfully.\n"
             "- Do NOT apologize for content he never bought. Do NOT offer refunds or replacements.\n"
             "- HARD BAN: do NOT invent a candado, unlock-above, price ($XX), "
-            "or countdown (20 min / 15 minutitos / 'vence en…').\n"
+            "or countdown (20 min / 15 minutitos / 'vence en…' / 'quedan X min').\n"
+            "- If a NEW lock attaches this turn, urgency = 'limited time' / 'rápido' — "
+            "never quote minutes or hours to him.\n"
             "- Text-only urgency is a lie. Only mention a timed lock if THIS turn "
-            f"actually attaches a NEW paid lock (~{expire_minutes()} min). "
+            "actually attaches a NEW paid lock. "
             "If no photo attaches this turn → flirt/comfort only, zero invent."
         )
 
     label = status.get("label") or "your locked photo"
     price = status.get("price")
     mins = status.get("minutes_left")
-    if mins is None:
-        time_txt = "timed — it will disappear if he waits"
-    elif mins <= 0:
-        time_txt = "about to disappear / already expired — urgency NOW"
-    elif mins <= 5:
-        time_txt = f"~{mins} min LEFT until it vanishes — almost gone"
+    if mins is not None and mins <= 0:
+        urgency_txt = "almost gone — push NOW (limited time; do NOT name minutes)"
+    elif mins is not None and mins <= 15:
+        urgency_txt = "running out — limited time / rápido (do NOT quote how many minutes)"
     else:
-        time_txt = f"~{mins} min LEFT until it vanishes"
+        urgency_txt = "limited time — he should open soon (do NOT quote a countdown)"
     ago = status.get("ago") or "recently"
     extra = ""
     if int(status.get("count") or 1) > 1:
@@ -338,10 +338,12 @@ def lock_status_prompt_block(status: Dict[str, Any]) -> str:
     return (
         "LOCK STATUS — VERIFIED THIS TURN (ACTIVE UNPAID CANDADO):\n"
         f"- ONE timed lock is waiting — \"{label}\".\n"
-        f"- How long it's BEEN in chat: {ago}. That is the ONLY wait time you may use.\n"
-        f"- Clock (time LEFT before unsend): {time_txt}.\n"
+        f"- How long it's BEEN in chat: {ago}. That is the ONLY wait time you may use if he challenges timing.\n"
+        f"- Urgency to fan: {urgency_txt}.\n"
+        "- HARD BAN: never tell him minutes/hours left ('quedan 20 min', '30 minutes', etc.). "
+        "Say limited time / por tiempo limitado / rápido / antes de que desaparezca — no numbers.\n"
         "- HARD BAN: do NOT invent wait times (e.g. '27 minutes waiting') that contradict "
-        f"'sent {ago}'. minutes_left is NOT how long you've been waiting — it's time until it disappears.\n"
+        f"'sent {ago}'. Internal clock is NOT for him — limited-time vibe only.\n"
         "- If he corrects the timing, agree with LOCK STATUS (the 'sent … ago' line), don't shrug it off.\n"
         "- SYSTEM TRUTH: He has NOT paid yet. Fan saying 'sí', 'dale', 'lo abro', 'ya', "
         "'me ha gustado', 'liked the photo', or any affirmative word is NOT a purchase — "

@@ -1657,7 +1657,7 @@ def _handle_fan_chat_body(
                         send_resp=send_resp if isinstance(send_resp, dict) else None,
                     )
                     ppv_sent = True
-                    mins = int(getattr(config, "PPV_EXPIRE_MINUTES", 30))
+                    mins = int(getattr(config, "PPV_EXPIRE_MINUTES", 60))
                     print(
                         f"   🔒 PPV verified in chat L{offer['level']} "
                         f"${price:.0f} — {offer['label']}"
@@ -1857,7 +1857,7 @@ def _handle_fan_chat_body(
                         price=price,
                         send_resp=send_resp if isinstance(send_resp, dict) else None,
                     )
-                    mins = int(getattr(config, "PPV_EXPIRE_MINUTES", 30))
+                    mins = int(getattr(config, "PPV_EXPIRE_MINUTES", 60))
                     print(
                         f"   🔒 PPV verified (fallback) L{offer['level']} "
                         f"${price:.0f} — {offer['label']}"
@@ -2191,7 +2191,7 @@ def main():
     if getattr(config, "PPV_EXPIRE_ENABLED", True):
         print(
             f"   PPV scarcity: unpaid locks unsend after "
-            f"{getattr(config, 'PPV_EXPIRE_MINUTES', 30)} min"
+            f"{getattr(config, 'PPV_EXPIRE_MINUTES', 60)} min"
         )
     if getattr(config, "PPV_PURGE_ACTIVE_ON_START", True):
         print("   PPV purge-on-start: wiping ALL unpaid locks in recent chats…")
