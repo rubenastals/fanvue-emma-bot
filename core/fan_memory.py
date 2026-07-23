@@ -1119,24 +1119,11 @@ def sell_pressure_paused(
     hours: float = 6.0,
 ) -> bool:
     """
-    After soft decline / price push — no unlock nag for a few hours (zero spenders).
-  """
-    mem = mem or {}
-    if float(mem.get("total_spent") or 0) > 0:
-        return False
-    recent = [str(t).upper() for t in (recent_techniques or mem.get("recent_techniques") or []) if t]
-    if any("SOFT EXIT" in t for t in recent[-3:]):
-        return True
-    raw = mem.get("last_reject_at")
-    if not raw:
-        return False
-    try:
-        lr = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
-        if lr.tzinfo is None:
-            lr = lr.replace(tzinfo=timezone.utc)
-    except ValueError:
-        return False
-    return datetime.now(timezone.utc) - lr < timedelta(hours=hours)
+    DEPRECATED — use core.sell_gate.chill_turn (per-turn, not hours).
+
+    Kept for backward compat; always False so bills/broke never hard-block sales.
+    """
+    return False
 
 
 def set_prefer_spanish(fan_uuid: str, prefer: bool, fan_handle: str = "") -> None:

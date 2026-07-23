@@ -127,14 +127,13 @@ SCENARIOS: List[SinScenario] = [
         sanitize_must_not=["only girl", "soft and special"],
     ),
     SinScenario(
-        id="dan_sell_paused_no_attach",
+        id="dan_cold_hey_no_attach",
         thread="Dan",
         fan_message="hey",
         mem=_mem(
             last_reject_at=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
         ),
-        sell_paused=True,
-        assemble_must=["SELL WINDOW: CLOSED"],
+        forbid_sell=True,
     ),
     # ── Tommy: pushback / vision ───────────────────────────────────────
     SinScenario(
@@ -313,15 +312,13 @@ def _run_selector(s: SinScenario, route_result=None) -> None:
 def _run_sell_pause(s: SinScenario) -> None:
     if not s.sell_paused:
         return
-    _assert(fan_memory.sell_pressure_paused(s.mem))
-    want_sell = True
-    if fan_memory.sell_pressure_paused(s.mem):
-        want_sell = False
-    _assert(not want_sell)
-    offer = {"price": 15, "level": 2}
-    if fan_memory.sell_pressure_paused(s.mem) and offer:
-        offer = None
-    _assert(offer is None)
+    from core.sell_gate import chill_turn
+
+    _assert(chill_turn(s.mem, s.fan_message))
+    attach, _ = __import__(
+        "core.sell_gate", fromlist=["should_attach_ppv"]
+    ).should_attach_ppv(s.mem, s.fan_message)
+    _assert(not attach)
 
 
 def _run_assemble(s: SinScenario, monkeypatch=None) -> None:
@@ -377,7 +374,7 @@ def test_historical_sin_matrix():
     failures = []
     for s in SCENARIOS:
         try:
-            run_scenario(s, skip_assemble=s.id == "dan_sell_paused_no_attach")
+            run_scenario(s)
         except Exception as e:
             failures.append(f"{s.id} ({s.thread}): {e}")
     if failures:
@@ -387,9 +384,11 @@ def test_historical_sin_matrix():
         )
 
 
-def test_historical_sin_dan_sell_paused_assemble(monkeypatch):
-    s = next(x for x in SCENARIOS if x.id == "dan_sell_paused_no_attach")
-    run_scenario(s, monkeypatch=monkeypatch)
+def test_historical_sin_dan_bills_chill(monkeypatch):
+    s = next(x for x in SCENARIOS if x.id == "dan_bills")
+    from core.sell_gate import chill_turn
+
+    assert chill_turn(s.mem, s.fan_message)
 
 
 # ── CLI report ────────────────────────────────────────────────────────
@@ -401,27 +400,7 @@ if __name__ == "__main__":
     print("-" * 50)
     for s in SCENARIOS:
         try:
-            mp = None
-            if s.id == "dan_sell_paused_no_attach":
-                import pytest
-
-                # assemble case needs monkeypatch — run inline check only
-                from core.reply_assemble import assemble_emma_turn
-
-                mem = s.mem
-                import core.fan_memory as fm
-
-                orig_get = fm.get
-                orig_pause = fm.sell_pressure_paused
-                fm.get = lambda _u: mem
-                fm.sell_pressure_paused = lambda _m, **kw: True
-                try:
-                    _run_assemble(s)
-                finally:
-                    fm.get = orig_get
-                    fm.sell_pressure_paused = orig_pause
-            else:
-                run_scenario(s)
+            run_scenario(s)
             print(f"{s.id:<28} {s.thread:<10} OK")
             ok += 1
         except Exception as e:

@@ -10,8 +10,9 @@ sys.path.insert(0, str(_ROOT))
 
 from core import fan_memory
 from core.intent_router import route
+from core.sell_gate import chill_turn, should_attach_ppv
 from core.soft_decline import is_broke_soft, is_soft_decline
-from core.technique_playbook import pick_playbook_move
+from core.technique_playbook import pick_playbook_move, VICTIM
 from core.technique_policy import choose_move
 
 
@@ -43,29 +44,34 @@ def test_bills_routes_friction_not_ppv_unpaid():
     assert r.decision.allow_ppv_talk is False
 
 
-def test_sell_paused_after_recent_reject():
+def test_sell_pressure_paused_never_hard_blocks():
     mem = _mem(
         last_reject_at=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
         price_objection_step=1,
     )
-    assert fan_memory.sell_pressure_paused(mem)
-    r = route(
-        mem,
-        "Absolutely",
-        delivery_truth={"ppv_unpaid": True},
-    )
-    assert r.pack_id == "phase_pull"
+    assert fan_memory.sell_pressure_paused(mem) is False
 
 
-def test_playbook_sell_paused_skips_sell_lock():
+def test_playbook_hot_unpaid_presses_sell_lock():
     move, why = pick_playbook_move(
         pack_id="ppv_unpaid",
-        sig={"msgs": 40, "horny": True, "buying": False, "sell_paused": True},
+        sig={"msgs": 40, "horny": True, "buying": False},
         unpaid=True,
         recent_techs=[],
     )
-    assert move.name == "HEAT"
-    assert "cooldown" in why
+    assert move.name == "SELL LOCK"
+    assert "hot" in why
+
+
+def test_playbook_victim_after_sell_streak():
+    move, why = pick_playbook_move(
+        pack_id="ppv_unpaid",
+        sig={"msgs": 40, "horny": False, "buying": False, "reject_step": 2},
+        unpaid=True,
+        recent_techs=["SELL LOCK", "SELL LOCK"],
+    )
+    assert move.name == VICTIM.name
+    assert "victim" in why
 
 
 def test_choose_move_cant_right_now_soft_exit():
@@ -80,42 +86,24 @@ def test_choose_move_cant_right_now_soft_exit():
     assert m.name == "SOFT EXIT"
 
 
-def test_sell_paused_blocks_want_sell_on_cold_return():
-    """Poller keeps cooldown on cold return after bills pushback."""
+def test_bills_chill_turn_only():
+    mem = _mem()
+    msg = "I can't open it yet, as I need to pay my bills first"
+    assert chill_turn(mem, msg)
+    attach, _ = should_attach_ppv(mem, msg)
+    assert not attach
+
+
+def test_horny_return_attaches_despite_prior_reject():
     mem = _mem(
         last_reject_at=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
     )
-    assert fan_memory.sell_pressure_paused(mem)
-    from core.chat_heat import explicit_horny_now, heat_close_eligible
-
-    text = "hey"
-    want_sell = True
-    if fan_memory.sell_pressure_paused(mem):
-        if not explicit_horny_now(text) and not heat_close_eligible(
-            mem, text, sell_paused=True
-        ):
-            want_sell = False
-    assert want_sell is False
-
-
-def test_sell_paused_bypass_on_explicit_horny_return():
-    mem = _mem(
-        last_reject_at=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
-    )
-    from core.chat_heat import explicit_horny_now, heat_close_eligible
-
-    text = "fuck baby I need to see your wet pussy now"
-    want_sell = False
-    if fan_memory.sell_pressure_paused(mem):
-        if explicit_horny_now(text) or heat_close_eligible(
-            mem, text, sell_paused=True
-        ):
-            want_sell = True
-    assert want_sell is True
+    msg = "fuck baby spread your legs for me"
+    attach, _ = should_attach_ppv(mem, msg)
+    assert attach
 
 
 def test_unpaid_explicit_horny_routes_ppv_unpaid_not_pull():
-    """After bills pause, explicit horny return → unlock nudge pack, not phase_pull."""
     mem = _mem(
         last_reject_at=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
     )
@@ -126,21 +114,3 @@ def test_unpaid_explicit_horny_routes_ppv_unpaid_not_pull():
     )
     assert r.pack_id == "ppv_unpaid"
     assert r.decision.allow_ppv_talk is True
-
-
-def test_sell_paused_injects_sell_window_turn_line(monkeypatch):
-    from core.reply_assemble import assemble_emma_turn
-
-    mem = _mem(
-        last_reject_at=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
-    )
-    monkeypatch.setattr(fan_memory, "get", lambda _u: mem)
-    monkeypatch.setattr(fan_memory, "sell_pressure_paused", lambda _m, **kw: True)
-    assembled = assemble_emma_turn(
-        "hey",
-        history_turns=[{"role": "user", "content": "hey"}],
-        fan_uuid="fan-sell-pause",
-        fan_handle="dan",
-    )
-    blob = "\n".join(m["content"] for m in assembled.messages if m["role"] == "system")
-    assert "SELL WINDOW: CLOSED" in blob

@@ -276,11 +276,9 @@ def decide_turn(
     free_ok = _free_tease_ok(mem, msgs=msgs, now=now)
 
     if pending_unpaid and not want_another and not buying:
-        from core.chat_heat import explicit_horny_now
+        from core.sell_gate import chill_turn
 
-        if fan_memory.sell_pressure_paused(mem) and not explicit_horny_now(
-            fan_message or ""
-        ):
+        if chill_turn(mem, fan_message or "", facts=None):
             return TurnDecision(
                 mode=MODE_RAPPORT,
                 reason="unpaid lock but sell paused — bond/heat only",

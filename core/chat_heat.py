@@ -181,7 +181,7 @@ def heat_close_eligible(
     facts: Any = None,
     history_turns: Optional[List[dict]] = None,
     unpaid: bool = False,
-    sell_paused: bool = False,
+    sell_paused: bool = False,  # deprecated — sell_gate.chill_turn owns pauses
 ) -> bool:
     """
     Hot explicit thread → natural moment to attach a cheap PPV (not bond-only gasp).
@@ -201,10 +201,6 @@ def heat_close_eligible(
     except Exception:
         pass
 
-    # After soft decline: only resume sell on a clearly horny message this turn.
-    if sell_paused and not explicit_horny_now(fan_message or ""):
-        return False
-
     msgs = int(mem.get("messages") or 0)
     if msgs < 6:
         return False
@@ -218,11 +214,9 @@ def hot_unpaid_nudge_eligible(
     *,
     facts: Any = None,
     history_turns: Optional[List[dict]] = None,
-    sell_paused: bool = False,
+    sell_paused: bool = False,  # deprecated
 ) -> bool:
     """Unpaid lock exists but thread is hot — filthy unlock nudge, not bond-only."""
-    if sell_paused and not explicit_horny_now(fan_message or ""):
-        return False
     if int((mem or {}).get("messages") or 0) < 6:
         return False
     return _thread_horny(fan_message, history_turns, facts=facts)

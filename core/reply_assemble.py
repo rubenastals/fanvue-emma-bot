@@ -733,38 +733,26 @@ def assemble_emma_turn(
 
     unpaid_gate = bool(delivery_truth and delivery_truth.get("ppv_unpaid"))
     status_active = bool(ppv_status and ppv_status.get("active"))
-    sell_paused = fan_memory.sell_pressure_paused(mem)
-    from core.chat_heat import (
-        explicit_horny_now,
-        heat_close_eligible,
-        hot_unpaid_nudge_eligible,
-    )
+    from core.sell_gate import chill_turn, evaluate_sell_gate
 
-    heat_close_turn = heat_close_eligible(
+    gate = evaluate_sell_gate(
         mem,
         fan_message or "",
         facts=route_result.facts if route_result else None,
         history_turns=turns,
         unpaid=bool(unpaid_gate or status_active),
-        sell_paused=sell_paused,
+        fan_uuid=fan_uuid or "",
     )
-    hot_unpaid_nudge = hot_unpaid_nudge_eligible(
-        mem,
-        fan_message or "",
-        facts=route_result.facts if route_result else None,
-        history_turns=turns,
-        sell_paused=sell_paused,
-    )
-    if sell_paused and not explicit_horny_now(fan_message or "") and not (
-        heat_close_turn or hot_unpaid_nudge
-    ):
+    heat_close_turn = gate.attach
+    hot_unpaid_nudge = gate.nudge_unpaid
+    chill = gate.chill
+
+    if chill and not hot_unpaid_nudge:
         turn_blocks.append(
-            "SELL WINDOW: CLOSED — he pushed back on price or needs space. "
-            "Zero product talk, no lock hints. Be warm; react to what he said."
+            "CHILL TURN: he said not now / we pitched hard — bond or heat only. "
+            "No lock mention this beat. Door stays open."
         )
-    if heat_close_turn and not voice_will_send and (
-        not sell_paused or explicit_horny_now(fan_message or "")
-    ):
+    if heat_close_turn and not voice_will_send:
         if offer and float(offer.get("price") or 0) > 0:
             turn_blocks.append(
                 "HEAT CLOSE THIS TURN: he's explicit in this RP — match it filthy "
@@ -789,7 +777,7 @@ def assemble_emma_turn(
 
     # Fan asking what's IN the unpaid lock — filthy describe, not price frame
     if (
-        not sell_paused
+        not chill
         and (unpaid_gate or status_active)
         and re.search(
         r"(?i)\b("
@@ -809,7 +797,7 @@ def assemble_emma_turn(
         )
     # Friction path: unpaid exists but router chose reconnect — no unlock nag
     soft_unpaid = bool(
-        (sell_paused and not hot_unpaid_nudge)
+        (chill and not hot_unpaid_nudge)
         or (
             (unpaid_gate or status_active)
             and pack_id == "phase_pull"
@@ -967,9 +955,9 @@ def assemble_emma_turn(
     ):
         from core import memory_callbacks
 
-        sell_open = bool(offer) and not sell_paused
+        sell_open = bool(offer) and not chill
         cb_mode = (
-            "EASE_OFF" if sell_paused else ("OFFER_OK" if sell_open else "BOND")
+            "EASE_OFF" if chill else ("OFFER_OK" if sell_open else "BOND")
         )
         cb = memory_callbacks.pick(
             fan_uuid,
@@ -1131,16 +1119,20 @@ def assemble_emma_turn(
         if tech_name:
             note += manipulation.author_nudge(pack_id, tech_name)
     if pack_id == "ppv_unpaid" or (ppv_status and ppv_status.get("active")):
-        if not voice_will_send and not sell_paused:
+        if not voice_will_send and hot_unpaid_nudge:
+            note += (
+                " UNPAID LOCK HOT: match his RP filthy, then tease unlocking THAT photo. "
+                "No new lock. Girlfriend slutty energy."
+            )
+        elif not voice_will_send and not chill:
             note += (
                 " UNPAID LOCK: push ONLY that waiting photo (scroll up). "
                 "No other photo, no video, no bundle, no 'the one I mentioned'. "
                 "Gratis ask → deny, push unlock."
             )
-        elif sell_paused:
+        elif chill:
             note += (
-                " SELL COOLDOWN: he declined / can't pay — NO unlock nag, NO price. "
-                "React to his roleplay or vibe only. Bond or heat, zero $."
+                " CHILL TURN: he said not now — bond/heat only, no unlock nag this beat."
             )
     paid_offer_now = bool(
         offer

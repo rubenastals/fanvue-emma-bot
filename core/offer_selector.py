@@ -392,22 +392,20 @@ def _fallback(
     direct = bool(_DIRECT_BUY.search(fan_message or "")) or bool(
         getattr(facts, "buying", False)
     )
-    safe = not (
-        getattr(facts, "pushback_billing", False)
-        or getattr(facts, "broke_soft", False)
-        or getattr(facts, "heavy_vent", False)
-    )
-    from core.chat_heat import heat_close_eligible
+    safe = not bool(getattr(facts, "heavy_vent", False))
+    from core.sell_gate import should_attach_ppv
 
-    heat_close = heat_close_eligible(
+    attach_ok, _ = should_attach_ppv(
         mem or {},
         fan_message,
         facts=facts,
         history_turns=history_turns,
         unpaid=unpaid,
     )
-    sell = bool(candidates) and safe and (
-        (direct and not _REJECT.search(fan_message or "")) or heat_close
+    heat_close = attach_ok
+    sell = bool(candidates) and (
+        (direct and not _REJECT.search(fan_message or "") and safe)
+        or (heat_close and safe)
     )
     return OfferChoice(
         sell_now=sell,
@@ -445,10 +443,8 @@ def choose_offer(
     # She already said "pídemela / te la mando" — one comply closes. No 50 beg loop.
     if owed and _COMPLY_AFTER_STALL.search(fan_message or ""):
         direct = True
-    if getattr(facts, "pushback_billing", False) or getattr(
-        facts, "broke_soft", False
-    ) or getattr(facts, "heavy_vent", False):
-        return OfferChoice(False, None, "objection/vent: reconnect first", 1.0, "code")
+    if getattr(facts, "heavy_vent", False):
+        return OfferChoice(False, None, "heavy vent: comfort first", 1.0, "code")
     from core.fan_pushback import is_fan_boundary
 
     if is_fan_boundary(fan_message or ""):
@@ -466,26 +462,35 @@ def choose_offer(
             "code",
         )
 
-    from core import fan_memory as _fan_memory
-    from core.chat_heat import _thread_horny, heat_close_eligible
+    from core.sell_gate import chill_turn, should_attach_ppv
+
+    if chill_turn(
+        mem, fan_message, facts=facts, history_turns=history_turns
+    ):
+        return OfferChoice(
+            False,
+            None,
+            "chill-turn: no attach this beat",
+            1.0,
+            "code",
+        )
 
     unpaid_now = bool(mem.get("last_ppv_pending")) or bool(
         getattr(facts, "ppv_unpaid", False) if facts is not None else False
     )
-    sell_paused = _fan_memory.sell_pressure_paused(mem)
-    if heat_close_eligible(
+    attach_ok, attach_why = should_attach_ppv(
         mem,
         fan_message,
         facts=facts,
         history_turns=history_turns,
         unpaid=unpaid_now,
-        sell_paused=sell_paused,
-    ):
+    )
+    if attach_ok:
         return OfferChoice(
             True,
             candidates[0],
-            "heat-close: explicit RP → attach cheap PPV",
-            0.88,
+            f"sell_gate attach: {attach_why}",
+            0.9,
             "code",
         )
 
@@ -509,7 +514,8 @@ def choose_offer(
         # Free + depth + warm signal — avoids pushy sell on shy short chats
         rapport_close = msgs_n >= 12 and frees_n >= 1 and warm_signal
         if not horny_now and not rapport_close and not deep_heat:
-            # Hot thread may still close via heat_close above; this gate is AI-only path.
+            from core.chat_heat import _thread_horny
+
             if not _thread_horny(fan_message, history_turns, facts=facts):
                 return OfferChoice(
                     False,

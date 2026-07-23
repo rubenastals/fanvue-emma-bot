@@ -1022,30 +1022,21 @@ def _handle_fan_chat_body(
             )
 
         if fan_memory.sell_pressure_paused(mem):
-            from core.chat_heat import explicit_horny_now, heat_close_eligible
+            pass  # deprecated — sell_gate owns chill (never hours-long block)
 
-            if not explicit_horny_now(text or "") and not heat_close_eligible(
-                mem,
-                text or "",
-                facts=route_result.facts,
-                history_turns=turns,
-                unpaid=unpaid,
-                sell_paused=True,
-            ):
-                want_sell = False
-                print("   SELL: blocked — post-pushback cooldown (sell_pressure_paused)")
-            else:
-                want_sell = True
-                print("   SELL: heat-close overrides sell cooldown (explicit horny return)")
-        elif heat_close_eligible(
+        from core.sell_gate import should_attach_ppv
+
+        attach_ok, attach_why = should_attach_ppv(
             mem,
             text or "",
             facts=route_result.facts,
             history_turns=turns,
             unpaid=unpaid,
-        ):
+            fan_uuid=fan_uuid,
+        )
+        if attach_ok:
             want_sell = True
-            print("   SELL: heat-close — hot thread → attach PPV")
+            print(f"   SELL: sell_gate → attach PPV ({attach_why})")
 
         from core import ppv_concede, voice_notes as _vn
         from core.turn_action import (
@@ -1150,7 +1141,7 @@ def _handle_fan_chat_body(
         _voice_blocks_photo = bool(turn_action.blocks_photo)
 
         # Code-owned concede attach (bypass selector reject on "caro")
-        if forced_concede_offer and not fan_memory.sell_pressure_paused(mem) and not (
+        if forced_concede_offer and not (
             turn_action.action == ACTION_SEND_VOICE or _voice_blocks_photo
         ):
             offer = forced_concede_offer
@@ -1292,23 +1283,6 @@ def _handle_fan_chat_body(
             )
             offer = None
             turn_action.offer = None
-        if fan_memory.sell_pressure_paused(mem) and offer:
-            from core.chat_heat import explicit_horny_now, heat_close_eligible
-
-            if not explicit_horny_now(text or "") and not heat_close_eligible(
-                mem,
-                text or "",
-                facts=route_result.facts,
-                history_turns=turns,
-                unpaid=unpaid,
-                sell_paused=True,
-            ):
-                print(
-                    f"   🚫 drop offer ${float(offer.get('price') or 0):.0f} — "
-                    "sell_pressure_paused (prompt says SELL WINDOW CLOSED)"
-                )
-                offer = None
-                turn_action.offer = None
         _will_attach_photo = bool(offer and not unpaid)
 
         timing_plan = None

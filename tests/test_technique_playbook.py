@@ -20,6 +20,7 @@ def test_playbook_has_core_moves():
         "SELL LOCK",
         "HOLD FRAME",
         "SOFT EXIT",
+        "VICTIM",
         "REWARD",
     }
 
@@ -48,7 +49,7 @@ def test_price_objection_holds_frame():
     assert "EMERGENCY" not in move.name
 
 
-def test_price_objection_soft_exit_after_rejects():
+def test_price_objection_victim_after_rejects():
     move = technique_policy.choose_move(
         "price_objection",
         unpaid=True,
@@ -56,18 +57,18 @@ def test_price_objection_soft_exit_after_rejects():
         turn_action=SimpleNamespace(action="flirt"),
     )
     assert move is not None
-    assert move.name == "SOFT EXIT"
+    assert move.name == "VICTIM"
 
 
-def test_soft_exit_after_hold_frame_streak():
+def test_victim_after_hold_frame_streak():
     move, why = pb.pick_playbook_move(
         pack_id="ppv_unpaid",
         sig={"msgs": 14, "reject_step": 1, "price_push": True},
         unpaid=True,
         recent_techs=["HOLD FRAME", "HOLD FRAME"],
     )
-    assert move.name == "SOFT EXIT"
-    assert "soft-exit" in why
+    assert move.name == "VICTIM"
+    assert "victim" in why
 
 
 def test_ask_how_you_look_is_sell_lock_not_hold():
@@ -128,7 +129,8 @@ def test_after_soft_exit_bonds_not_resell():
     assert "post-exit" in why
 
 
-def test_shy_graduates_to_heat_after_rapport():
+def test_shy_graduates_to_heat_after_rapport(monkeypatch):
+    monkeypatch.setattr("core.creative_first.enabled", lambda: False)
     move = technique_policy.choose_move(
         "phase_pull",
         msgs=9,
@@ -141,7 +143,8 @@ def test_shy_graduates_to_heat_after_rapport():
     assert move.name in {"HEAT", "BOND", "ASK PIC"}
 
 
-def test_reward_pack():
+def test_reward_pack(monkeypatch):
+    monkeypatch.setattr("core.creative_first.enabled", lambda: False)
     move = technique_policy.choose_move(
         "reward_purchase",
         mem={"messages": 20, "total_spent": 15, "purchases": 1},
@@ -151,7 +154,8 @@ def test_reward_pack():
     assert move.name == "REWARD"
 
 
-def test_early_bond_or_ask_pic():
+def test_early_bond_or_ask_pic(monkeypatch):
+    monkeypatch.setattr("core.creative_first.enabled", lambda: False)
     move = technique_policy.choose_move(
         "phase_hook",
         msgs=3,

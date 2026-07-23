@@ -40,14 +40,14 @@ def test_explicit_rp_is_heat_close_eligible():
     assert heat_close_eligible(_mem(), msg)
 
 
-def test_heat_close_blocked_when_sell_paused_on_warm_msg():
+def test_heat_close_blocked_on_cold_msg_after_reject():
     msg = "hey"
-    assert not heat_close_eligible(_paused_mem(), msg, sell_paused=True)
+    assert not heat_close_eligible(_paused_mem(), msg)
 
 
-def test_heat_close_bypasses_sell_pause_on_explicit_horny():
+def test_heat_close_on_explicit_horny_even_after_reject():
     msg = "He'd ram his huge cock into you so hard it left you dry."
-    assert heat_close_eligible(_paused_mem(), msg, sell_paused=True)
+    assert heat_close_eligible(_paused_mem(), msg)
 
 
 def test_hot_unpaid_nudge_when_unpaid_lock_and_explicit():

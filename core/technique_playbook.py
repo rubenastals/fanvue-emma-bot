@@ -152,6 +152,31 @@ SOFT_EXIT = PlayMove(
     ),
 )
 
+VICTIM = PlayMove(
+    name="VICTIM",
+    family_id="2.3",
+    principle="hurt girlfriend — he had you hot but won't show care",
+    when=(
+        "After real heat + he won't unlock / keeps taking without giving. "
+        "Reject step ≥ 2 or sell-lock streak without buy — vulnerable, not mean."
+    ),
+    never=(
+        "Landlord/crisis. Rival FOMO. 'Most guys leave' / silence guilt. "
+        "Shade for being broke. Long essay."
+    ),
+    how=(
+        "Mechanism: short hurt — feels like he only wants free, won't prove he cares, "
+        "no details for you. Vulnerable girlfriend, not a store tantrum."
+    ),
+    example_beat=(
+        "kinda hurts ngl… got me all worked up and you won't even unlock me"
+    ),
+    signals=(
+        r"(?i)\b(hurt|care|prove|details|effort|appreciate|"
+        r"take advantage|only want|free|worth|show me)\b",
+    ),
+)
+
 REWARD = PlayMove(
     name="REWARD",
     family_id="2.1",
@@ -174,7 +199,7 @@ REWARD = PlayMove(
 
 PLAYBOOK: Dict[str, PlayMove] = {
     m.name: m
-    for m in (BOND, HEAT, ASK_PIC, SELL_LOCK, HOLD_FRAME, SOFT_EXIT, REWARD)
+    for m in (BOND, HEAT, ASK_PIC, SELL_LOCK, HOLD_FRAME, SOFT_EXIT, VICTIM, REWARD)
 }
 
 # Rotate ASK_PIC with BOND/HEAT so we don't spam selfie asks
@@ -241,28 +266,29 @@ def pick_playbook_move(
 
     # 2) Unpaid lock / price objection — ladder (not eternal SELL LOCK chase)
     if unpaid or pid in ("ppv_unpaid", "price_objection"):
-        if sig.get("sell_paused") and not sig.get("buying"):
-            if sig.get("horny"):
-                return HEAT, "sell-cooldown-heat"
-            return BOND, "sell-cooldown-bond"
-        # "how do you look in the photo?" → filthy describe, NEVER discount/soft-exit
         if sig.get("ask_lock_tease") and not sig.get("soft_decline"):
             return SELL_LOCK, "unpaid-describe-tease"
-        # Clear no / not now — stop unlock nag immediately
+        if sig.get("horny") or sig.get("flirting"):
+            return SELL_LOCK, "unpaid-hot-press"
+        # Clear no / not now — stop unlock nag immediately (this turn)
         if sig.get("soft_decline"):
             return SOFT_EXIT, "decline-soft-exit"
         # Already soft-exited recently → bond, don't re-pitch the lock
         if "SOFT EXIT" in recent[-2:]:
             return BOND, "post-exit-bond"
-        # Too many sell-lock teases in a row without buy → release pressure
+        # Too many sell-lock teases in a row without buy → victim or soft exit
         sell_streak = sum(1 for t in recent[-3:] if t == "SELL LOCK")
         if sell_streak >= 2 and not sig.get("buying") and not sig.get("horny"):
+            if reject >= 2:
+                return VICTIM, "sell-streak-victim"
             return SOFT_EXIT, "sell-streak-soft-exit"
         # Price fight = this msg pushes price, OR sticky price_objection pack.
         price_fight = bool(sig.get("price_push") or pid == "price_objection")
         if price_fight:
             hold_streak = sum(1 for t in recent[-4:] if t == "HOLD FRAME")
             if reject >= 3 or hold_streak >= 2:
+                return VICTIM, "objection-victim"
+            if reject >= 2:
                 return SOFT_EXIT, "objection-soft-exit"
             return HOLD_FRAME, "unpaid-price-push"
         # Unpaid tease — filthy girlfriend pointing at THAT lock
@@ -401,6 +427,7 @@ _LEGACY_TO_PLAY: Dict[str, PlayMove] = {
     "SELL LOCK": SELL_LOCK,
     "HOLD FRAME": HOLD_FRAME,
     "SOFT EXIT": SOFT_EXIT,
+    "VICTIM": VICTIM,
     "COLD WITHDRAWAL": SOFT_EXIT,
     "WITHDRAWAL + INTERMITTENT REWARD": SOFT_EXIT,
     "REWARD": REWARD,
@@ -420,5 +447,5 @@ def list_playbook() -> List[Dict[str, str]]:
             "never": m.never,
             "beat": m.example_beat,
         }
-        for m in (BOND, HEAT, ASK_PIC, SELL_LOCK, HOLD_FRAME, SOFT_EXIT, REWARD)
+        for m in (BOND, HEAT, ASK_PIC, SELL_LOCK, HOLD_FRAME, SOFT_EXIT, VICTIM, REWARD)
     ]
