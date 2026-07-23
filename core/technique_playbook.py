@@ -38,7 +38,7 @@ BOND = PlayMove(
         "Mechanism: accelerated affection — he feels almost-boyfriend. "
         "Warm + a little hot. Praise + 'you're different'. No trauma invent."
     ),
-    example_beat="glad you're here… something about you already got me soft",
+    example_beat="mm you're actually fun to talk to… don't vanish on me",
     signals=(
         r"(?i)\b(favorite|diferente|different|special|chosen|glad\s+you|"
         r"got\s+me\s+soft|thinking\s+about\s+you|only\s+you|"
@@ -290,7 +290,11 @@ def pick_playbook_move(
             return HEAT, "early-compliment-heat"
         return BOND, "early-bond"
 
-    # 6) Mid chat default — bond/heat rotate
+    # 6) Mid chat default — stay HEAT during active flirt/RP (don't bond-stamp)
+    if sig.get("horny") or sig.get("flirting"):
+        return HEAT, "mid-active-heat"
+    if "BOND" in recent[-2:]:
+        return HEAT, "bond-break-heat"
     if "HEAT" in recent[-1:]:
         return BOND, "mid-rotate-bond"
     if sig.get("buying") or pid in ("phase_close", "lock_now"):

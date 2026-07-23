@@ -26,6 +26,11 @@ from typing import Dict, List, Optional, Tuple
 
 from core import convo_log, fan_memory, language, persona_time
 from core.chat_heat import active_window_minutes, chat_heat_score, heat_label, is_hot_score, is_warm_score
+from core.farewell import (
+    conversation_closed,
+    fan_closed_in_messages,
+    mark_conversation_closed,
+)
 from core.reply_engine import split_into_messages
 from core.turn_policy import TurnDecision
 
@@ -51,14 +56,15 @@ MAX_NUDGES_PER_EPISODE = int(os.getenv("MAX_NUDGES_PER_EPISODE", "2"))
 VICTIM_AFTER_SEEN_MINUTES = int(os.getenv("VICTIM_AFTER_SEEN_MINUTES", "60"))
 VICTIM_COOLDOWN_HOURS = int(os.getenv("VICTIM_COOLDOWN_HOURS", "12"))
 
-_FAREWELL = re.compile(
-    r"(?i)\b("
-    r"good ?night|gn|bye|see (you|ya)|talk (later|soon|tomorrow)|ttyl|gtg|"
-    r"going to (bed|sleep)|sleep well|sweet dreams|"
-    r"adi[oó]s|buenas noches|hasta (ma[nñ]ana|luego|pronto)|me voy|"
-    r"nos vemos|descansa|dulces sue[nñ]os|a dormir|chao|cuidate|te cuidas"
-    r")\b"
-)
+
+def _ended_with_farewell(
+    messages: List[dict],
+    fan_uuid: str,
+    creator_uuid: str,
+    mem: dict,
+) -> bool:
+    return conversation_closed(messages, fan_uuid, creator_uuid, mem)
+
 
 _HEAT_WORDS = re.compile(
     r"(?i)\b("
@@ -350,11 +356,6 @@ def _last_fan_text(messages: List[dict], fan_uuid: str) -> str:
     return ""
 
 
-def _ended_with_farewell(messages: List[dict]) -> bool:
-    texts = [(m.get("text") or "") for m in messages[:2]]
-    return any(_FAREWELL.search(t) for t in texts if t)
-
-
 def _parse_iso(s: Optional[str]) -> Optional[datetime]:
     if not s:
         return None
@@ -634,7 +635,13 @@ def run_pass(fv, chats: List[dict], creator_uuid: str) -> int:
         if not ts:
             continue
         silence = now - ts
-        pass_farewell = _ended_with_farewell(messages)
+        pass_farewell = _ended_with_farewell(messages, fan_uuid, creator_uuid, mem)
+        if pass_farewell:
+            closed, reason = fan_closed_in_messages(messages, fan_uuid)
+            if closed:
+                mark_conversation_closed(
+                    fan_uuid, fan_handle=fan_handle, reason=reason
+                )
         is_read, _ = _creator_last_is_read(messages, creator_uuid)
         if is_read and not mem.get("last_seen_by_fan_at"):
             fan_memory.mark_seen_by_fan(fan_uuid, fan_handle=fan_handle)
@@ -679,6 +686,10 @@ def run_pass(fv, chats: List[dict], creator_uuid: str) -> int:
             continue
 
         if pass_farewell:
+            print(
+                f"   reengage skip @{fan_handle}: conversation closed "
+                f"({mem.get('conversation_closed_reason') or 'farewell'})"
+            )
             continue  # closed politely — don't mid-flow guilt
 
         step = _nudge_step_for_silence(

@@ -629,32 +629,78 @@ _HEAT_FALLBACKS = (
     "god that made me soft and horny… come closer",
 )
 
-# Love-bomb validation stamps (Dan loop: "only girl", "got me soft", "different from other guys")
+# Love-bomb validation stamps (Dan loop: only girl, got me soft, special/unique)
 _LOVE_BOMB_LOOP = re.compile(
     r"(?i)("
     r"only\s+(girl|one)\b|"
-    r"only\s+girl\s+that\s+matters|"
+    r"only\s+girl\s+(in\s+the\s+world|that\s+matters)|"
     r"something\s+about\s+the\s+way\s+you|"
+    r"something\s+about\s+(the\s+way\s+)?u\b|"
     r"got\s+me\s+soft|"
     r"feeling\s+soft|"
     r"you'?re\s+different|"
+    r"hits\s+different|"
     r"different\s+from\s+other\s+guys|"
     r"luckiest\s+girl|"
     r"feeling\s+soft\s+and\s+special|"
     r"you'?re\s+my\s+favorite\s+person|"
-    r"only\s+one\s+i'?d\s+let"
+    r"favorite\s+person\s+to\s+come\s+back|"
+    r"only\s+one\s+i'?d\s+let|"
+    r"makes?\s+me\s+feel\s+(so\s+)?(chosen|special|good)|"
+    r"heart\s+flutter|"
+    r"like\s+having\s+you\s+here|"
+    r"come\s+back\s+to\s+me|"
+    r"muy\s+especial|"
+    r"eres\s+(muy\s+)?(especial|único|unico)|"
+    r"me\s+hace\s+sentir\s+(bien|especial|único|unico)|"
+    r"muy\s+especial\s+y\s+único|"
+    r"único\s+que\s+me\s+hace"
     r")"
 )
 
 
 def _love_bomb_in_history(history_turns: Optional[List[Dict[str, Any]]]) -> bool:
+    return _love_bomb_count(history_turns) >= 1
+
+
+def _love_bomb_count(history_turns: Optional[List[Dict[str, Any]]]) -> int:
     if not history_turns:
-        return False
-    for turn in history_turns[-10:]:
+        return 0
+    n = 0
+    for turn in history_turns[-12:]:
         if (turn.get("role") or "") != "assistant":
             continue
         if _LOVE_BOMB_LOOP.search(str(turn.get("content") or "")):
+            n += 1
+    return n
+
+
+def _assistant_duplicate_in_history(
+    reply: str,
+    history_turns: Optional[List[Dict[str, Any]]],
+    *,
+    lookback: int = 15,
+) -> bool:
+    """Exact/near-exact Emma bubble already sent recently."""
+    if not history_turns or not (reply or "").strip():
+        return False
+    norm = _norm_bubble(reply)
+    if len(norm) < 20:
+        return False
+    seen = 0
+    for turn in reversed(history_turns):
+        if (turn.get("role") or "") != "assistant":
+            continue
+        seen += 1
+        prev = _norm_bubble(str(turn.get("content") or ""))
+        if not prev:
+            continue
+        if prev == norm:
             return True
+        if len(prev) >= 24 and (prev in norm or norm in prev):
+            return True
+        if seen >= lookback:
+            break
     return False
 
 
@@ -1251,6 +1297,25 @@ def apply_post_draft(
         print(
             "   🔥 love-bomb loop stamp — replaced "
             f"({before_lb[:56]!r} → {reply!r})"
+        )
+    elif _LOVE_BOMB_LOOP.search(reply or "") and _love_bomb_count(turns) >= 2:
+        before_lb = reply
+        banned = {
+            _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
+        }
+        opts = [p for p in _HEAT_FALLBACKS if _norm_bubble(p) not in banned]
+        reply = random.choice(opts or list(_HEAT_FALLBACKS))
+        print(
+            "   🔥 love-bomb cap (3+ stamps) — replaced "
+            f"({before_lb[:56]!r} → {reply!r})"
+        )
+
+    if _assistant_duplicate_in_history(reply or "", turns):
+        before_dup = reply
+        reply = _lang_fallback(want_spanish=want_spanish, history_turns=turns)
+        print(
+            "   🔁 exact duplicate bubble — replaced "
+            f"({before_dup[:56]!r} → {reply!r})"
         )
 
     from core.fan_pushback import (
