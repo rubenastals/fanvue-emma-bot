@@ -29,20 +29,28 @@ sys.path.insert(0, _ROOT)
 
 from api.fanvue_connector import FanvueConnector
 
-LEVEL_FOLDERS = {
-    1: "Emma_L1_lingerie",
-    2: "Emma_L2_topless",
-    3: "Emma_L3_soft_nude",
-    4: "Emma_L4_open_nude",
-    5: "Emma_L5_fingers",
-    6: "Emma_L6_hardcore",
-    7: "Emma_L7_extreme",
-}
+_VAULT_PREFIX = (os.getenv("VAULT_FOLDER_PREFIX") or os.getenv("ACCOUNT_ID") or "Emma").strip()
+_VAULT_PREFIX_TITLE = _VAULT_PREFIX[:1].upper() + _VAULT_PREFIX[1:]
+
+
+def _level_folders() -> Dict[int, str]:
+  prefix = _VAULT_PREFIX_TITLE
+  return {
+      1: f"{prefix}_L1_lingerie",
+      2: f"{prefix}_L2_topless",
+      3: f"{prefix}_L3_soft_nude",
+      4: f"{prefix}_L4_open_nude",
+      5: f"{prefix}_L5_fingers",
+      6: f"{prefix}_L6_hardcore",
+      7: f"{prefix}_L7_extreme",
+  }
 
 
 def _folder_for(item: Dict[str, Any]) -> str:
     level = int(item.get("level") or 0)
-    return LEVEL_FOLDERS.get(level, f"Emma_L{level or 'X'}_misc")
+    folders = _level_folders()
+    prefix = _VAULT_PREFIX_TITLE
+    return folders.get(level, f"{prefix}_L{level or 'X'}_misc")
 
 
 def _display_name(index: int, item: Dict[str, Any]) -> str:
@@ -91,7 +99,9 @@ def main() -> None:
     if not args.no_folder:
         levels = sorted({int(it.get("level") or 0) for it in items if it.get("level")})
         for lvl in levels:
-            name = LEVEL_FOLDERS.get(lvl, f"Emma_L{lvl}_misc")
+            folders = _level_folders()
+            prefix = _VAULT_PREFIX_TITLE
+            name = folders.get(lvl, f"{prefix}_L{lvl}_misc")
             fv.ensure_vault_folder(name)
             print(f"  folder ready: {name}")
         print()

@@ -94,6 +94,9 @@ storage: Postgres + Redis (account=emma)
 - Keep DeepSeek / xAI keys global (your APIs).
 - Never run Cursor auto-fix inside Railway.
 
+**Step-by-step (Spanish):** `docs/SETUP_SEGUNDA_MODELO.md`  
+**Scaffold CLI:** `python scripts/setup_new_model.py <id> --handle ... --name ... --age ... --from ...`
+
 ## 5. Checklist
 
 - [ ] Postgres + Redis attached  

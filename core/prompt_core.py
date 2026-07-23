@@ -59,14 +59,8 @@ EMMA_CORE_PROMPT_SIMPLE = open(
 ).read().strip()
 
 
-def _load_persona_file() -> str | None:
-    """Load persona from PERSONA_FILE env var if set. Returns None to use default."""
-    path = os.getenv("PERSONA_FILE", "").strip()
-    if not path:
-        return None
-    p = Path(path) if Path(path).is_absolute() else _ROOT / path
-    if not p.exists():
-        print(f"   WARNING: PERSONA_FILE not found: {p} — using default Emma persona")
+def _read_persona_path(p: Path) -> str | None:
+    if not p.is_file():
         return None
     text = p.read_text(encoding="utf-8").strip()
     # Strip markdown comment lines (# ... used for operator notes in template)
@@ -76,7 +70,34 @@ def _load_persona_file() -> str | None:
     return loaded
 
 
+def _persona_path_for_account() -> Path | None:
+    """personas/{ACCOUNT_ID}.md when PERSONA_FILE is unset (multi-model)."""
+    aid = (os.getenv("ACCOUNT_ID") or "").strip().lower()
+    if not aid or aid == "emma":
+        return None
+    return _ROOT / "personas" / f"{aid}.md"
+
+
+def _load_persona_file() -> str | None:
+    """Load persona from PERSONA_FILE env var if set. Returns None to use default."""
+    path = os.getenv("PERSONA_FILE", "").strip()
+    if path:
+        p = Path(path) if Path(path).is_absolute() else _ROOT / path
+        if not p.exists():
+            print(f"   WARNING: PERSONA_FILE not found: {p} — using default Emma persona")
+            return None
+        return _read_persona_path(p)
+
+    account_path = _persona_path_for_account()
+    if account_path:
+        loaded = _read_persona_path(account_path)
+        if loaded:
+            return loaded
+        print(f"   WARNING: personas/{account_path.name} missing — using default Emma persona")
+    return None
+
+
 def get_active_persona() -> str:
-    """Return the active CORE prompt — from PERSONA_FILE or Emma default."""
+    """Return the active CORE prompt — PERSONA_FILE, personas/{ACCOUNT_ID}.md, or Emma."""
     custom = _load_persona_file()
     return custom if custom else EMMA_CORE_PROMPT_SIMPLE

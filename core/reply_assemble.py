@@ -948,14 +948,16 @@ def assemble_emma_turn(
     # Lean author: pack + MANDATORY technique nudge
     if lean and simple:
         from core import technique_policy as _tp
+        from core.account_context import creator_display_name
 
+        _creator = creator_display_name()
         move_bit = (
             _tp.author_steer(tech_name)
             if tech_name
             else " Skip dark-psych moves this turn (comfort/cooling)."
         )
         note = (
-            "[Emma on WhatsApp. ENGLISH ONLY — even if he writes Spanish. "
+            f"[{_creator} on WhatsApp. ENGLISH ONLY — even if he writes Spanish. "
             "Horny girlfriend texting — NOT a sales agent, NOT an essay. "
             "Informal chat slang OK (u/rn/idk/lol/haha/babe). "
             "Light punctuation, lowercase fine, react first. "
@@ -974,8 +976,11 @@ def assemble_emma_turn(
             "Sell only what STATUS attaches.]"
         )
     elif lean:
+        from core.account_context import creator_display_name
+
+        _creator = creator_display_name()
         note = (
-            f"[Emma texting. ENGLISH ONLY. Pack={pack_id}. "
+            f"[{_creator} texting. ENGLISH ONLY. Pack={pack_id}. "
             f"1–2 short bubbles, under ~220 total characters. Light pet names OK; "
             f"real name sometimes if ADDRESSING allows — "
             f"never spam \"Ay {{name}}\" every bubble. Zero Spanish.]"

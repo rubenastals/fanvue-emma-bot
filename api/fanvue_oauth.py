@@ -35,6 +35,12 @@ _REDIS_LOCK_KEY = "oauth_refresh_lock"
 _REDIS_LOCK_TTL = 45
 
 
+def _redis_lock_key() -> str:
+    from db import account_id
+
+    return f"oauth_refresh_lock:{account_id()}"
+
+
 def _b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode("utf-8").rstrip("=")
 
@@ -138,7 +144,7 @@ def _acquire_redis_lock() -> bool:
             return True  # no redis → rely on threading lock only
         r = redis_client.get_redis()
         # SET NX EX — only one refresh across replicas
-        return bool(r.set(_REDIS_LOCK_KEY, str(time.time()), nx=True, ex=_REDIS_LOCK_TTL))
+        return bool(r.set(_redis_lock_key(), str(time.time()), nx=True, ex=_REDIS_LOCK_TTL))
     except Exception:
         return True
 
@@ -149,7 +155,7 @@ def _release_redis_lock() -> None:
         from db import redis_client
 
         if use_redis():
-            redis_client.get_redis().delete(_REDIS_LOCK_KEY)
+            redis_client.get_redis().delete(_redis_lock_key())
     except Exception:
         pass
 

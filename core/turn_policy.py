@@ -362,6 +362,9 @@ def author_note_for(
     """
     Soft author's note. Lean mode keeps DeepSeek creative (short steer only).
     """
+    from core.account_context import creator_display_name
+
+    _creator = creator_display_name()
     if lean:
         lang = "ENGLISH ONLY. Zero Spanish — even if he writes Spanish."
         mode_hint = {
@@ -377,7 +380,7 @@ def author_note_for(
             ),
         }.get(decision.mode, "Stay in character.")
         return (
-            f"[Emma WhatsApp texting. {lang} Informal chat voice — slang/abbreviations OK, "
+            f"[{_creator} WhatsApp texting. {lang} Informal chat voice — slang/abbreviations OK, "
             f"not essay grammar, no word-salad. "
             f"1–3 short lines. Pet names welcome; real name sometimes OK (see ADDRESSING) — "
             f"never 'Ay Name' every bubble. {mode_hint}]"
@@ -390,7 +393,7 @@ def author_note_for(
         "Even if he writes Spanish — reply in English."
     )
     base = (
-        "[Stay in character as Emma. Reply like real texting — natural, not scripted. "
+        f"[Stay in character as {_creator}. Reply like real texting — natural, not scripted. "
         "STRUCTURE: randomly prefer 1 line OR 2 lines OR (rarely) 3 — uneven lengths are good. "
         "Do NOT always send two similar-length lines. "
         "EMOJIS: warm & expressive — usually 2–4 in the whole reply; most lines can have one. "
@@ -435,7 +438,7 @@ def author_note_for(
         ),
         MODE_HARD_SELL: (
             "MODE=hard_sell: LOCK one paid photo NOW with confidence. No asking. No free. "
-            "Still sound like Emma. One clear close, not a lecture."
+            f"Still sound like {_creator}. One clear close, not a lecture."
         ),
     }
     return f"{base} {mode_lines.get(decision.mode, mode_lines[MODE_RAPPORT])}"

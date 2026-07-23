@@ -31,9 +31,10 @@ sys.path.insert(0, _ROOT)
 
 from api.fanvue_connector import FanvueConnector
 from scripts.upload_vault_batch import (
-    LEVEL_FOLDERS,
+    _VAULT_PREFIX_TITLE,
     _display_name,
     _folder_for,
+    _level_folders,
     _price_cents,
 )
 from utils.strip_c2pa import has_c2pa
@@ -140,7 +141,8 @@ def main() -> None:
     if not args.no_folder:
         levels = sorted({int(it.get("level") or 0) for it in to_process if it.get("level")})
         for lvl in levels:
-            name = LEVEL_FOLDERS.get(lvl, f"Emma_L{lvl}_misc")
+            folders = _level_folders()
+            name = folders.get(lvl, f"{_VAULT_PREFIX_TITLE}_L{lvl}_misc")
             fv.ensure_vault_folder(name)
             print(f"  folder ready: {name}")
         print()
