@@ -4,8 +4,12 @@ from __future__ import annotations
 from core.farewell import (
     conversation_closed,
     fan_closed_in_messages,
+    fan_reopened_conversation,
     fan_text_is_farewell,
+    fan_text_is_robot_complaint,
     mark_conversation_closed,
+    pause_reengage_until_fan_writes,
+    reengage_paused,
 )
 
 
@@ -40,6 +44,34 @@ def test_closed_blocks_reengage_after_soft_reply():
         },
     ]
     assert conversation_closed(messages, fan, creator, {})
+
+
+def test_question_mark_does_not_reopen():
+    assert not fan_reopened_conversation("?")
+    assert not fan_reopened_conversation("...")
+    assert fan_reopened_conversation("hey sorry about earlier")
+
+
+def test_robot_complaint_detected():
+    assert fan_text_is_robot_complaint("Babe turn off the robot")
+    assert fan_text_is_robot_complaint("Stop using the AI feature")
+
+
+def test_reengage_paused_blocks_closed():
+    fan = "fan-uuid"
+    creator = "creator-uuid"
+    mem = {"reengage_paused_until_fan_writes": True}
+    assert reengage_paused(mem)
+    assert conversation_closed([], fan, creator, mem)
+
+
+def test_pause_until_fan_writes_persists():
+    fan = "test-pause-fan"
+    pause_reengage_until_fan_writes(fan, reason="turn off the robot")
+    from core import fan_memory
+
+    mem = fan_memory.get(fan) or {}
+    assert mem.get("reengage_paused_until_fan_writes")
 
 
 def test_mark_and_persist_closed():
