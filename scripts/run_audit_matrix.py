@@ -16,6 +16,7 @@ sys.path.insert(0, str(_ROOT))
 
 SUITE = [
     "tests/test_regression_matrix.py",
+    "tests/test_historical_sins.py",
     "tests/test_rewrite_budget.py",
     "tests/test_quarantine_dead_brains.py",
     "tests/test_turn_action.py",

@@ -1359,7 +1359,7 @@ def apply_post_draft(
     ) and not _reconciling
 
     # Fan JUST messaged — never abandonment / "guys leave" / silence guilt
-    if not _creative and _ABANDONMENT_GUILT.search(reply or ""):
+    if _loop_belts and _ABANDONMENT_GUILT.search(reply or ""):
         before_sg = reply
         banned = {
             _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
@@ -1372,7 +1372,7 @@ def apply_post_draft(
             f"({before_sg[:56]!r} → {reply!r})"
         )
     elif (
-        not _creative
+        _loop_belts
         and _recent_abandonment_guilt(turns)
         and scheme_guard.too_similar_to_last_assistant(reply, turns)
     ):

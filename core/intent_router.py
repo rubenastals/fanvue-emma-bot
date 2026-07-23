@@ -77,11 +77,15 @@ def build_facts(
     missing_free = missing and bool(
         re.search(r"\b(gratis|grastis|gratiz|free)\b", low)
     )
+    from core.fan_pushback import is_fan_boundary, is_photo_refusal
+
+    boundary_now = is_fan_boundary(low) or is_photo_refusal(low)
     buying = (
         bool(re.search(_BUYING, low) or re.search(_ACCEPT, low))
         and not fan_sent_media
         and not ask_free
         and not missing_free
+        and not boundary_now
     )
     want_another = bool(re.search(_WANT_ANOTHER, low))
     horny = bool(re.search(_HORNY, low))
@@ -210,6 +214,21 @@ def _hard_route(
         return RouteResult(
             "reward_purchase", d, facts, {"reward_purchase": True}
         )
+
+    # Fan boundary / stop asking pics — bond only, never sell this turn
+    from core.fan_pushback import is_fan_boundary as _fan_bnd
+
+    if _fan_bnd(fan_message or "") or (mem or {}).get("fan_boundary_active"):
+        facts.hard_pack = "phase_pull"
+        d = _decision(
+            MODE_TEASE,
+            "fan boundary — reconnect, no pic pressure",
+            allow_price=False,
+            allow_ppv_talk=False,
+            allow_free_tease=False,
+            max_bubbles=1,
+        )
+        return RouteResult("phase_pull", d, facts, {"phase_pull": True})
 
     # He sent a selfie/photo — react to HIS body first, never pitch this turn
     if facts.fan_sent_media:
