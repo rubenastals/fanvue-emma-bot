@@ -94,7 +94,10 @@ def test_bills_after_reject_ladder_is_victim_not_soft_exit():
         unpaid=True,
         msgs=40,
         reject_count=3,
-        mem=_mem(price_objection_step=3),
+        mem=_mem(
+            price_objection_step=3,
+            recent_techniques=["HEAT", "SELL LOCK", "HEAT"],
+        ),
         fan_message="I need to pay my bills first",
         victim_beat=True,
     )

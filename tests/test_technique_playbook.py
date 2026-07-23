@@ -29,11 +29,28 @@ def test_unpaid_picks_sell_lock():
     move = technique_policy.choose_move(
         "ppv_unpaid",
         unpaid=True,
-        mem={"messages": 12, "total_spent": 0},
+        mem={
+            "messages": 20,
+            "total_spent": 0,
+            "recent_techniques": ["HEAT", "BOND"],
+        },
+        fan_message="fuck baby show me",
         turn_action=SimpleNamespace(action="flirt"),
     )
     assert move is not None
     assert move.name == "SELL LOCK"
+
+
+def test_unpaid_cold_early_bonds_not_chase():
+    move = technique_policy.choose_move(
+        "ppv_unpaid",
+        unpaid=True,
+        mem={"messages": 8, "total_spent": 0},
+        fan_message="hey",
+        turn_action=SimpleNamespace(action="flirt"),
+    )
+    assert move is not None
+    assert move.name == "BOND"
 
 
 def test_price_objection_holds_frame():
@@ -41,6 +58,8 @@ def test_price_objection_holds_frame():
         "price_objection",
         unpaid=True,
         reject_count=0,
+        mem={"messages": 20, "recent_techniques": ["HEAT", "SELL LOCK"]},
+        fan_message="that's too expensive babe",
         turn_action=SimpleNamespace(action="flirt"),
     )
     assert move is not None
@@ -54,6 +73,8 @@ def test_price_objection_victim_after_rejects():
         "price_objection",
         unpaid=True,
         reject_count=3,
+        mem={"messages": 30, "recent_techniques": ["HEAT", "HOLD FRAME", "SELL LOCK"]},
+        fan_message="too expensive sorry",
         turn_action=SimpleNamespace(action="flirt"),
     )
     assert move is not None
@@ -100,7 +121,13 @@ def test_reject_step_alone_does_not_force_hold():
 def test_soft_decline_exits_sell_lock():
     move, why = pb.pick_playbook_move(
         pack_id="ppv_unpaid",
-        sig={"msgs": 14, "soft_decline": True, "price_push": False},
+        sig={
+            "msgs": 14,
+            "soft_decline": True,
+            "price_push": False,
+            "earned_pressure": True,
+            "reject_step": 2,
+        },
         unpaid=True,
         recent_techs=["SELL LOCK", "SELL LOCK"],
     )
@@ -118,7 +145,7 @@ def test_sell_streak_victim_not_soft_exit():
     assert move.name == "VICTIM"
 
 
-def test_after_soft_exit_bonds_not_resell():
+def test_after_soft_exit_bonds_when_cold():
     move, why = pb.pick_playbook_move(
         pack_id="ppv_unpaid",
         sig={"msgs": 14, "soft_decline": False},
@@ -126,7 +153,18 @@ def test_after_soft_exit_bonds_not_resell():
         recent_techs=["SOFT EXIT"],
     )
     assert move.name == "BOND"
-    assert "post-exit" in why
+    assert "cold" in why
+
+
+def test_after_soft_exit_hot_press_when_heated():
+    move, why = pb.pick_playbook_move(
+        pack_id="ppv_unpaid",
+        sig={"msgs": 20, "soft_decline": False, "horny": True},
+        unpaid=True,
+        recent_techs=["SOFT EXIT", "HEAT"],
+    )
+    assert move.name == "SELL LOCK"
+    assert why in ("post-exit-hot-press", "unpaid-hot-press")
 
 
 def test_shy_graduates_to_heat_after_rapport(monkeypatch):

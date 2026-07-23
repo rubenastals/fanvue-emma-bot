@@ -267,7 +267,17 @@ def pick_playbook_move(
     # 2) Unpaid lock / price objection — ladder (not eternal SELL LOCK chase)
     if unpaid or pid in ("ppv_unpaid", "price_objection"):
         sell_streak = sum(1 for t in recent[-3:] if t == "SELL LOCK")
-        # sell_gate + reject ladder beat generic soft-decline exit
+        from core.sell_pressure import earned_from_signals
+
+        earned = earned_from_signals(sig, recent)
+        # Cold unpaid (early chat / never heated) — gentle, no guilt or hard chase
+        if not earned:
+            if sig.get("soft_decline") or sig.get("price_push"):
+                return SOFT_EXIT, "unpaid-cold-soft-exit"
+            if sig.get("horny") or sig.get("flirting"):
+                return HEAT, "unpaid-cold-warm-up"
+            return BOND, "unpaid-cold-bond"
+        # sell_gate + reject ladder beat generic soft-decline exit (earned threads only)
         if sig.get("victim_beat") or sell_streak >= 2 or int(sig.get("reject_step") or 0) >= 2:
             if sig.get("soft_decline") or sig.get("price_push"):
                 return VICTIM, "decline-victim-press"

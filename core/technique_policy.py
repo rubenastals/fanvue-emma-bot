@@ -666,6 +666,14 @@ def choose_move(
             sig["reject_step"] = max(int(sig.get("reject_step") or 0), int(reject_count))
         if victim_beat:
             sig["victim_beat"] = True
+        from core.sell_pressure import earned_sell_pressure
+
+        sig["earned_pressure"] = earned_sell_pressure(
+            mem or {},
+            fan_message or "",
+            history_turns=None,
+            fan_uuid=fan_uuid or "",
+        )
         recent = list(exclude_names or [])
         if creative_first.skip_active_move(
             pack_id=eff,

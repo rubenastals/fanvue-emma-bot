@@ -17,6 +17,7 @@ from core.chat_heat import (
     hot_unpaid_nudge_eligible,
     is_hot_score,
 )
+from core.sell_pressure import victim_pressure_eligible
 from core.soft_decline import is_broke_soft, is_soft_decline
 
 
@@ -57,6 +58,14 @@ def victim_eligible(
 ) -> bool:
     """Unpaid lock + he won't buy after real sell pressure → guilt + unlock push."""
     if not unpaid:
+        return False
+    if not victim_pressure_eligible(
+        mem,
+        fan_message,
+        facts=facts,
+        history_turns=history_turns,
+        fan_uuid=str(mem.get("fan_uuid") or ""),
+    ):
         return False
     msg = (fan_message or "").strip()
     if is_soft_decline(msg) and not _thread_horny(msg, history_turns, facts=facts):
