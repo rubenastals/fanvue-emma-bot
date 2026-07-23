@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(_ROOT, ".env"))
 
 
-def _collect_candidates(fv, creator_uuid: str, blocked: set[str]) -> list[dict]:
+def _collect_from_subscribers(fv, creator_uuid: str, blocked: set[str], seen: set[str]) -> list[dict]:
     from core import fan_memory
     from core.welcome import (
         _already_welcomed_by_us,
@@ -41,10 +41,11 @@ def _collect_candidates(fv, creator_uuid: str, blocked: set[str]) -> list[dict]:
     for sub in all_subs:
         fan_uuid = sub.get("uuid")
         handle = (sub.get("handle") or "fan").lower()
-        if not fan_uuid or fan_uuid == creator_uuid:
+        if not fan_uuid or fan_uuid == creator_uuid or fan_uuid in seen:
             continue
         if handle in blocked:
             continue
+        seen.add(fan_uuid)
         mem = fan_memory.get(fan_uuid) or {}
         if int(mem.get("messages") or 0) > 0:
             continue
@@ -60,10 +61,69 @@ def _collect_candidates(fv, creator_uuid: str, blocked: set[str]) -> list[dict]:
             {
                 "fan_uuid": fan_uuid,
                 "handle": sub.get("handle") or handle,
+                "source": "subscriber",
                 "firstSubscribedAt": sub.get("firstSubscribedAt"),
                 "text": pick_welcome_text(spanish=False),
             }
         )
+    return out
+
+
+def _collect_from_chats(fv, creator_uuid: str, blocked: set[str], seen: set[str]) -> list[dict]:
+    from core import fan_memory
+    from core.welcome import (
+        _already_welcomed_by_us,
+        _fan_has_real_chat,
+        pick_welcome_text,
+    )
+
+    all_chats: list[dict] = []
+    for page in range(1, 21):
+        data = fv._request("GET", "/chats", params={"size": 50, "page": page})
+        batch = data.get("data", []) if isinstance(data, dict) else []
+        if not batch:
+            break
+        all_chats.extend(batch)
+        if len(batch) < 50:
+            break
+
+    out: list[dict] = []
+    for chat in all_chats:
+        user = chat.get("user") or {}
+        fan_uuid = user.get("uuid")
+        handle = (user.get("handle") or "fan").lower()
+        if not fan_uuid or fan_uuid == creator_uuid or fan_uuid in seen:
+            continue
+        if handle in blocked:
+            continue
+        seen.add(fan_uuid)
+        mem = fan_memory.get(fan_uuid) or {}
+        if int(mem.get("messages") or 0) > 0:
+            continue
+        try:
+            messages = fv.get_messages(fan_uuid, size=10)
+        except Exception:
+            messages = []
+        if _fan_has_real_chat(messages, fan_uuid):
+            continue
+        if _already_welcomed_by_us(messages, creator_uuid):
+            continue
+        out.append(
+            {
+                "fan_uuid": fan_uuid,
+                "handle": user.get("handle") or handle,
+                "source": "chat",
+                "firstSubscribedAt": chat.get("lastMessageAt"),
+                "text": pick_welcome_text(spanish=False),
+            }
+        )
+    return out
+
+
+def _collect_candidates(fv, creator_uuid: str, blocked: set[str]) -> list[dict]:
+    seen: set[str] = set()
+    out = _collect_from_subscribers(fv, creator_uuid, blocked, seen)
+    out.extend(_collect_from_chats(fv, creator_uuid, blocked, seen))
     return out
 
 
@@ -98,7 +158,7 @@ def main() -> None:
     print(f"\n{len(candidates)} subscriber(s) need welcome opener:\n")
     for c in candidates:
         print(
-            f"  @{c['handle']} sub={c['firstSubscribedAt']} → {c['text'][:60]!r}"
+            f"  @{c['handle']} [{c['source']}] → {c['text'][:60]!r}"
         )
 
     if args.dry_run:
