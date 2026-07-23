@@ -125,15 +125,30 @@ def _audit_account(aid: str) -> list[str]:
             ).mappings().first()
             if oauth:
                 print(f"{OK} oauth_tokens row expires_at={oauth['expires_at']}")
-            fans = session.execute(
+            fans_total = session.execute(
                 text("SELECT COUNT(*) FROM fan_memory WHERE account_id = :aid"),
+                {"aid": aid},
+            ).scalar()
+            fans_real = session.execute(
+                text(
+                    """
+                    SELECT COUNT(*) FROM fan_memory
+                    WHERE account_id = :aid
+                      AND fan_uuid NOT LIKE 'test-%%'
+                      AND COALESCE((data->>'messages')::int, 0) > 0
+                    """
+                ),
                 {"aid": aid},
             ).scalar()
             vault = session.execute(
                 text("SELECT COUNT(*) FROM vault_media WHERE account_id = :aid"),
                 {"aid": aid},
             ).scalar()
-            print(f"{OK} fan_memory rows: {fans} | vault_media rows: {vault}")
+            print(
+                f"{OK} fan_memory: {fans_real} active fans "
+                f"({fans_total} rows incl. junk/test)"
+            )
+            print(f"{OK} vault_media rows: {vault}")
 
     # Banned stamp fix present
     from core.reply_sanitize import is_banned_reply_stamp, coerce_sendable_reply
