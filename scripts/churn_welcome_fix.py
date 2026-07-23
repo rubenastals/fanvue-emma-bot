@@ -20,6 +20,8 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(_ROOT, ".env"))
 
+from core.welcome import welcome_message_sent
+
 _CHURN_TEMPLATES = [
     "wait… I just saw you cancelled? that's kinda sad ngl 😔 what happened?",
     "oh no… I just noticed you unsubscribed. that bummed me out a little tbh",
@@ -49,12 +51,24 @@ def _active_subscriber_ids(fv, creator_uuid: str) -> set[str]:
 
 
 def _welcome_sent_wrongly(messages: list, creator_uuid: str) -> bool:
-    keys = (
-        "glad you subscribed",
-        "finally talk",
-        "been waiting for you to sub",
-        "talk to me 👀",
-    )
+    return welcome_message_sent(messages, creator_uuid)
+
+
+def _list_all_chats(fv) -> list[dict]:
+    out: list[dict] = []
+    for page in range(1, 21):
+        data = fv._request("GET", "/chats", params={"size": 50, "page": page})
+        batch = data.get("data", []) if isinstance(data, dict) else []
+        if not batch:
+            break
+        out.extend(batch)
+        if len(batch) < 50:
+            break
+    return out
+
+
+def _churn_already_sent(messages: list, creator_uuid: str) -> bool:
+    keys = ("cancelled", "unsubscribed", "left?", "saw you", "bummed me out", "glitched")
     for m in messages or []:
         sender = m.get("sender") or {}
         sid = sender.get("uuid") if isinstance(sender, dict) else None
@@ -66,55 +80,87 @@ def _welcome_sent_wrongly(messages: list, creator_uuid: str) -> bool:
     return False
 
 
+def _classify_fan(
+    fv,
+    fan_uuid: str,
+    handle: str,
+    creator_uuid: str,
+    active: set[str],
+    mem: dict,
+    blocked: set[str],
+    seen: set[str],
+) -> dict | None:
+    handle_l = (handle or "").lower()
+    if not fan_uuid or handle_l in blocked or fan_uuid in seen:
+        return None
+    if mem.get("churn_apology_sent_at"):
+        return None
+    try:
+        ins = fv.get_fan_insights(fan_uuid)
+    except Exception:
+        ins = {}
+    status = (ins.get("status") or "").lower()
+    in_active = fan_uuid in active
+    if in_active and status == "subscriber":
+        return None
+    try:
+        messages = fv.get_messages(fan_uuid, size=8)
+    except Exception:
+        messages = []
+    if not _welcome_sent_wrongly(messages, creator_uuid):
+        return None
+    if _churn_already_sent(messages, creator_uuid):
+        return None
+    if status in ("expired", "cancelled", "inactive", "churned") or (
+        not in_active and status != "follower"
+    ):
+        kind = "churn"
+        text = random.choice(_CHURN_TEMPLATES)
+    elif status == "follower" or not in_active:
+        kind = "follower_fix"
+        text = random.choice(_FOLLOWER_FIX)
+    else:
+        return None
+    seen.add(fan_uuid)
+    return {
+        "fan_uuid": fan_uuid,
+        "handle": handle or handle_l,
+        "status": status,
+        "kind": kind,
+        "text": text,
+    }
+
+
 def _collect_targets(fv, creator_uuid: str, blocked: set[str]) -> list[dict]:
     from db import fan_memory_store
 
     active = _active_subscriber_ids(fv, creator_uuid)
     all_mem = fan_memory_store.load_all() or {}
     out: list[dict] = []
+    seen: set[str] = set()
 
     for fan_uuid, mem in all_mem.items():
-        handle = (mem.get("handle") or "").lower()
-        if not fan_uuid or handle in blocked:
-            continue
-        if mem.get("churn_apology_sent_at"):
-            continue
+        handle = mem.get("handle") or ""
         wk = mem.get("welcome_kind") or ""
-        if wk not in ("backfill_batch", "subscribe_delay"):
+        if wk not in ("backfill_batch", "subscribe_delay") and not mem.get("welcome_sent_at"):
             continue
-        try:
-            ins = fv.get_fan_insights(fan_uuid)
-        except Exception:
-            ins = {}
-        status = (ins.get("status") or "").lower()
-        in_active = fan_uuid in active
-        if in_active and status == "subscriber":
-            continue
-        try:
-            messages = fv.get_messages(fan_uuid, size=8)
-        except Exception:
-            messages = []
-        if not _welcome_sent_wrongly(messages, creator_uuid):
-            continue
-        if status in ("expired", "cancelled", "inactive", "churned") or (
-            not in_active and status != "follower"
-        ):
-            kind = "churn"
-            text = random.choice(_CHURN_TEMPLATES)
-        elif status == "follower" or not in_active:
-            kind = "follower_fix"
-            text = random.choice(_FOLLOWER_FIX)
-        else:
-            continue
-        out.append(
-            {
-                "fan_uuid": fan_uuid,
-                "handle": mem.get("handle") or handle,
-                "status": status,
-                "kind": kind,
-                "text": text,
-            }
+        row = _classify_fan(
+            fv, fan_uuid, handle, creator_uuid, active, mem, blocked, seen
         )
+        if row:
+            out.append(row)
+
+    for chat in _list_all_chats(fv):
+        user = chat.get("user") or {}
+        fan_uuid = user.get("uuid")
+        handle = user.get("handle") or ""
+        mem = all_mem.get(fan_uuid) or {}
+        row = _classify_fan(
+            fv, fan_uuid, handle, creator_uuid, active, mem, blocked, seen
+        )
+        if row:
+            out.append(row)
+
     return out
 
 
