@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 .fanvue_tokens.json
+.fanvue_tokens.*.json
 .oauth_*.json
 .oauth_*.txt
 .local_cert.pem
