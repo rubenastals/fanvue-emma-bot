@@ -31,21 +31,22 @@ class PlayMove:
 BOND = PlayMove(
     name="BOND",
     family_id="2.1",
-    principle="chosen / affection",
-    when="Early chat, shy/short replies, soft clarify, reconnect — make him feel chosen.",
-    never="Unpaid lock nag, price fight, rival FOMO, guilt, crisis.",
-    how=(
-        "Mechanism: accelerated affection — he feels almost-boyfriend. "
-        "Warm + a little hot. Praise + 'you're different'. No trauma invent."
+    principle="warm curiosity / light flirt",
+    when="Early chat, shy/short replies, soft clarify, reconnect — playful warmth first.",
+    never=(
+        "Unpaid lock nag, price fight, rival FOMO, guilt, crisis. "
+        "Before ~15 fan msgs: NO 'special/different/only you/got me soft/chosen'."
     ),
-    example_beat="mm you're actually fun to talk to… don't vanish on me",
+    how=(
+        "Mechanism: warm girlfriend — curious, playful, teasing. React to HIS line. "
+        "Light interest ('you're fun', 'tell me more') — NOT soulmate validation yet."
+    ),
+    example_beat="haha ok you're actually fun… what are you up to rn",
     signals=(
-        r"(?i)\b(favorite|diferente|different|special|chosen|glad\s+you|"
-        r"got\s+me\s+soft|thinking\s+about\s+you|only\s+you|"
+        r"(?i)\b(fun\s+to\s+talk|glad\s+you|talk\s+to\s+me|tell\s+me\s+(about|more)|"
+        r"what\s+are\s+you\s+up|keep\s+going|listening|interesting|wyd|"
         r"miss(?:ed)?\s+you|here\s+with\s+me|like\s+you|into\s+you|"
-        r"lov(?:e|ing)\s+it|hooked|smiling|cute[rn]?|cuter|"
-        r"sweet|soft\s+for|already\s+got\s+me|"
-        r"talk\s+to\s+me|tell\s+me\s+(about|more)|your\s+day)\b",
+        r"smiling|cute[rn]?|cuter|sweet|your\s+day)\b",
     ),
 )
 
@@ -273,22 +274,24 @@ def pick_playbook_move(
         # Rapport-earned close without explicit horny words this turn
         return HEAT, "close-heat"
 
-    # 5) Early romance window
-    if msgs < 8:
-        # Avoid repeating ASK PIC back-to-back
+    # 5) Early romance window — curiosity first, not validation stamps
+    if msgs < 12:
         if (
-            2 <= msgs <= 7
+            2 <= msgs <= 10
             and "ASK PIC" not in recent[-1:]
             and not any(_ASK_PIC_COOLDOWN.search(t) for t in recent[-1:])
             and not sig.get("fan_sent_photo")
             and not sig.get("fan_pushback")
         ):
-            # Alternate: even msgs ask pic, odd bond/heat
-            if msgs % 2 == 0:
+            if msgs % 2 == 0 or "BOND" in recent[-2:]:
                 return ASK_PIC, "early-ask-pic"
         if sig.get("compliment"):
             return HEAT, "early-compliment-heat"
-        return BOND, "early-bond"
+        if msgs < 5:
+            return BOND, "early-curious"
+        if "BOND" in recent[-2:]:
+            return HEAT, "early-rotate-heat"
+        return BOND, "early-warm"
 
     # 6) Mid chat default — stay HEAT during active flirt/RP (don't bond-stamp)
     if sig.get("horny") or sig.get("flirting"):

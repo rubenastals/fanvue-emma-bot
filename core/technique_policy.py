@@ -635,10 +635,16 @@ def choose_move(
             unpaid=unpaid or eff == "ppv_unpaid",
             recent_techs=recent,
         )
+        how = f"{move.how} Beat: {move.example_beat}"
+        if move.name == "BOND" and int(sig.get("msgs") or 0) < 15:
+            how += (
+                " EARLY CHAT: curious/playful only — "
+                "NO special/different/only you/got me soft/chosen yet."
+            )
         print(f"   move: playbook [{move.name}] why={why} (pack={eff})")
         return ActiveMove(
             name=move.name,
-            how=f"{move.how} Beat: {move.example_beat}",
+            how=how,
             why=why,
             family_id=move.family_id,
             principle=move.principle,

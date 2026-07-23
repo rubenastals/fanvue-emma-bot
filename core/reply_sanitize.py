@@ -629,6 +629,18 @@ _HEAT_FALLBACKS = (
     "god that made me soft and horny… come closer",
 )
 
+# Early chat — warm curiosity, NOT validation stamps
+_EARLY_BOND_FALLBACKS = (
+    "haha ok you're kinda fun to talk to… what are you up to rn",
+    "wait that's actually cute… keep going",
+    "ok you got my attention lol… tell me more",
+    "mm interesting… don't go boring on me now",
+    "lol fair… i'm listening babe",
+    "haha ok wait… say that again",
+)
+
+EARLY_BOND_MAX_FAN_MSGS = 15
+
 # Love-bomb validation stamps (Dan/Tommy loop: only girl, got me soft, special/unique)
 _LOVE_BOMB_LOOP = re.compile(
     r"(?i)("
@@ -657,6 +669,26 @@ _LOVE_BOMB_LOOP = re.compile(
     r"único\s+que\s+me\s+hace"
     r")"
 )
+
+
+def _fan_msg_count(
+    fan_uuid: Optional[str],
+    turns: Optional[List[Dict[str, Any]]],
+) -> int:
+    if fan_uuid:
+        mem = fan_memory.get(fan_uuid) or {}
+        n = int(mem.get("messages") or 0)
+        if n:
+            return n
+    return sum(1 for t in (turns or []) if (t.get("role") or "") == "user")
+
+
+def _early_bond_phase(
+    fan_uuid: Optional[str],
+    turns: Optional[List[Dict[str, Any]]],
+) -> bool:
+    """Too soon for 'you're special/different' validation — warm up first."""
+    return _fan_msg_count(fan_uuid, turns) < EARLY_BOND_MAX_FAN_MSGS
 
 
 def _love_bomb_in_history(history_turns: Optional[List[Dict[str, Any]]]) -> bool:
@@ -1287,7 +1319,18 @@ def apply_post_draft(
             f"({before_sb[:56]!r} → {reply!r})"
         )
 
-    if _LOVE_BOMB_LOOP.search(reply or "") and _love_bomb_in_history(turns):
+    if _LOVE_BOMB_LOOP.search(reply or "") and _early_bond_phase(fan_uuid, turns):
+        before_lb = reply
+        banned = {
+            _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
+        }
+        opts = [p for p in _EARLY_BOND_FALLBACKS if _norm_bubble(p) not in banned]
+        reply = random.choice(opts or list(_EARLY_BOND_FALLBACKS))
+        print(
+            "   💬 early validation stamp — replaced "
+            f"({before_lb[:56]!r} → {reply!r})"
+        )
+    elif _LOVE_BOMB_LOOP.search(reply or "") and _love_bomb_in_history(turns):
         before_lb = reply
         banned = {
             _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
