@@ -886,6 +886,7 @@ def assemble_emma_turn(
         turn_blocks.append(vision_system_block(vision_desc))
 
     from core.fan_pushback import (
+        boundary_reconciling,
         fan_has_pushback,
         boundary_turn_block,
         pushback_turn_block,
@@ -894,6 +895,13 @@ def assemble_emma_turn(
 
     if fan_has_pushback(fan_message or ""):
         turn_blocks.append(pushback_turn_block(fan_message or ""))
+    elif boundary_reconciling(fan_message or "", mem):
+        turn_blocks.append(
+            "BOUNDARY RECONCILE — he warmed up after earlier friction:\n"
+            "- Answer what HE said (work, day, hobbies, compliment) — one fresh beat.\n"
+            "- VARY wording — do NOT repeat 'I believe you / don't worry babe / glad you're back'.\n"
+            "- No sell, no ask his pic. Playful/sweet OK if he flirts."
+        )
     elif thread_in_boundary_mode(fan_message or "", turns, mem):
         turn_blocks.append(boundary_turn_block())
 

@@ -20,9 +20,11 @@ from config import config
 from core import manipulation
 from core import technique_playbook as playbook
 from core.fan_pushback import (
+    boundary_reconciling,
     fan_has_pushback,
     is_ai_complaint,
     is_fan_boundary,
+    is_fan_upset_boundary,
     is_flattery_skeptic,
     is_photo_refusal,
     is_vision_correction,
@@ -346,9 +348,8 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
         or thread_in_photo_refusal_mode(low, None, mem)
     )
     fan_boundary = (
-        is_fan_boundary(low)
+        is_fan_upset_boundary(low)
         or bool(mem.get("fan_boundary_active"))
-        or thread_in_boundary_mode(low, None, mem)
     )
     return {
         "spent": spent,
@@ -374,6 +375,7 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
         "fan_pushback": fan_pushback,
         "photo_refusal": photo_refusal,
         "fan_boundary": fan_boundary,
+        "boundary_reconciling": boundary_reconciling(low, mem),
         "ai_complaint": is_ai_complaint(low),
         "flattery_skeptic": is_flattery_skeptic(low),
         "vision_correction": is_vision_correction(low),

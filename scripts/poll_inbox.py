@@ -523,7 +523,11 @@ def _handle_fan_chat_body(
             pause_reengage_until_fan_writes,
         )
 
-        from core.fan_pushback import fan_has_pushback, is_fan_boundary
+        from core.fan_pushback import (
+            fan_has_pushback,
+            is_boundary_warm_message,
+            is_fan_boundary,
+        )
 
         if fan_reopened_conversation(text):
             _boundary_sticky = bool(
@@ -540,9 +544,21 @@ def _handle_fan_chat_body(
             fan_memory.mark_fan_boundary_active(
                 fan_uuid, fan_handle=fan_handle, reason=text[:80]
             )
+            fan_memory.reset_boundary_warm_streak(fan_uuid, fan_handle=fan_handle)
             pause_reengage_until_fan_writes(
                 fan_uuid, fan_handle=fan_handle, reason="fan boundary"
             )
+        elif (mem.get("fan_boundary_active") or mem.get("photo_refusal_active")) and (
+            is_boundary_warm_message(text)
+        ):
+            streak = fan_memory.record_boundary_warm_turn(
+                fan_uuid, fan_handle=fan_handle
+            )
+            if fan_memory.thaw_boundary_after_warmth(
+                fan_uuid, fan_handle=fan_handle, min_streak=3
+            ):
+                print(f"   🌡 boundary thaw @{fan_handle} after {streak} warm msgs")
+                mem = fan_memory.get(fan_uuid) or mem
         if fan_text_is_farewell(text):
             mark_conversation_closed(
                 fan_uuid, fan_handle=fan_handle, reason=text[:80]
@@ -991,7 +1007,7 @@ def _handle_fan_chat_body(
         )
         mem = turn_action.mem or mem
         offer = turn_action.offer
-        from core.fan_pushback import thread_in_boundary_mode as _in_boundary
+        from core.fan_pushback import thread_in_strict_boundary_mode as _in_boundary
 
         if _in_boundary(text or "", turns, mem):
             offer = None
@@ -1223,13 +1239,22 @@ def _handle_fan_chat_body(
             or getattr(config, "MAX_BUBBLES", 2)
             or 2
         )
-        from core.fan_pushback import thread_in_boundary_mode, thread_in_pushback_mode
+        from core.fan_pushback import (
+            boundary_reconciling,
+            thread_in_boundary_mode,
+            thread_in_pushback_mode,
+            thread_in_strict_boundary_mode,
+        )
 
-        _boundary = thread_in_boundary_mode(text or "", turns, mem)
-        if thread_in_pushback_mode(text or "", turns, mem) or _boundary:
+        _reconciling = boundary_reconciling(text or "", mem)
+        _boundary = thread_in_boundary_mode(text or "", turns, mem) and not _reconciling
+        _sell_block = thread_in_strict_boundary_mode(text or "", turns, mem)
+        if thread_in_pushback_mode(text or "", turns, mem) or (
+            _boundary and not _reconciling
+        ):
             max_bubbles = 1
             print("   🗣 pushback/boundary mode: 1 bubble max, no heat/sell")
-        if _boundary:
+        if _sell_block and not _reconciling:
             offer = None
         bubbles = split_into_messages(
             reply,

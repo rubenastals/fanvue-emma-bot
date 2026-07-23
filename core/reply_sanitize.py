@@ -1285,6 +1285,8 @@ def apply_post_draft(
     )
 
     from core.fan_pushback import (
+        boundary_reconciling,
+        fan_has_pushback,
         is_sexual_heat_reply,
         pick_photo_refusal_fallback,
         pick_pushback_fallback,
@@ -1294,12 +1296,13 @@ def apply_post_draft(
     )
 
     _pb_mem: dict = fan_memory.get(fan_uuid) or {} if fan_uuid else {}
+    _reconciling = boundary_reconciling(fan_message or "", _pb_mem)
     _pushback_mode = thread_in_pushback_mode(
         fan_message or "", turns, _pb_mem
     )
     _boundary_mode = thread_in_boundary_mode(
         fan_message or "", turns, _pb_mem
-    )
+    ) and not _reconciling
 
     # Fan JUST messaged — never abandonment / "guys leave" / silence guilt
     if _ABANDONMENT_GUILT.search(reply or ""):
@@ -1689,7 +1692,7 @@ def apply_post_draft(
 
     # Soft enforce ACTIVE MOVE: one LLM rewrite if draft ignored the playbook beat.
     # Style rewrites (rival-fan / Ay openings) removed — Group A; CORE guides tone only.
-    if tech_name:
+    if tech_name and tech_name.upper() != "SOFT EXIT" and not _reconciling:
         from core import technique_policy as _tp
         from core import technique_playbook as _pb
 

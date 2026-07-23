@@ -52,6 +52,16 @@ _FAN_BOUNDARY = re.compile(
     r")\b"
 )
 
+_BOUNDARY_WARM = re.compile(
+    r"(?i)\b("
+    r"sorry|apolog|thank|sweet|cute|kind|forgive|"
+    r"believe\s+you|notification|busy|working|laptop|"
+    r"respect\s+yourself|glad|happy\s+you|"
+    r"how\s+are\s+you|what\s+do\s+you\s+like|free\s+time|"
+    r"private|mystery|just\s+chat"
+    r")\b"
+)
+
 _VISION_CORRECTION = re.compile(
     r"(?i)\b("
     r"neither\s+pic|no\s+sunglasses|not\s+in\s+sunglasses|"
@@ -89,6 +99,36 @@ def is_fan_boundary(text: str) -> bool:
     """Fan set a boundary — privacy, pushy, upset, stop asking."""
     low = text or ""
     return is_photo_refusal(low) or bool(_FAN_BOUNDARY.search(low))
+
+
+def is_fan_upset_boundary(text: str) -> bool:
+    """Upset/pushy boundary only — not generic photo-refusal privacy."""
+    return bool(_FAN_BOUNDARY.search(text or ""))
+
+
+def is_boundary_warm_message(text: str) -> bool:
+    """Fan cooling down / normal chat after friction — not a new boundary."""
+    t = (text or "").strip()
+    if not t or is_fan_upset_boundary(t) or is_photo_refusal(t):
+        return False
+    return bool(_BOUNDARY_WARM.search(t))
+
+
+def boundary_reconciling(
+    fan_message: str,
+    mem: Optional[dict],
+    *,
+    min_streak: int = 2,
+) -> bool:
+    """Sticky boundary memory but fan is warm again — allow BOND/HEAT, not SOFT EXIT loop."""
+    mem = mem or {}
+    if not (mem.get("fan_boundary_active") or mem.get("photo_refusal_active")):
+        return False
+    if is_fan_upset_boundary(fan_message or "") or is_photo_refusal(fan_message or ""):
+        return False
+    if not is_boundary_warm_message(fan_message or ""):
+        return False
+    return int(mem.get("boundary_warm_streak") or 0) >= min_streak
 
 
 def fan_has_pushback(text: str) -> bool:
@@ -139,15 +179,27 @@ def thread_in_boundary_mode(
     turns: Optional[List[Dict[str, Any]]],
     mem: Optional[dict],
 ) -> bool:
-    """No pic pressure, no PPV, no heat — fan upset or refused."""
+    """Fan upset now — no sell/heat pressure. Photo-refusal alone is softer (see photo_refusal)."""
     mem = mem or {}
-    if mem.get("fan_boundary_active") or mem.get("photo_refusal_active"):
+    if mem.get("fan_boundary_active"):
         return True
     if thread_in_pushback_mode(fan_message, turns, mem):
         return True
     if is_fan_boundary(fan_message or ""):
         return True
     return boundary_in_turns(turns)
+
+
+def thread_in_strict_boundary_mode(
+    fan_message: str,
+    turns: Optional[List[Dict[str, Any]]],
+    mem: Optional[dict],
+) -> bool:
+    """Upset boundary OR photo refusal sticky — block sell + ask-pic (not all flirt)."""
+    mem = mem or {}
+    if mem.get("photo_refusal_active"):
+        return True
+    return thread_in_boundary_mode(fan_message, turns, mem)
 
 
 def photo_refusal_in_turns(

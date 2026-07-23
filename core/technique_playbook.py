@@ -206,6 +206,17 @@ def pick_playbook_move(
         return BOND, "fan-pushback-bond"
 
     # Fan upset / privacy boundary — de-escalate, never sell or ask pics
+    if sig.get("boundary_reconciling"):
+        if sig.get("compliment") or sig.get("flirting"):
+            if "HEAT" in recent[-2:]:
+                return BOND, "reconcile-vary-bond"
+            return HEAT, "reconcile-warm-heat"
+        if "BOND" in recent[-2:]:
+            return HEAT if sig.get("horny") else BOND, "reconcile-vary"
+        if "SOFT EXIT" in recent[-3:]:
+            return BOND, "boundary-reconcile-bond"
+        return BOND, "boundary-reconcile-bond"
+
     if sig.get("fan_boundary") or sig.get("photo_refusal"):
         return SOFT_EXIT, "fan-boundary-soft-exit"
 

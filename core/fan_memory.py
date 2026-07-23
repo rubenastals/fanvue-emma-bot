@@ -1202,6 +1202,7 @@ def mark_fan_boundary_active(
         mem["photo_refusal_active"] = True
         mem["photo_refusal_reason"] = (reason or "boundary")[:120]
         mem["photo_refusal_at"] = _now()
+        mem["boundary_warm_streak"] = 0
         _put(fan_uuid, mem)
 
 
@@ -1219,7 +1220,55 @@ def clear_fan_boundary_active(fan_uuid: str, *, fan_handle: str = "") -> None:
         mem["photo_refusal_active"] = False
         mem["photo_refusal_reason"] = ""
         mem["photo_refusal_at"] = None
+        mem["boundary_warm_streak"] = 0
         _put(fan_uuid, mem)
+
+
+def record_boundary_warm_turn(
+    fan_uuid: str,
+    *,
+    fan_handle: str = "",
+) -> int:
+    """Fan wrote warmly after boundary — count toward thaw."""
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        streak = int(mem.get("boundary_warm_streak") or 0) + 1
+        mem["boundary_warm_streak"] = streak
+        _put(fan_uuid, mem)
+        return streak
+
+
+def reset_boundary_warm_streak(fan_uuid: str, *, fan_handle: str = "") -> None:
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        if not mem:
+            return
+        mem["boundary_warm_streak"] = 0
+        _put(fan_uuid, mem)
+
+
+def thaw_boundary_after_warmth(
+    fan_uuid: str,
+    *,
+    fan_handle: str = "",
+    min_streak: int = 3,
+) -> bool:
+    """
+    After enough warm fan messages, clear upset boundary but keep photo_refusal
+    so we never ask for his pic again.
+    """
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        if int(mem.get("boundary_warm_streak") or 0) < min_streak:
+            return False
+        mem["fan_boundary_active"] = False
+        mem["fan_boundary_reason"] = ""
+        mem["reengage_paused_until_fan_writes"] = False
+        mem["reengage_pause_reason"] = ""
+        # photo_refusal_active stays True — no ask-pic pressure later
+        _put(fan_uuid, mem)
+        return True
 
 
 def mark_nudge(

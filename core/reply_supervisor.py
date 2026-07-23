@@ -158,6 +158,33 @@ def evaluate_reply(
         return None
 
 
+def _recent_assistant_lines(
+    turns: Optional[List[Dict[str, Any]]],
+    *,
+    n: int = 3,
+) -> str:
+    lines: List[str] = []
+    for turn in reversed(turns or []):
+        if (turn.get("role") or "") != "assistant":
+            continue
+        body = (turn.get("content") or "").strip().replace("\n", " / ")
+        if body:
+            lines.append(body[:160])
+        if len(lines) >= n:
+            break
+    return " | ".join(reversed(lines))
+
+
+def _anti_repeat_note(assembled: "AssembledTurn") -> str:
+    recent = _recent_assistant_lines(assembled.turns, n=3)
+    if not recent:
+        return ""
+    return (
+        f"Do NOT repeat or paraphrase your last replies: {recent}. "
+        "New wording, same warmth."
+    )
+
+
 def _contextual_fallback_llm(
     assembled: "AssembledTurn",
     *,
@@ -173,6 +200,7 @@ def _contextual_fallback_llm(
         f"RECENT THREAD:\n{_thread_snippet(assembled.turns)}\n\n"
         f"HIS LAST MESSAGE:\n{(assembled.fan_message or '').strip()[:500]}\n\n"
         f"ISSUE: {(hint or 'reply was off-topic or pushy').strip()[:200]}\n\n"
+        f"{_anti_repeat_note(assembled)}\n\n"
         "Write ONE short WhatsApp bubble (English, ~90 chars max) that:\n"
         "- Answers or reacts to what HE actually said last\n"
         "- Warm girlfriend tone, zero sell, zero pic pressure\n"
@@ -269,8 +297,9 @@ def supervise_reply(
                     {
                         "role": "user",
                         "content": (
-                            f"SUPERVISOR REJECT — fix and resend. {hint} "
-                            "Keep ONE short WhatsApp bubble (~90 chars). "
+                        f"SUPERVISOR REJECT — fix and resend. {hint} "
+                        f"{_anti_repeat_note(assembled)} "
+                        "Keep ONE short WhatsApp bubble (~90 chars). "
                             "React to his LAST message. No sell unless context says attach."
                         ),
                     },
