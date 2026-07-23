@@ -309,6 +309,7 @@ def _apply_response_timing(
     creator_uuid: str,
     mem: dict,
     pending_chrono: list,
+    fast_pickup: bool = False,
 ) -> tuple:
     """
     Pickup delay / sleep gate before draft.
@@ -348,6 +349,8 @@ def _apply_response_timing(
         fan_uuid=fan_uuid,
         mem=mem,
     )
+    if fast_pickup:
+        heat = "heating"
     plan = plan_reply_timing(
         last_emma_reply_at=last_at,
         heat=heat,
@@ -1298,6 +1301,7 @@ def _handle_fan_chat_body(
                 creator_uuid=creator_uuid,
                 mem=mem,
                 pending_chrono=pending_chrono,
+                fast_pickup=attach_ok,
             )
             if not ok_timing:
                 break
