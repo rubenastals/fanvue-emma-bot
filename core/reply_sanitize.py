@@ -1286,13 +1286,18 @@ def apply_post_draft(
 
     from core.fan_pushback import (
         is_sexual_heat_reply,
+        pick_photo_refusal_fallback,
         pick_pushback_fallback,
         reply_invents_sunglasses,
+        thread_in_boundary_mode,
         thread_in_pushback_mode,
     )
 
     _pb_mem: dict = fan_memory.get(fan_uuid) or {} if fan_uuid else {}
     _pushback_mode = thread_in_pushback_mode(
+        fan_message or "", turns, _pb_mem
+    )
+    _boundary_mode = thread_in_boundary_mode(
         fan_message or "", turns, _pb_mem
     )
 
@@ -1421,6 +1426,25 @@ def apply_post_draft(
             print(
                 "   🗣 pushback mode — stripped heat/flirt "
                 f"({before_pb[:56]!r} → {reply!r})"
+            )
+
+    if _boundary_mode:
+        _ask_pic = re.search(
+            r"(?i)\b(send\s+(me\s+)?(a\s+)?(pic|photo|selfie)|your\s+(pic|photo|face)|"
+            r"see\s+who|wanna\s+see|let\s+me\s+see|secrets?|shy\s+about|offended|"
+            r"\$\s*\d|open\s+this\s+photo|unlock)\b",
+            reply or "",
+        )
+        if _ask_pic or is_sexual_heat_reply(reply or ""):
+            before_pr = reply
+            banned = {
+                _norm_bubble(str(t.get("content") or ""))
+                for t in (turns or [])[-8:]
+            }
+            reply = pick_photo_refusal_fallback(banned=banned)
+            print(
+                "   📷 boundary mode — stripped sell/pic pressure "
+                f"({before_pr[:56]!r} → {reply!r})"
             )
 
     # Retired sticky stamp + IRL/video commands (text chat only — confuses fans)

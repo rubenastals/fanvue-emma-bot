@@ -22,8 +22,12 @@ from core import technique_playbook as playbook
 from core.fan_pushback import (
     fan_has_pushback,
     is_ai_complaint,
+    is_fan_boundary,
     is_flattery_skeptic,
+    is_photo_refusal,
     is_vision_correction,
+    thread_in_boundary_mode,
+    thread_in_photo_refusal_mode,
 )
 from core.soft_decline import is_soft_decline
 
@@ -336,6 +340,16 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
         except Exception:
             fan_sent_photo = bool(mem.get("last_fan_image_desc"))
     fan_pushback = fan_has_pushback(low) or bool(mem.get("pushback_active"))
+    photo_refusal = (
+        is_photo_refusal(low)
+        or bool(mem.get("photo_refusal_active"))
+        or thread_in_photo_refusal_mode(low, None, mem)
+    )
+    fan_boundary = (
+        is_fan_boundary(low)
+        or bool(mem.get("fan_boundary_active"))
+        or thread_in_boundary_mode(low, None, mem)
+    )
     return {
         "spent": spent,
         "purchases": purchases,
@@ -358,6 +372,8 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
         "zero_spender": spent <= 0 and purchases <= 0,
         "fan_sent_photo": fan_sent_photo,
         "fan_pushback": fan_pushback,
+        "photo_refusal": photo_refusal,
+        "fan_boundary": fan_boundary,
         "ai_complaint": is_ai_complaint(low),
         "flattery_skeptic": is_flattery_skeptic(low),
         "vision_correction": is_vision_correction(low),

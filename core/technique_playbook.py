@@ -205,6 +205,10 @@ def pick_playbook_move(
     ):
         return BOND, "fan-pushback-bond"
 
+    # Fan upset / privacy boundary — de-escalate, never sell or ask pics
+    if sig.get("fan_boundary") or sig.get("photo_refusal"):
+        return SOFT_EXIT, "fan-boundary-soft-exit"
+
     # He already sent a photo — react to it, don't ask for another selfie
     if sig.get("fan_sent_photo"):
         if sig.get("horny") or sig.get("compliment"):
@@ -260,6 +264,8 @@ def pick_playbook_move(
             and "ASK PIC" not in recent[-2:]
             and not sig.get("buying")
             and not sig.get("fan_sent_photo")
+            and not sig.get("photo_refusal")
+            and not sig.get("fan_boundary")
         ):
             return ASK_PIC, "shy-ask-pic"
         return BOND, "shy-bond"
@@ -282,6 +288,8 @@ def pick_playbook_move(
             and not any(_ASK_PIC_COOLDOWN.search(t) for t in recent[-1:])
             and not sig.get("fan_sent_photo")
             and not sig.get("fan_pushback")
+            and not sig.get("photo_refusal")
+            and not sig.get("fan_boundary")
         ):
             if msgs % 2 == 0 or "BOND" in recent[-2:]:
                 return ASK_PIC, "early-ask-pic"

@@ -1176,6 +1176,52 @@ def clear_pushback_active(fan_uuid: str, *, fan_handle: str = "") -> None:
         _put(fan_uuid, mem)
 
 
+def mark_photo_refusal_active(
+    fan_uuid: str,
+    *,
+    fan_handle: str = "",
+    reason: str = "",
+) -> None:
+    """Fan declined to send his pic — stop ASK PIC / pressure."""
+    mark_fan_boundary_active(fan_uuid, fan_handle=fan_handle, reason=reason or "photo_refusal")
+
+
+def mark_fan_boundary_active(
+    fan_uuid: str,
+    *,
+    fan_handle: str = "",
+    reason: str = "",
+) -> None:
+    """Fan upset / privacy boundary — no sell, no pic asks, no heat."""
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        mem["fan_boundary_active"] = True
+        mem["fan_boundary_reason"] = (reason or "boundary")[:120]
+        mem["fan_boundary_at"] = _now()
+        mem["photo_refusal_active"] = True
+        mem["photo_refusal_reason"] = (reason or "boundary")[:120]
+        mem["photo_refusal_at"] = _now()
+        _put(fan_uuid, mem)
+
+
+def clear_photo_refusal_active(fan_uuid: str, *, fan_handle: str = "") -> None:
+    clear_fan_boundary_active(fan_uuid, fan_handle=fan_handle)
+
+
+def clear_fan_boundary_active(fan_uuid: str, *, fan_handle: str = "") -> None:
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        mem["fan_boundary_active"] = False
+        mem["fan_boundary_reason"] = ""
+        mem["fan_boundary_at"] = None
+        mem["photo_refusal_active"] = False
+        mem["photo_refusal_reason"] = ""
+        mem["photo_refusal_at"] = None
+        _put(fan_uuid, mem)
+
+
 def mark_nudge(
     fan_uuid: str,
     kind: str,

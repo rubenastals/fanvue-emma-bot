@@ -437,6 +437,8 @@ def choose_offer(
         facts, "broke_soft", False
     ) or getattr(facts, "heavy_vent", False):
         return OfferChoice(False, None, "objection/vent: reconnect first", 1.0, "code")
+    if mem.get("fan_boundary_active") or mem.get("photo_refusal_active"):
+        return OfferChoice(False, None, "fan boundary: no sell", 1.0, "code")
     if _REJECT.search(fan_message or "") and not direct:
         return OfferChoice(False, None, "current message rejects sale", 1.0, "code")
     if _CLARIFY_NO_SELL.search((fan_message or "").strip()):

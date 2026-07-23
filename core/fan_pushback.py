@@ -26,6 +26,32 @@ _FLATTERY_SKEPTIC = re.compile(
     r")\b"
 )
 
+_PHOTO_REFUSAL = re.compile(
+    r"(?i)\b("
+    r"keep\s+(myself\s+)?private|stay\s+private|like\s+to\s+keep\s+private|"
+    r"private\s+on\s+the\s+internet|prefer\s+(to\s+)?stay\s+private|"
+    r"don'?t\s+want\s+to\s+send\s+(a\s+)?(pic|photo|selfie)|"
+    r"won'?t\s+send\s+(a\s+)?(pic|photo|selfie)|"
+    r"stop\s+asking(\s+me)?(\s+for)?(\s+(pic|photo|selfie|picture)s?)?|"
+    r"not\s+comfortable\s+(sending|sharing)\s+(a\s+)?(pic|photo|selfie)?|"
+    r"no\s+pics?\s+(of\s+me|please)?|"
+    r"mantener(me)?\s+privad|no\s+quiero\s+(mandar|enviar)\s+(foto|pic)|"
+    r"prefiero\s+no\s+(mandar|enviar)|deja\s+de\s+pedir(\s+foto)?"
+    r")\b"
+)
+
+_FAN_BOUNDARY = re.compile(
+    r"(?i)\b("
+    r"being\s+pushy|too\s+pushy|you'?re\s+pushy|"
+    r"could\s+be\s+reported|might\s+report|"
+    r"get\s+offended|offended\s+easily|"
+    r"back\s+off|leave\s+me\s+alone|"
+    r"uncomfortable|creepy|not\s+okay|not\s+ok\b|"
+    r"please\s+stop|stop\s+it|"
+    r"muy\s+insistente|me\s+molesta"
+    r")\b"
+)
+
 _VISION_CORRECTION = re.compile(
     r"(?i)\b("
     r"neither\s+pic|no\s+sunglasses|not\s+in\s+sunglasses|"
@@ -55,6 +81,16 @@ def is_vision_correction(text: str) -> bool:
     return bool(_VISION_CORRECTION.search(text or ""))
 
 
+def is_photo_refusal(text: str) -> bool:
+    return bool(_PHOTO_REFUSAL.search(text or ""))
+
+
+def is_fan_boundary(text: str) -> bool:
+    """Fan set a boundary — privacy, pushy, upset, stop asking."""
+    low = text or ""
+    return is_photo_refusal(low) or bool(_FAN_BOUNDARY.search(low))
+
+
 def fan_has_pushback(text: str) -> bool:
     low = text or ""
     return (
@@ -77,6 +113,74 @@ _SEXUAL_HEAT = re.compile(
 
 def is_sexual_heat_reply(text: str) -> bool:
     return bool(_SEXUAL_HEAT.search(text or ""))
+
+
+def boundary_in_turns(
+    turns: Optional[List[Dict[str, Any]]],
+    *,
+    lookback: int = 12,
+) -> bool:
+    if not turns:
+        return False
+    seen = 0
+    for turn in reversed(turns):
+        if (turn.get("role") or "") != "user":
+            continue
+        seen += 1
+        if is_fan_boundary(str(turn.get("content") or "")):
+            return True
+        if seen >= lookback:
+            break
+    return False
+
+
+def thread_in_boundary_mode(
+    fan_message: str,
+    turns: Optional[List[Dict[str, Any]]],
+    mem: Optional[dict],
+) -> bool:
+    """No pic pressure, no PPV, no heat — fan upset or refused."""
+    mem = mem or {}
+    if mem.get("fan_boundary_active") or mem.get("photo_refusal_active"):
+        return True
+    if thread_in_pushback_mode(fan_message, turns, mem):
+        return True
+    if is_fan_boundary(fan_message or ""):
+        return True
+    return boundary_in_turns(turns)
+
+
+def photo_refusal_in_turns(
+    turns: Optional[List[Dict[str, Any]]],
+    *,
+    lookback: int = 12,
+) -> bool:
+    if not turns:
+        return False
+    seen = 0
+    for turn in reversed(turns):
+        if (turn.get("role") or "") != "user":
+            continue
+        seen += 1
+        if is_photo_refusal(str(turn.get("content") or "")):
+            return True
+        if seen >= lookback:
+            break
+    return False
+
+
+def thread_in_photo_refusal_mode(
+    fan_message: str,
+    turns: Optional[List[Dict[str, Any]]],
+    mem: Optional[dict],
+) -> bool:
+    """Fan declined to send his pic — no more ASK PIC / pressure."""
+    mem = mem or {}
+    if mem.get("photo_refusal_active"):
+        return True
+    if is_photo_refusal(fan_message or ""):
+        return True
+    return photo_refusal_in_turns(turns)
 
 
 def pushback_in_turns(
@@ -123,6 +227,20 @@ def reply_invents_sunglasses(reply: str, vision_desc: str = "") -> bool:
     return not vision_mentions_sunglasses(vision_desc)
 
 
+def photo_refusal_turn_block() -> str:
+    return boundary_turn_block()
+
+
+def boundary_turn_block() -> str:
+    return (
+        "FAN BOUNDARY — CRITICAL (he's upset or said no pics; obey over ACTIVE MOVE):\n"
+        "- Respect it. Do NOT ask for his pic/selfie/face. Do NOT send or pitch PPV.\n"
+        "- Do NOT tease 'offended easily' or sexualize him being shy/private.\n"
+        "- No $ prices, no 'open this photo', no heat. One warm bubble — acknowledge + "
+        "light topic from what HE said (game, day, hobby)."
+    )
+
+
 def pushback_turn_block(fan_message: str) -> str:
     lines = [
         "FAN PUSHBACK — CRITICAL (he is calling you out; obey this over ACTIVE MOVE):",
@@ -166,6 +284,22 @@ _SKEPTIC_FALLBACKS = (
     "lol guilty of flirting but you're the one who called my ass everything",
     "ok fair — prove me wrong then, keep talking like that",
 )
+
+_PHOTO_REFUSAL_FALLBACKS = (
+    "okay fair… mystery it is. tell me more about that game then",
+    "haha respect — we can keep it like that. so what are you playing rn?",
+    "got it, no pressure. keep going, i'm listening",
+    "fair enough babe… so umamusume? explain it to me like i'm dumb lol",
+)
+
+
+def pick_photo_refusal_fallback(*, banned: set[str] | None = None) -> str:
+    banned = banned or set()
+    for line in _PHOTO_REFUSAL_FALLBACKS:
+        norm = re.sub(r"\s+", " ", (line or "").lower().strip())
+        if norm not in banned:
+            return line
+    return _PHOTO_REFUSAL_FALLBACKS[0]
 
 
 def pick_pushback_fallback(fan_message: str, *, banned: set[str] | None = None) -> str:

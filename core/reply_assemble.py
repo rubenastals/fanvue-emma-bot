@@ -878,10 +878,17 @@ def assemble_emma_turn(
 
         turn_blocks.append(vision_system_block(vision_desc))
 
-    from core.fan_pushback import fan_has_pushback, pushback_turn_block
+    from core.fan_pushback import (
+        fan_has_pushback,
+        boundary_turn_block,
+        pushback_turn_block,
+        thread_in_boundary_mode,
+    )
 
     if fan_has_pushback(fan_message or ""):
         turn_blocks.append(pushback_turn_block(fan_message or ""))
+    elif thread_in_boundary_mode(fan_message or "", turns, mem):
+        turn_blocks.append(boundary_turn_block())
 
     if voice_will_send:
         turn_blocks.append(

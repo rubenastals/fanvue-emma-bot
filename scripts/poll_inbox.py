@@ -523,12 +523,19 @@ def _handle_fan_chat_body(
             pause_reengage_until_fan_writes,
         )
 
-        from core.fan_pushback import fan_has_pushback
+        from core.fan_pushback import fan_has_pushback, is_fan_boundary
 
         if fan_reopened_conversation(text):
             clear_conversation_closed(fan_uuid, fan_handle=fan_handle)
             if not fan_has_pushback(text):
                 fan_memory.clear_pushback_active(fan_uuid, fan_handle=fan_handle)
+        if is_fan_boundary(text):
+            fan_memory.mark_fan_boundary_active(
+                fan_uuid, fan_handle=fan_handle, reason=text[:80]
+            )
+            pause_reengage_until_fan_writes(
+                fan_uuid, fan_handle=fan_handle, reason="fan boundary"
+            )
         if fan_text_is_farewell(text):
             mark_conversation_closed(
                 fan_uuid, fan_handle=fan_handle, reason=text[:80]
@@ -977,6 +984,15 @@ def _handle_fan_chat_body(
         )
         mem = turn_action.mem or mem
         offer = turn_action.offer
+        from core.fan_pushback import thread_in_boundary_mode as _in_boundary
+
+        if _in_boundary(text or "", turns, mem):
+            offer = None
+            turn_action.offer = None
+            want_sell = False
+            want_free = False
+            forced_concede_offer = None
+            print("   🛑 fan boundary — no offer / no sell this turn")
         voice_planned = (turn_action.voice_will_send, turn_action.reason)
         _voice_blocks_photo = bool(turn_action.blocks_photo)
 
@@ -1200,11 +1216,14 @@ def _handle_fan_chat_body(
             or getattr(config, "MAX_BUBBLES", 3)
             or 3
         )
-        from core.fan_pushback import thread_in_pushback_mode
+        from core.fan_pushback import thread_in_boundary_mode, thread_in_pushback_mode
 
-        if thread_in_pushback_mode(text or "", turns, mem):
+        _boundary = thread_in_boundary_mode(text or "", turns, mem)
+        if thread_in_pushback_mode(text or "", turns, mem) or _boundary:
             max_bubbles = 1
-            print("   🗣 pushback mode: 1 bubble max, no heat")
+            print("   🗣 pushback/boundary mode: 1 bubble max, no heat/sell")
+        if _boundary:
+            offer = None
         bubbles = split_into_messages(
             reply,
             max_len=int(getattr(config, "BUBBLE_MAX_CHARS", 200) or 200),
@@ -1686,6 +1705,8 @@ def _handle_fan_chat_body(
                 pass
 
         handled += 1
+        if thread_in_boundary_mode(text or "", turns, mem):
+            break
         if not barged:
             # No interruption — done with this fan for this poll
             break
