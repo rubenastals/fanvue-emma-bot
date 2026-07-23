@@ -320,13 +320,42 @@ def _apply_response_timing(
 
     from core.persona_time import la_now
     from core.reply_assemble import _parse_msg_time
-    from core.response_timing import heat_label_for_timing, plan_reply_timing
+    from core.response_timing import (
+        heat_label_for_timing,
+        plan_reply_timing,
+        plan_urgent_pickup,
+    )
 
     if not getattr(config, "RESPONSE_TIMING_ENABLED", True):
         return True, None, None
 
     now = la_now()
     gate = fan_memory.get_response_gate(fan_uuid)
+    if fast_pickup and gate is not None:
+        fan_memory.clear_response_gate(fan_uuid, fan_handle=fan_handle)
+        gate = None
+
+    gap_min = None
+    oldest = pending_chrono[0] if pending_chrono else None
+    if oldest:
+        ts = _parse_msg_time(oldest)
+        if ts:
+            ts = ts.astimezone(now.tzinfo) if ts.tzinfo and now.tzinfo else ts
+            gap_min = max(0.0, (now - ts).total_seconds() / 60.0)
+
+    if fast_pickup:
+        plan = plan_urgent_pickup(now=now)
+        print(
+            f"   ⏩ urgent pickup {plan.delay_seconds:.0f}s "
+            "(hot / open lock / sell attach — no slow gate)"
+        )
+        if plan.delay_seconds > 0:
+            with _typing_keepalive(fv, fan_uuid):
+                time.sleep(plan.delay_seconds)
+            if gap_min is not None:
+                gap_min += plan.delay_seconds / 60.0
+        return True, plan, gap_min
+
     if gate is not None:
         g = gate.astimezone(now.tzinfo) if gate.tzinfo and now.tzinfo else gate
         if now < g:
@@ -349,22 +378,12 @@ def _apply_response_timing(
         fan_uuid=fan_uuid,
         mem=mem,
     )
-    if fast_pickup:
-        heat = "heating"
     plan = plan_reply_timing(
         last_emma_reply_at=last_at,
         heat=heat,
         now=now,
         account_id=getattr(config, "ACCOUNT_ID", None),
     )
-
-    gap_min = None
-    oldest = pending_chrono[0] if pending_chrono else None
-    if oldest:
-        ts = _parse_msg_time(oldest)
-        if ts:
-            ts = ts.astimezone(now.tzinfo) if ts.tzinfo and now.tzinfo else ts
-            gap_min = max(0.0, (now - ts).total_seconds() / 60.0)
 
     if plan.hold_until:
         hold = plan.hold_until
@@ -1027,7 +1046,7 @@ def _handle_fan_chat_body(
         if fan_memory.sell_pressure_paused(mem):
             pass  # deprecated — sell_gate owns chill (never hours-long block)
 
-        from core.sell_gate import should_attach_ppv
+        from core.sell_gate import should_attach_ppv, should_nudge_unpaid_lock
 
         attach_ok, attach_why = should_attach_ppv(
             mem,
@@ -1291,6 +1310,26 @@ def _handle_fan_chat_body(
         timing_plan = None
         gap_minutes = None
         if not use_v2:
+            from core.response_timing import heat_label_for_timing
+
+            timing_heat = heat_label_for_timing(
+                fan_message=text,
+                turns=turns,
+                messages=messages,
+                fan_uuid=fan_uuid,
+                mem=mem,
+            )
+            urgent_pickup = (
+                attach_ok
+                or unpaid
+                or should_nudge_unpaid_lock(
+                    mem,
+                    text or "",
+                    facts=route_result.facts,
+                    history_turns=turns,
+                )
+                or timing_heat == "heating"
+            )
             ok_timing, timing_plan, gap_minutes = _apply_response_timing(
                 fv,
                 fan_uuid,
@@ -1301,7 +1340,7 @@ def _handle_fan_chat_body(
                 creator_uuid=creator_uuid,
                 mem=mem,
                 pending_chrono=pending_chrono,
-                fast_pickup=attach_ok,
+                fast_pickup=urgent_pickup,
             )
             if not ok_timing:
                 break

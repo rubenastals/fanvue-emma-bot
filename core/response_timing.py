@@ -19,6 +19,8 @@ from core import daily_state
 from core.persona_time import la_now
 
 SESSION_WINDOW_MIN = float(os.getenv("RESPONSE_SESSION_WINDOW_MIN", "6"))
+URGENT_PICKUP_MIN_S = float(os.getenv("RESPONSE_URGENT_PICKUP_MIN_S", "6"))
+URGENT_PICKUP_MAX_S = float(os.getenv("RESPONSE_URGENT_PICKUP_MAX_S", "30"))
 SLEEP_START_BASE = float(os.getenv("RESPONSE_SLEEP_START_H", "1.5"))
 SLEEP_END_BASE = float(os.getenv("RESPONSE_SLEEP_END_H", "9.0"))
 INSOMNIA_PROB = float(os.getenv("RESPONSE_INSOMNIA_PROB", "0.06"))
@@ -108,6 +110,16 @@ def plan_reply_timing(
     delay = _heavy_tail(rng, median, cap)
     mode = "slow" if delay > 20 * 60 else "normal"
     return TimingPlan(delay_seconds=delay, mode=mode)
+
+
+def plan_urgent_pickup(*, now: Optional[datetime] = None) -> TimingPlan:
+    """Hot thread / open lock / sell attach — never park behind a slow gate."""
+    _ = now or la_now()
+    rng = random.Random()
+    return TimingPlan(
+        delay_seconds=rng.uniform(URGENT_PICKUP_MIN_S, URGENT_PICKUP_MAX_S),
+        mode="urgent",
+    )
 
 
 def timing_context_line(plan: TimingPlan, gap_minutes: Optional[float]) -> str:

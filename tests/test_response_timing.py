@@ -86,3 +86,13 @@ def test_thread_horny_rp_counts_as_heating_for_timing():
         mem={"status": "warm", "messages": 40},
     )
     assert label == "heating"
+
+
+def test_urgent_pickup_never_exceeds_30s():
+    from core.response_timing import plan_urgent_pickup
+
+    plan = plan_urgent_pickup()
+    assert plan.mode == "urgent"
+    assert plan.hold_until is None
+    assert plan.delay_seconds <= 30
+    assert plan.delay_seconds >= 6
