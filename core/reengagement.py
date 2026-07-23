@@ -25,16 +25,22 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 
 from core import convo_log, fan_memory, language, persona_time
+from core.chat_heat import active_window_minutes, chat_heat_score, heat_label, is_hot_score, is_warm_score
 from core.reply_engine import split_into_messages
 from core.turn_policy import TurnDecision
 
-# Respect silence: first nudge only after a real pause (not <1–2 min spam).
-NUDGE_HOT_MINUTES = int(os.getenv("NUDGE_HOT_MINUTES", "12"))
+# Respect silence: first nudge after a real pause (shorter when hot / visto).
+NUDGE_HOT_MINUTES = int(os.getenv("NUDGE_HOT_MINUTES", "6"))
 NUDGE_COLD_MINUTES = int(os.getenv("NUDGE_COLD_MINUTES", "12"))
+NUDGE_HOT_SEEN_MINUTES = int(os.getenv("NUDGE_HOT_SEEN_MINUTES", "4"))
+NUDGE_WARM_SEEN_MINUTES = int(os.getenv("NUDGE_WARM_SEEN_MINUTES", "7"))
+NUDGE_REACTION_MINUTES = int(os.getenv("NUDGE_REACTION_MINUTES", "3"))
 NUDGE_FIRST_MINUTES = int(
     os.getenv("NUDGE_FIRST_MINUTES", str(max(NUDGE_HOT_MINUTES, NUDGE_COLD_MINUTES)))
 )
-NUDGE_SECOND_MINUTES = int(os.getenv("NUDGE_SECOND_MINUTES", "45"))
+NUDGE_HOT_SECOND_MINUTES = int(os.getenv("NUDGE_HOT_SECOND_MINUTES", "18"))
+NUDGE_COLD_SECOND_MINUTES = int(os.getenv("NUDGE_SECOND_MINUTES", "45"))
+NUDGE_SECOND_MINUTES = NUDGE_COLD_SECOND_MINUTES  # legacy alias
 if os.getenv("NUDGE_FIRST_MINUTES") and not os.getenv("NUDGE_COLD_MINUTES"):
     NUDGE_COLD_MINUTES = int(os.getenv("NUDGE_FIRST_MINUTES", "12"))
 
@@ -359,45 +365,25 @@ def _parse_iso(s: Optional[str]) -> Optional[datetime]:
 
 
 def _chat_is_hot(messages: List[dict], fan_uuid: str, mem: dict) -> bool:
-    """Hot = recent dirty/buy energy or spender heat — nudge sooner."""
-    status = (mem.get("status") or "").lower()
-    if status in ("spender", "whale"):
-        return True
-    # Last few fan texts
-    hits = 0
-    checked = 0
-    for msg in messages[:8]:
-        if _sender_uuid(msg) != fan_uuid:
-            continue
-        text = (msg.get("text") or "").strip()
-        if not text:
-            continue
-        checked += 1
-        if _HEAT_WORDS.search(text):
-            hits += 1
-        if checked >= 4:
-            break
-    if hits >= 1:
-        return True
-    # Dense chat recently
-    if int(mem.get("messages") or 0) >= 12 and status in ("warm", "spender", "whale"):
-        return True
-    return False
+    """Legacy bool — prefer chat_heat_score() for timing."""
+    return is_hot_score(chat_heat_score(messages, fan_uuid, mem))
 
 
 def _fan_active_recently(
     messages: List[dict],
     fan_uuid: str,
     *,
-    minutes: int = 25,
+    minutes: Optional[int] = None,
+    heat_score: int = 0,
 ) -> bool:
     """True if the fan sent anything in the last N minutes (even if Emma replied after)."""
+    window = minutes if minutes is not None else active_window_minutes(heat_score)
     now = datetime.now(timezone.utc)
     for msg in messages[:14]:
         if _sender_uuid(msg) != fan_uuid:
             continue
         ts = _msg_ts(msg)
-        if ts and now - ts < timedelta(minutes=minutes):
+        if ts and now - ts < timedelta(minutes=window):
             return True
     return False
 
@@ -446,6 +432,7 @@ def pick_nudge_angle(
     now: datetime,
     *,
     victim_ok: bool,
+    heat_score: int = 0,
 ) -> str:
     """
     Pick a re-engagement angle for this step.
@@ -466,7 +453,10 @@ def pick_nudge_angle(
             continue
         if name in avoid:
             continue
-        candidates.append((name, int(meta.get("weight") or 1)))
+        w = int(meta.get("weight") or 1)
+        if is_hot_score(heat_score) and name in ("flirty_tease", "almost_sent", "unfinished_thread"):
+            w += 2
+        candidates.append((name, w))
     if not candidates:
         for name, meta in NUDGE_ANGLES.items():
             if step in meta["steps"] and name != "victim_soft":
@@ -478,21 +468,54 @@ def pick_nudge_angle(
 
 
 def _nudge_step_for_silence(
-    silence: timedelta, mem: dict, *, hot: bool
+    silence: timedelta,
+    mem: dict,
+    *,
+    heat_score: int,
+    is_read: bool,
+    now: datetime,
 ) -> Optional[int]:
     """
-    step 1 at ≥ NUDGE_FIRST_MINUTES
-    step 2 at ≥ NUDGE_SECOND_MINUTES if episode count 1
+    step 1 — hot+visto uses NUDGE_HOT_SEEN_MINUTES from visto clock.
+    step 2 — shorter second gate when heat_score is high.
     """
     count = int(mem.get("nudge_episode_count") or 0)
     if count >= MAX_NUDGES_PER_EPISODE:
         return None
-    mins = silence.total_seconds() / 60.0
-    first_gate = NUDGE_FIRST_MINUTES
-    if count == 0 and mins >= first_gate:
-        return 1
-    if count == 1 and mins >= NUDGE_SECOND_MINUTES:
-        return 2
+
+    silence_mins = silence.total_seconds() / 60.0
+    seen_mins: Optional[float] = None
+    seen_at = _parse_iso(mem.get("last_seen_by_fan_at"))
+    if is_read and seen_at:
+        seen_mins = (now - seen_at).total_seconds() / 60.0
+
+    react_at = _parse_iso(mem.get("last_fan_reaction_at"))
+    if react_at and count == 0:
+        react_mins = (now - react_at).total_seconds() / 60.0
+        if react_mins >= NUDGE_REACTION_MINUTES and silence_mins >= 2:
+            return 1
+
+    if count == 0:
+        if is_hot_score(heat_score) and is_read and seen_mins is not None:
+            if seen_mins >= NUDGE_HOT_SEEN_MINUTES and silence_mins >= 3:
+                return 1
+        if is_hot_score(heat_score) and silence_mins >= NUDGE_HOT_MINUTES:
+            return 1
+        if is_warm_score(heat_score) and is_read and seen_mins is not None:
+            if seen_mins >= NUDGE_WARM_SEEN_MINUTES and silence_mins >= 4:
+                return 1
+        if silence_mins >= NUDGE_COLD_MINUTES:
+            return 1
+        return None
+
+    if count == 1:
+        second = (
+            NUDGE_HOT_SECOND_MINUTES
+            if is_hot_score(heat_score)
+            else NUDGE_COLD_SECOND_MINUTES
+        )
+        if silence_mins >= second:
+            return 2
     return None
 
 
@@ -604,9 +627,6 @@ def run_pass(fv, chats: List[dict], creator_uuid: str) -> int:
         if not messages:
             continue
 
-        if _fan_active_recently(messages, fan_uuid):
-            continue
-
         newest = messages[0]
         if _sender_uuid(newest) != creator_uuid:
             continue
@@ -615,11 +635,27 @@ def run_pass(fv, chats: List[dict], creator_uuid: str) -> int:
             continue
         silence = now - ts
         pass_farewell = _ended_with_farewell(messages)
-        hot = _chat_is_hot(messages, fan_uuid, mem)
         is_read, _ = _creator_last_is_read(messages, creator_uuid)
         if is_read and not mem.get("last_seen_by_fan_at"):
             fan_memory.mark_seen_by_fan(fan_uuid, fan_handle=fan_handle)
             mem = fan_memory.get(fan_uuid) or mem
+
+        heat_score = chat_heat_score(
+            messages,
+            fan_uuid,
+            mem,
+            creator_uuid=creator_uuid,
+            is_read=is_read,
+        )
+        try:
+            fan_memory.set_chat_heat_score(fan_uuid, heat_score, fan_handle=fan_handle)
+        except Exception:
+            pass
+
+        if _fan_active_recently(messages, fan_uuid, heat_score=heat_score):
+            continue
+
+        hot = is_hot_score(heat_score)
 
         # RULE — next-day good morning
         today = persona_time.la_today()
@@ -645,7 +681,9 @@ def run_pass(fv, chats: List[dict], creator_uuid: str) -> int:
         if pass_farewell:
             continue  # closed politely — don't mid-flow guilt
 
-        step = _nudge_step_for_silence(silence, mem, hot=hot)
+        step = _nudge_step_for_silence(
+            silence, mem, heat_score=heat_score, is_read=is_read, now=now
+        )
         if not step:
             continue
 
@@ -662,11 +700,13 @@ def run_pass(fv, chats: List[dict], creator_uuid: str) -> int:
             fan_handle=fan_handle,
             now=now,
         )
-        style = pick_nudge_angle(mem, step, now, victim_ok=victim_ok)
-        heat_label = "HOT" if hot else "COLD"
+        style = pick_nudge_angle(
+            mem, step, now, victim_ok=victim_ok, heat_score=heat_score
+        )
+        label = heat_label(heat_score)
         print(
             f"   reengage @{fan_handle}: step={step} angle={style} "
-            f"heat={heat_label} visto={is_read} "
+            f"heat={label}({heat_score}) visto={is_read} "
             f"silence={int(silence.total_seconds() // 60)}m"
         )
         if _send_generated(
