@@ -166,7 +166,6 @@ def mark_conversation_closed(
             {
                 "conversation_closed_at": datetime.now(timezone.utc).isoformat(),
                 "conversation_closed_reason": (reason or "farewell")[:120],
-                "reengage_paused_until_fan_writes": True,
             },
             fan_handle=fan_handle,
         )

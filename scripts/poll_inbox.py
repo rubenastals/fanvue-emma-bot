@@ -1814,9 +1814,9 @@ def main():
     print(
         f"   welcome: after={getattr(config, 'WELCOME_AFTER_SUBSCRIBE_MINUTES', 15)}m "
         f"({'ON' if getattr(config, 'WELCOME_ENABLED', True) else 'OFF'})\n"
-        f"   reengage: 1st={_re.NUDGE_FIRST_MINUTES}m "
-        f"2nd={_re.NUDGE_SECOND_MINUTES}m "
-        f"(hot={_re.NUDGE_HOT_MINUTES} cold={_re.NUDGE_COLD_MINUTES})"
+        f"   reengage: hot={_re.NUDGE_HOT_MINUTES}m warm={_re.NUDGE_WARM_MINUTES}m "
+        f"cold={_re.NUDGE_COLD_MINUTES}m farewell={_re.NUDGE_AFTER_FAREWELL_HOURS}h "
+        f"max/episode={_re.MAX_NUDGES_PER_EPISODE}"
     )
     from utils.elevenlabs_client import is_configured as _voice_ok
 

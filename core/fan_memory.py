@@ -1169,8 +1169,8 @@ def mark_nudge(
                 mem["last_nudge_style"] = style
             if style == "victim_soft":
                 mem["last_victim_nudge_at"] = _now()
-            # Cap episode when max ladder steps used
-            if count >= 2:
+            # Cap episode after one nudge per silence window
+            if count >= 1:
                 mem["nudge_sent_episode"] = True
         elif kind == "goodmorning":
             from core import persona_time

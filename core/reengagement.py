@@ -1,19 +1,17 @@
 """
-Automatic re-engagement — hot/cold ladder + visto-gated victim.
+Automatic re-engagement — tiered timing, one bubble per silence episode.
 
-TIMING (no farewell / conversation left open):
-  1st nudge ≥ NUDGE_FIRST_MINUTES (default 12, hot and cold same gate)
-  2nd nudge ≥ NUDGE_SECOND_MINUTES (default 45), only if still silent
-  Max 2 mid-flow nudges per silence episode.
-  Silence clock = time since Emma's last message (fan must not have replied).
+TIERS (one nudge max per silence — never double-bubble):
+  HOT  (heat≥40): fast pull-back, "don't vanish" tone — 4–6 min (faster if visto)
+  WARM (heat≥25): playful check-in — ~10 min
+  COLD (else):    soft "still there?" — 15 min default
+  FAREWELL:       fan said bye — min 4h, gentle share_moment only (no guilt)
+  REACTION:       emoji react on our msg — fast path when hot
 
-Victim "me has olvidado" ONLY when Fanvue marks Emma's last msg isRead (visto)
-AND we are still inside VICTIM_AFTER_SEEN_MINUTES (default 60) of first visto detect.
-Never the default angle — rotating soft angles otherwise.
+Hard pause (`reengage_paused_until_fan_writes`) → zero nudges until fan writes.
+Good morning: separate next-day path (14h+ silence).
 
-If they said goodbye → skip mid-flow nudges; only next-day good morning.
-
-Nudge messages are generated from hardcoded templates (no DeepSeek call).
+Nudge messages = hardcoded templates (no DeepSeek).
 """
 from __future__ import annotations
 
@@ -21,6 +19,7 @@ import os
 import random
 import re
 import time
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 
@@ -32,30 +31,39 @@ from core.farewell import (
     mark_conversation_closed,
     reengage_paused,
 )
-from core.reply_engine import split_into_messages
-from core.turn_policy import TurnDecision
 
-# Respect silence: first nudge after a real pause (shorter when hot / visto).
+# Tier timing (minutes unless noted)
 NUDGE_HOT_MINUTES = int(os.getenv("NUDGE_HOT_MINUTES", "6"))
-NUDGE_COLD_MINUTES = int(os.getenv("NUDGE_COLD_MINUTES", "12"))
+NUDGE_COLD_MINUTES = int(os.getenv("NUDGE_COLD_MINUTES", "15"))
+NUDGE_WARM_MINUTES = int(os.getenv("NUDGE_WARM_MINUTES", "10"))
 NUDGE_HOT_SEEN_MINUTES = int(os.getenv("NUDGE_HOT_SEEN_MINUTES", "4"))
 NUDGE_WARM_SEEN_MINUTES = int(os.getenv("NUDGE_WARM_SEEN_MINUTES", "7"))
 NUDGE_REACTION_MINUTES = int(os.getenv("NUDGE_REACTION_MINUTES", "3"))
+NUDGE_AFTER_FAREWELL_HOURS = int(os.getenv("NUDGE_AFTER_FAREWELL_HOURS", "4"))
 NUDGE_FIRST_MINUTES = int(
     os.getenv("NUDGE_FIRST_MINUTES", str(max(NUDGE_HOT_MINUTES, NUDGE_COLD_MINUTES)))
 )
+# Legacy aliases (Railway may still set these)
 NUDGE_HOT_SECOND_MINUTES = int(os.getenv("NUDGE_HOT_SECOND_MINUTES", "18"))
 NUDGE_COLD_SECOND_MINUTES = int(os.getenv("NUDGE_SECOND_MINUTES", "45"))
-NUDGE_SECOND_MINUTES = NUDGE_COLD_SECOND_MINUTES  # legacy alias
+NUDGE_SECOND_MINUTES = NUDGE_COLD_SECOND_MINUTES
 if os.getenv("NUDGE_FIRST_MINUTES") and not os.getenv("NUDGE_COLD_MINUTES"):
-    NUDGE_COLD_MINUTES = int(os.getenv("NUDGE_FIRST_MINUTES", "12"))
+    NUDGE_COLD_MINUTES = int(os.getenv("NUDGE_FIRST_MINUTES", "15"))
 
 GOODMORNING_AFTER_HOURS = int(os.getenv("GOODMORNING_AFTER_HOURS", "14"))
 GOODMORNING_HOUR_START = int(os.getenv("GOODMORNING_HOUR_START", "8"))
 GOODMORNING_HOUR_END = int(os.getenv("GOODMORNING_HOUR_END", "13"))
-MAX_NUDGES_PER_EPISODE = int(os.getenv("MAX_NUDGES_PER_EPISODE", "2"))
+MAX_NUDGES_PER_EPISODE = int(os.getenv("MAX_NUDGES_PER_EPISODE", "1"))
 VICTIM_AFTER_SEEN_MINUTES = int(os.getenv("VICTIM_AFTER_SEEN_MINUTES", "60"))
 VICTIM_COOLDOWN_HOURS = int(os.getenv("VICTIM_COOLDOWN_HOURS", "12"))
+
+_TIER_STYLES: Dict[str, Tuple[str, ...]] = {
+    "hot": ("hot_pullback", "flirty_tease", "unfinished_thread"),
+    "warm": ("playful_brat", "curious_hook", "almost_sent"),
+    "cold": ("soft_checkin", "playful_brat"),
+    "farewell": ("share_moment", "busy_withdrawal"),
+    "reaction": ("hot_pullback", "flirty_tease", "soft_checkin"),
+}
 
 
 def _ended_with_farewell(
@@ -103,7 +111,6 @@ _TEMPLATES: Dict[str, Dict[str, List[str]]] = {
         "es": [
             "eh todo bien?",
             "seguís ahí o te fumaste jaja",
-            "hola? solo un hola cuenta",
             "che, apareciste?",
             "estás ocupado o me invento una historia",
             "oye, ¿sigues por acá?",
@@ -111,10 +118,25 @@ _TEMPLATES: Dict[str, Dict[str, List[str]]] = {
         "en": [
             "hey you good?",
             "still there or did you vanish lol",
-            "hello? even a hi counts",
             "yo, you around?",
             "busy or should I invent a story",
             "hey, still here?",
+        ],
+    },
+    "hot_pullback": {
+        "es": [
+            "espera… no me dejes colgada ahora",
+            "volvé, no terminamos eso",
+            "hey… no desaparezcas justo ahora",
+            "te fuiste en lo bueno, dale",
+            "mm no me abandones así jaja",
+        ],
+        "en": [
+            "wait… don't vanish on me now",
+            "come back, we weren't done",
+            "hey… don't disappear right now",
+            "you went quiet right when it got good",
+            "mm don't leave me hanging like that lol",
         ],
     },
     "playful_brat": {
@@ -315,15 +337,16 @@ def _pick_nudge_template(style: str, want_spanish: bool, mem: dict) -> str:
 
 # Keep angle metadata for step/weight routing (no trigger string needed).
 NUDGE_ANGLES: Dict[str, dict] = {
+    "hot_pullback": {"steps": (1,), "weight": 4},
     "unfinished_thread": {"steps": (1,), "weight": 2},
-    "soft_checkin": {"steps": (1, 2), "weight": 3},
+    "soft_checkin": {"steps": (1,), "weight": 3},
     "playful_brat": {"steps": (1,), "weight": 2},
-    "almost_sent": {"steps": (1, 2), "weight": 2},
-    "share_moment": {"steps": (1, 2), "weight": 3},
-    "curious_hook": {"steps": (1, 2), "weight": 3},
+    "almost_sent": {"steps": (1,), "weight": 2},
+    "share_moment": {"steps": (1,), "weight": 3},
+    "curious_hook": {"steps": (1,), "weight": 3},
     "flirty_tease": {"steps": (1,), "weight": 2},
-    "busy_withdrawal": {"steps": (2,), "weight": 3},
-    "victim_soft": {"steps": (2,), "weight": 1},  # rare; only when visto window
+    "busy_withdrawal": {"steps": (1,), "weight": 2},
+    "victim_soft": {"steps": (1,), "weight": 1},
 }
 
 GOODMORNING_TRIGGER = "goodmorning"
@@ -469,17 +492,43 @@ def pick_nudge_angle(
     return random.choices(list(names), weights=list(weights), k=1)[0]
 
 
-def _nudge_step_for_silence(
+@dataclass(frozen=True)
+class ReengagePlan:
+    """One nudge decision — tier, template style, minimum silence already met."""
+
+    tier: str
+    style: str
+    min_silence_minutes: float
+
+
+def _pick_style_for_tier(tier: str, mem: dict, *, heat_score: int = 0) -> str:
+    pool = list(_TIER_STYLES.get(tier, _TIER_STYLES["cold"]))
+    recent = mem.get("last_nudge_styles")
+    avoid: set = set()
+    if isinstance(recent, list):
+        avoid.update(str(s) for s in recent[-2:] if s)
+    elif mem.get("last_nudge_style"):
+        avoid.add(str(mem["last_nudge_style"]))
+    choices = [s for s in pool if s not in avoid] or pool
+    if tier == "hot" and is_hot_score(heat_score):
+        for pref in ("hot_pullback", "flirty_tease"):
+            if pref in choices:
+                return pref
+    return random.choice(choices)
+
+
+def plan_reengage(
     silence: timedelta,
     mem: dict,
     *,
     heat_score: int,
     is_read: bool,
     now: datetime,
-) -> Optional[int]:
+    farewell: bool = False,
+) -> Optional[ReengagePlan]:
     """
-    step 1 — hot+visto uses NUDGE_HOT_SEEN_MINUTES from visto clock.
-    step 2 — shorter second gate when heat_score is high.
+    Tiered re-engage gate — returns None if too soon or episode capped.
+    One nudge per silence episode (MAX_NUDGES_PER_EPISODE).
     """
     count = int(mem.get("nudge_episode_count") or 0)
     if count >= MAX_NUDGES_PER_EPISODE:
@@ -491,34 +540,67 @@ def _nudge_step_for_silence(
     if is_read and seen_at:
         seen_mins = (now - seen_at).total_seconds() / 60.0
 
+    # Fan said goodbye — soft ping only after long pause (no guilt mid-goodbye)
+    if farewell:
+        need = NUDGE_AFTER_FAREWELL_HOURS * 60
+        if silence_mins < need:
+            return None
+        style = _pick_style_for_tier("farewell", mem)
+        return ReengagePlan("farewell", style, need)
+
+    # Emoji reaction fast path
     react_at = _parse_iso(mem.get("last_fan_reaction_at"))
     if react_at and count == 0:
         react_mins = (now - react_at).total_seconds() / 60.0
         if react_mins >= NUDGE_REACTION_MINUTES and silence_mins >= 2:
-            return 1
+            tier = "hot" if is_hot_score(heat_score) else "warm"
+            style = _pick_style_for_tier("reaction", mem, heat_score=heat_score)
+            return ReengagePlan(tier, style, float(NUDGE_REACTION_MINUTES))
 
-    if count == 0:
-        if is_hot_score(heat_score) and is_read and seen_mins is not None:
-            if seen_mins >= NUDGE_HOT_SEEN_MINUTES and silence_mins >= 3:
-                return 1
-        if is_hot_score(heat_score) and silence_mins >= NUDGE_HOT_MINUTES:
-            return 1
-        if is_warm_score(heat_score) and is_read and seen_mins is not None:
-            if seen_mins >= NUDGE_WARM_SEEN_MINUTES and silence_mins >= 4:
-                return 1
-        if silence_mins >= NUDGE_COLD_MINUTES:
-            return 1
+    # HOT — fast pull-back, especially after visto
+    if is_hot_score(heat_score):
+        if is_read and seen_mins is not None:
+            gate = max(NUDGE_HOT_SEEN_MINUTES, 3.0)
+            if seen_mins >= NUDGE_HOT_SEEN_MINUTES and silence_mins >= gate:
+                style = _pick_style_for_tier("hot", mem, heat_score=heat_score)
+                return ReengagePlan("hot", style, gate)
+        if silence_mins >= NUDGE_HOT_MINUTES:
+            style = _pick_style_for_tier("hot", mem, heat_score=heat_score)
+            return ReengagePlan("hot", style, float(NUDGE_HOT_MINUTES))
         return None
 
-    if count == 1:
-        second = (
-            NUDGE_HOT_SECOND_MINUTES
-            if is_hot_score(heat_score)
-            else NUDGE_COLD_SECOND_MINUTES
-        )
-        if silence_mins >= second:
-            return 2
+    # WARM
+    if is_warm_score(heat_score):
+        if is_read and seen_mins is not None:
+            gate = max(NUDGE_WARM_SEEN_MINUTES, 4.0)
+            if seen_mins >= NUDGE_WARM_SEEN_MINUTES and silence_mins >= gate:
+                style = _pick_style_for_tier("warm", mem)
+                return ReengagePlan("warm", style, gate)
+        if silence_mins >= NUDGE_WARM_MINUTES:
+            style = _pick_style_for_tier("warm", mem)
+            return ReengagePlan("warm", style, float(NUDGE_WARM_MINUTES))
+        return None
+
+    # COLD — soft check-in
+    if silence_mins >= NUDGE_COLD_MINUTES:
+        style = _pick_style_for_tier("cold", mem)
+        return ReengagePlan("cold", style, float(NUDGE_COLD_MINUTES))
     return None
+
+
+def _nudge_step_for_silence(
+    silence: timedelta,
+    mem: dict,
+    *,
+    heat_score: int,
+    is_read: bool,
+    now: datetime,
+) -> Optional[int]:
+    """Legacy shim — 1 if plan exists, else None."""
+    plan = plan_reengage(
+        silence, mem, heat_score=heat_score, is_read=is_read, now=now
+    )
+    return 1 if plan else None
 
 
 def _send_generated(
@@ -558,25 +640,18 @@ def _send_generated(
     if not reply.strip():
         return False
 
-    bubbles = split_into_messages(reply, max_bubbles=2)
-    for i, bubble in enumerate(bubbles):
-        try:
-            fv.send_typing_indicator(fan_uuid, True)
-        except Exception:
-            pass
-        # Same human-ish cadence as live chat (not 7s walls)
-        time.sleep(random.uniform(2.0, 3.5) if i == 0 else random.uniform(1.2, 2.5))
-        fv.send_message(fan_uuid, bubble)
-        if i + 1 < len(bubbles):
-            try:
-                fv.send_typing_indicator(fan_uuid, True)
-            except Exception:
-                pass
-        else:
-            try:
-                fv.send_typing_indicator(fan_uuid, False)
-            except Exception:
-                pass
+    # One bubble only — nudges must not double-text
+    bubble = re.sub(r"\s+", " ", (reply or "").strip())[:180]
+    try:
+        fv.send_typing_indicator(fan_uuid, True)
+    except Exception:
+        pass
+    time.sleep(random.uniform(2.0, 3.5))
+    fv.send_message(fan_uuid, bubble)
+    try:
+        fv.send_typing_indicator(fan_uuid, False)
+    except Exception:
+        pass
 
     fan_memory.mark_nudge(
         fan_uuid, kind, fan_handle=fan_handle, style=style
@@ -586,8 +661,8 @@ def _send_generated(
             fan_uuid,
             fan_handle=fan_handle,
             fan_message=f"[silence — {kind}:{style or '-'}]",
-            reply=reply,
-            bubbles=len(bubbles),
+            reply=bubble,
+            bubbles=1,
             mode=kind,
             mode_reason=f"auto re-engagement {kind}/{style}",
             pack_id="phase_reengage",
@@ -595,7 +670,7 @@ def _send_generated(
     except Exception:
         pass
     print(
-        f"   💌 {kind}/{style or '-'} sent to @{fan_handle}: {reply[:70]}"
+        f"   💌 {kind}/{style or '-'} sent to @{fan_handle}: {bubble[:70]}"
     )
     return True
 
@@ -694,37 +769,42 @@ def run_pass(fv, chats: List[dict], creator_uuid: str) -> int:
             continue
 
         if pass_farewell:
-            print(
-                f"   reengage skip @{fan_handle}: conversation closed "
-                f"({mem.get('conversation_closed_reason') or 'farewell'})"
+            plan = plan_reengage(
+                silence,
+                mem,
+                heat_score=heat_score,
+                is_read=is_read,
+                now=now,
+                farewell=True,
             )
-            continue  # closed politely — don't mid-flow guilt
+            if not plan:
+                print(
+                    f"   reengage skip @{fan_handle}: farewell cooldown "
+                    f"({int(silence.total_seconds() // 60)}m "
+                    f"< {NUDGE_AFTER_FAREWELL_HOURS}h)"
+                )
+                continue
+        else:
+            plan = plan_reengage(
+                silence,
+                mem,
+                heat_score=heat_score,
+                is_read=is_read,
+                now=now,
+                farewell=False,
+            )
+            if not plan:
+                continue
 
-        step = _nudge_step_for_silence(
-            silence, mem, heat_score=heat_score, is_read=is_read, now=now
-        )
-        if not step:
-            continue
-
-        # Don't fire a second nudge too soon after the first (step 2 still needs NUDGE_SECOND_MINUTES silence)
         last_nudge = _parse_iso(mem.get("last_nudge_at"))
         min_gap = max(5, NUDGE_FIRST_MINUTES // 2)
         if last_nudge and now - last_nudge < timedelta(minutes=min_gap):
             continue
 
-        victim_ok = step >= 2 and _victim_window_open(
-            mem,
-            is_read=is_read,
-            fan_uuid=fan_uuid,
-            fan_handle=fan_handle,
-            now=now,
-        )
-        style = pick_nudge_angle(
-            mem, step, now, victim_ok=victim_ok, heat_score=heat_score
-        )
+        style = plan.style
         label = heat_label(heat_score)
         print(
-            f"   reengage @{fan_handle}: step={step} angle={style} "
+            f"   reengage @{fan_handle}: tier={plan.tier} angle={style} "
             f"heat={label}({heat_score}) visto={is_read} "
             f"silence={int(silence.total_seconds() // 60)}m"
         )
