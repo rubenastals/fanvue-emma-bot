@@ -577,6 +577,13 @@ def assemble_emma_turn(
             )
         if action_line:
             turn_blocks.append(action_line)
+        turn_blocks.append(
+            "HUMAN RHYTHM THIS TURN:\n"
+            "- Default: ONE WhatsApp bubble (~60–90 chars). Two only if he wrote a lot.\n"
+            "- React to his LAST line first — one beat, not an essay or list.\n"
+            "- No paragraphs, no customer-support tone, no stacked questions.\n"
+            "- Second bubble is rare; never plan 3+ messages."
+        )
         # Soft unpaid reconnect (friction) — no FOMO / guilt stack
         soft_unpaid = bool(
             (bool(delivery_truth and delivery_truth.get("ppv_unpaid"))
@@ -981,7 +988,7 @@ def assemble_emma_turn(
             "Horny girlfriend texting — NOT a sales agent, NOT an essay. "
             "Informal chat slang OK (u/rn/idk/lol/haha/babe). "
             "Light punctuation, lowercase fine, react first. "
-            "Usually ONE short bubble (~80-140 chars). Pet name most turns. "
+            "Usually ONE short bubble (~60-90 chars). Max 2 bubbles total. Pet name most turns. "
             "Emojis only if natural — vary or skip; never same combo twice. "
             "Filthy when he's hot; bratty then warm. "
             "ZERO Spanish words (no mira/bebé/joder/guapo). "
@@ -1001,7 +1008,7 @@ def assemble_emma_turn(
         _creator = creator_display_name()
         note = (
             f"[{_creator} texting. ENGLISH ONLY. Pack={pack_id}. "
-            f"1–2 short bubbles, under ~220 total characters. Light pet names OK; "
+            f"1 short bubble usual (~90c), max 2, under ~120 total characters. Light pet names OK; "
             f"real name sometimes if ADDRESSING allows — "
             f"never spam \"Ay {{name}}\" every bubble. Zero Spanish.]"
         )

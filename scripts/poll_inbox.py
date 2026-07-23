@@ -1213,8 +1213,8 @@ def _handle_fan_chat_body(
 
         max_bubbles = int(
             getattr(decision, "max_bubbles", None)
-            or getattr(config, "MAX_BUBBLES", 3)
-            or 3
+            or getattr(config, "MAX_BUBBLES", 2)
+            or 2
         )
         from core.fan_pushback import thread_in_boundary_mode, thread_in_pushback_mode
 
@@ -1226,12 +1226,12 @@ def _handle_fan_chat_body(
             offer = None
         bubbles = split_into_messages(
             reply,
-            max_len=int(getattr(config, "BUBBLE_MAX_CHARS", 200) or 200),
+            max_len=int(getattr(config, "BUBBLE_MAX_CHARS", 100) or 100),
             max_bubbles=max_bubbles,
             vary=True,
         )
         print(
-            f"💬 Emma ({len(bubbles)} msg, ≤{getattr(config, 'BUBBLE_MAX_CHARS', 200)}c) "
+            f"💬 Emma ({len(bubbles)} msg, ≤{getattr(config, 'BUBBLE_MAX_CHARS', 100)}c) "
             f"[{decision.mode}]: {reply[:120]}"
         )
 
@@ -1279,7 +1279,7 @@ def _handle_fan_chat_body(
                 )
                 bubbles = split_into_messages(
                     reply,
-                    max_len=int(getattr(config, "BUBBLE_MAX_CHARS", 200) or 200),
+                    max_len=int(getattr(config, "BUBBLE_MAX_CHARS", 100) or 100),
                     max_bubbles=max_bubbles,
                     vary=True,
                 )

@@ -80,11 +80,10 @@ class Config:
     MAX_RESPONSE_TOKENS = int(os.getenv("MAX_RESPONSE_TOKENS", "280"))
     DEEPSEEK_DISABLE_THINKING = os.getenv("DEEPSEEK_DISABLE_THINKING", "1") == "1"
     # Per Fanvue bubble. Over-long replies are REWRITTEN short — not mid-cut with "…".
-    BUBBLE_MAX_CHARS = int(os.getenv("BUBBLE_MAX_CHARS", "160"))
-    MAX_BUBBLES = int(os.getenv("MAX_BUBBLES", "3"))
+    BUBBLE_MAX_CHARS = int(os.getenv("BUBBLE_MAX_CHARS", "100"))
+    MAX_BUBBLES = int(os.getenv("MAX_BUBBLES", "2"))
     # Soft total for the whole reply (triggers length rewrite before send).
-    # Keep short/human, but room to finish a thought (was 160 → mid-sentence chops).
-    REPLY_SOFT_MAX_CHARS = int(os.getenv("REPLY_SOFT_MAX_CHARS", "200"))
+    REPLY_SOFT_MAX_CHARS = int(os.getenv("REPLY_SOFT_MAX_CHARS", "120"))
     # After the creative draft: at most this many LLM rewrites (lang/length/grammar).
     # Hard lies (delivery/lock/price/bluff/ghost) never spend this — strip/fallback only.
     MAX_CREATIVE_REWRITES = int(os.getenv("MAX_CREATIVE_REWRITES", "1"))
@@ -138,19 +137,19 @@ class Config:
     # answer the whole batch as ONE turn (better analysis, one reply).
     COALESCE_ENABLED = os.getenv("COALESCE_ENABLED", "1") == "1"
     # Quiet window: if no new fan message arrives for this long, he's done.
-    COALESCE_SETTLE_SEC = float(os.getenv("COALESCE_SETTLE_SEC", "4"))
+    COALESCE_SETTLE_SEC = float(os.getenv("COALESCE_SETTLE_SEC", "6"))
     # Hard cap so we never wait forever on a non-stop typer.
-    COALESCE_MAX_WAIT_SEC = float(os.getenv("COALESCE_MAX_WAIT_SEC", "12"))
+    COALESCE_MAX_WAIT_SEC = float(os.getenv("COALESCE_MAX_WAIT_SEC", "20"))
     # Only wait if his newest message is fresher than this (else we're catching up).
     COALESCE_FRESH_SEC = float(os.getenv("COALESCE_FRESH_SEC", "20"))
     # Show the "Emma is typing…" bubbles the whole time she's thinking/analyzing.
     TYPING_WHILE_THINKING = os.getenv("TYPING_WHILE_THINKING", "1") == "1"
     TYPING_PING_SEC = float(os.getenv("TYPING_PING_SEC", "2.5"))
     # Human-like pause before each bubble (wall-clock; no Fanvue poll stacking)
-    BUBBLE_DELAY_FIRST_MIN = float(os.getenv("BUBBLE_DELAY_FIRST_MIN", "4.0"))
-    BUBBLE_DELAY_FIRST_MAX = float(os.getenv("BUBBLE_DELAY_FIRST_MAX", "6.5"))
-    BUBBLE_DELAY_NEXT_MIN = float(os.getenv("BUBBLE_DELAY_NEXT_MIN", "2.8"))
-    BUBBLE_DELAY_NEXT_MAX = float(os.getenv("BUBBLE_DELAY_NEXT_MAX", "4.8"))
+    BUBBLE_DELAY_FIRST_MIN = float(os.getenv("BUBBLE_DELAY_FIRST_MIN", "6.0"))
+    BUBBLE_DELAY_FIRST_MAX = float(os.getenv("BUBBLE_DELAY_FIRST_MAX", "10.0"))
+    BUBBLE_DELAY_NEXT_MIN = float(os.getenv("BUBBLE_DELAY_NEXT_MIN", "4.0"))
+    BUBBLE_DELAY_NEXT_MAX = float(os.getenv("BUBBLE_DELAY_NEXT_MAX", "7.0"))
     # How often to check barge-in during a bubble delay (API is slow — keep rare)
     BUBBLE_BARGE_CHECK_SEC = float(os.getenv("BUBBLE_BARGE_CHECK_SEC", "3.0"))
 
