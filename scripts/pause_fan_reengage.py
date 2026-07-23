@@ -33,7 +33,7 @@ def main() -> None:
 
     needle = args.handle.lower().strip()
     fv = FanvueConnector()
-    chats = fv.list_chats(size=100)
+    chats = fv.list_chats(size=50)
     fan_uuid = ""
     fan_handle = ""
     for c in chats:
