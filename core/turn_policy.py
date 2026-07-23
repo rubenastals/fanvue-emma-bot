@@ -62,9 +62,17 @@ _WANT_ANOTHER = (
     r"otra foto|next one|m[aá]s cara|something else)\b"
 )
 _HORNY = (
-    r"\b(hard|horny|wet|cock|dick|pussy|fuck|cum|stroke|jerk|"
+    r"\b("
+    r"hard|horny|wet|cock|dick|pussy|fuck|fucking|cum|stroke|jerk|"
+    r"sex|sexy|nude|naked|nipple|tits?|boobs?|breast|asshole|anal|"
+    r"panties|panty|boxers|grind|ride|moan|orgasm|suck|lick|finger|"
+    r"inside\s+(you|me|her)|on(?:to)?\s+your\s+back|on\s+my\s+lap|"
+    r"spread\s+your|pull(?:ing)?\s+your\s+panties|grab(?:bing)?\s+your\s+ass|"
+    r"push(?:ing)?\s+you\s+on(?:to)?|"
     r"duro|caliente|mojada|polla|follar|correr|"
-    r"tetitas?|tetas?|tetasa|boobs?|culo|ass|senos?|pechos?|lamerlas)\b"
+    r"tetitas?|tetas?|tetasa|culo|ass|senos?|pechos?|lamerlas|"
+    r"co[nñ]o|chupar|dedo|correrte|correrme"
+    r")\b"
 )
 _REJECT = (
     r"\b(too expensive|caro|expensive|can'?t|no money|later|maybe later|"

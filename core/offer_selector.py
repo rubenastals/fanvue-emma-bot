@@ -449,15 +449,24 @@ def choose_offer(
         )
     # $0 fans: no AI sell without ask/horny — rapport close only when warm enough
     if _zero_spender(mem) and not direct and not max_dirty:
-        horny_now = bool(getattr(facts, "horny", False))
+        from core.turn_policy import _HORNY
+
+        horny_now = bool(getattr(facts, "horny", False)) or bool(
+            re.search(_HORNY, (fan_message or "").lower())
+        )
         msgs_n = int(mem.get("messages") or 0)
         frees_n = int(mem.get("free_teases_sent") or 0)
         warm_signal = horny_now or bool(getattr(facts, "buying", False)) or bool(
             getattr(facts, "engacho", False)
         )
+        # Deep heated chat ($0) — allow a cheap L1/L2 close without needing a free tease first
+        deep_heat = msgs_n >= 10 and horny_now and (
+            str(mem.get("status") or "") in ("warm", "spender", "whale")
+            or msgs_n >= 14
+        )
         # Free + depth + warm signal — avoids pushy sell on shy short chats
         rapport_close = msgs_n >= 12 and frees_n >= 1 and warm_signal
-        if not horny_now and not rapport_close:
+        if not horny_now and not rapport_close and not deep_heat:
             return OfferChoice(
                 False,
                 None,
@@ -589,19 +598,26 @@ def choose_offer(
         sell_now = False
         chosen = None
         reason = f"clarify veto; selector said: {reason}"
+    from core.turn_policy import _HORNY as _HORNY_SEL
+
     msgs_n = int(mem.get("messages") or 0)
     frees_n = int(mem.get("free_teases_sent") or 0)
-    warm_signal = bool(getattr(facts, "horny", False)) or bool(
-        getattr(facts, "buying", False)
-    ) or bool(getattr(facts, "engacho", False))
+    horny_msg = bool(getattr(facts, "horny", False)) or bool(
+        re.search(_HORNY_SEL, (fan_message or "").lower())
+    )
+    warm_signal = horny_msg or bool(getattr(facts, "buying", False)) or bool(
+        getattr(facts, "engacho", False)
+    )
     rapport_close = msgs_n >= 12 and frees_n >= 1 and warm_signal
+    deep_heat = msgs_n >= 10 and horny_msg
     if (
         sell_now
         and _zero_spender(mem)
         and not direct
         and not max_dirty
-        and not bool(getattr(facts, "horny", False))
+        and not horny_msg
         and not rapport_close
+        and not deep_heat
     ):
         sell_now = False
         chosen = None
@@ -612,6 +628,20 @@ def choose_offer(
         sell_now = True
         reason = f"direct buy override; selector said: {reason}"
         confidence = max(confidence, 0.9)
+
+    # Deep sexual RP + inventory → don't let the model soft-out of a cheap L1/L2
+    if (
+        not sell_now
+        and candidates
+        and _zero_spender(mem)
+        and horny_msg
+        and msgs_n >= 10
+        and not _CLARIFY_NO_SELL.search((fan_message or "").strip())
+    ):
+        chosen = candidates[0]
+        sell_now = True
+        reason = f"deep-heat override ($0 + sexual RP); selector said: {reason}"
+        confidence = max(confidence, 0.85)
 
     # She owed a send + he complied — never keep stalling
     if owed and direct and not sell_now:
