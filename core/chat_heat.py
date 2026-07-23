@@ -143,6 +143,59 @@ def heat_label(score: int) -> str:
     return "COLD"
 
 
+def heat_close_eligible(
+    mem: dict,
+    fan_message: str,
+    *,
+    facts: Any = None,
+    history_turns: Optional[List[dict]] = None,
+    unpaid: bool = False,
+    sell_paused: bool = False,
+) -> bool:
+    """
+    Hot explicit thread → natural moment to attach a cheap PPV (not bond-only gasp).
+
+    Code may attach; prompt must tease the lock after matching his RP.
+    """
+    if sell_paused or unpaid:
+        return False
+    mem = mem or {}
+    if mem.get("fan_boundary_active") or mem.get("photo_refusal_active"):
+        return False
+    try:
+        from core.fan_pushback import is_fan_boundary
+
+        if is_fan_boundary(fan_message or ""):
+            return False
+        from core import fan_memory
+
+        if fan_memory.sell_pressure_paused(mem):
+            return False
+    except Exception:
+        pass
+
+    msgs = int(mem.get("messages") or 0)
+    if msgs < 6:
+        return False
+
+    from core.turn_policy import _HORNY
+
+    horny = bool(getattr(facts, "horny", False) if facts is not None else False)
+    if not horny:
+        horny = bool(re.search(_HORNY, (fan_message or "").lower()))
+    if not horny:
+        horny = bool(_HEAT_WORDS.search(fan_message or ""))
+    if not horny and history_turns:
+        for turn in history_turns[-6:]:
+            if turn.get("role") != "user":
+                continue
+            body = (turn.get("content") or "").strip()
+            if re.search(_HORNY, body.lower()) or _HEAT_WORDS.search(body):
+                horny = True
+                break
+    return horny
+
+
 def active_window_minutes(score: int) -> int:
     """How long after fan's last msg we skip re-engagement."""
     if score >= 70:

@@ -13,9 +13,12 @@ def skip_active_move(
     pack_id: str,
     unpaid: bool,
     fan_pushback: bool,
+    horny_close: bool = False,
 ) -> bool:
     """No psychology ACTIVE MOVE unless sell or pushback needs it."""
     if not enabled():
+        return False
+    if horny_close:
         return False
     if fan_pushback:
         return False
@@ -35,13 +38,34 @@ def keep_loop_belts() -> bool:
     return enabled()
 
 
-def minimal_author_note(*, creator: str, extra: str = "") -> str:
+def minimal_author_note(
+    *,
+    creator: str,
+    extra: str = "",
+    heat_close: bool = False,
+    paid_attach: bool = False,
+) -> str:
     """One short steer — thread + card drive the reply, not a rule essay."""
-    note = (
-        f"[{creator} on WhatsApp. React to his LAST message using recent thread + "
-        "CLIENT CARD. ENGLISH. 1 short bubble (~60-90c). Girlfriend vibe, not sales "
-        "script. Do not repeat your last 2 beats."
-    )
+    if paid_attach:
+        note = (
+            f"[{creator} on WhatsApp. He's explicit — match his RP filthy (one beat), "
+            "then tease the PHOTO lock attaching with your bubble. "
+            "Girlfriend slutty energy, not a store caption. Price once at the end. "
+            "ENGLISH. ~90-140 chars. Do not repeat your last 2 beats."
+        )
+    elif heat_close:
+        note = (
+            f"[{creator} on WhatsApp. Hot explicit thread — dirty-sweet girlfriend, "
+            "not a one-word gasp. React to his fantasy, then pivot to wanting to show him "
+            "something / how wet he got you. ENGLISH. ~90-130 chars. "
+            "Do not repeat your last 2 beats."
+        )
+    else:
+        note = (
+            f"[{creator} on WhatsApp. React to his LAST message using recent thread + "
+            "CLIENT CARD. ENGLISH. 1 short bubble (~60-90c). Girlfriend vibe, not sales "
+            "script. Do not repeat your last 2 beats."
+        )
     if extra.strip():
         note += f" {extra.strip()}"
     return note + "]"

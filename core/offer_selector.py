@@ -385,6 +385,9 @@ def _fallback(
     fan_message: str,
     facts: Any,
     reason: str,
+    mem: Optional[dict] = None,
+    history_turns: Optional[List[Dict[str, str]]] = None,
+    unpaid: bool = False,
 ) -> OfferChoice:
     direct = bool(_DIRECT_BUY.search(fan_message or "")) or bool(
         getattr(facts, "buying", False)
@@ -394,13 +397,22 @@ def _fallback(
         or getattr(facts, "broke_soft", False)
         or getattr(facts, "heavy_vent", False)
     )
-    sell = bool(candidates) and direct and safe and not _REJECT.search(
-        fan_message or ""
+    from core.chat_heat import heat_close_eligible
+
+    heat_close = heat_close_eligible(
+        mem or {},
+        fan_message,
+        facts=facts,
+        history_turns=history_turns,
+        unpaid=unpaid,
+    )
+    sell = bool(candidates) and safe and (
+        (direct and not _REJECT.search(fan_message or "")) or heat_close
     )
     return OfferChoice(
         sell_now=sell,
         offer=candidates[0] if sell else None,
-        reason=reason,
+        reason=reason if not heat_close else "heat-close attach",
         confidence=0.65 if sell else 0.55,
         source="fallback",
     )
@@ -466,9 +478,9 @@ def choose_offer(
             getattr(facts, "engacho", False)
         )
         # Deep heated chat ($0) — allow a cheap L1/L2 close without needing a free tease first
-        deep_heat = msgs_n >= 10 and horny_now and (
+        deep_heat = msgs_n >= 6 and horny_now and (
             str(mem.get("status") or "") in ("warm", "spender", "whale")
-            or msgs_n >= 14
+            or msgs_n >= 10
         )
         # Free + depth + warm signal — avoids pushy sell on shy short chats
         rapport_close = msgs_n >= 12 and frees_n >= 1 and warm_signal
@@ -492,12 +504,35 @@ def choose_offer(
             "code",
         )
 
+    from core.chat_heat import heat_close_eligible
+
+    unpaid_now = bool(mem.get("last_ppv_pending")) or bool(
+        getattr(facts, "ppv_unpaid", False) if facts is not None else False
+    )
+    if heat_close_eligible(
+        mem,
+        fan_message,
+        facts=facts,
+        history_turns=history_turns,
+        unpaid=unpaid_now,
+    ):
+        return OfferChoice(
+            True,
+            candidates[0],
+            "heat-close: explicit RP → attach cheap PPV",
+            0.88,
+            "code",
+        )
+
     if not getattr(config, "OFFER_SELECTOR_AI", True) or not config.DEEPSEEK_API_KEY:
         return _fallback(
             candidates,
             fan_message=fan_message,
             facts=facts,
             reason="selector disabled",
+            mem=mem,
+            history_turns=history_turns,
+            unpaid=unpaid_now,
         )
 
     history = []
@@ -578,6 +613,9 @@ def choose_offer(
             fan_message=fan_message,
             facts=facts,
             reason="selector API/JSON failure",
+            mem=mem,
+            history_turns=history_turns,
+            unpaid=unpaid_now,
         )
 
     by_uuid = {i["media_uuid"]: i for i in candidates}
@@ -598,6 +636,9 @@ def choose_offer(
             fan_message=fan_message,
             facts=facts,
             reason="selector returned invalid/non-whitelisted UUID",
+            mem=mem,
+            history_turns=history_turns,
+            unpaid=unpaid_now,
         )
     # Code veto: AI must not cold-drop on clarify / zero-spender without ask
     if sell_now and _CLARIFY_NO_SELL.search((fan_message or "").strip()):

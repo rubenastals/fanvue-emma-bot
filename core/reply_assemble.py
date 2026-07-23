@@ -739,6 +739,30 @@ def assemble_emma_turn(
             "SELL WINDOW: CLOSED — he pushed back on price or needs space. "
             "Zero product talk, no lock hints. Be warm; react to what he said."
         )
+
+    from core.chat_heat import heat_close_eligible
+
+    heat_close_turn = heat_close_eligible(
+        mem,
+        fan_message or "",
+        facts=route_result.facts if route_result else None,
+        history_turns=turns,
+        unpaid=bool(unpaid_gate or status_active),
+        sell_paused=sell_paused,
+    )
+    if heat_close_turn and not voice_will_send and not sell_paused:
+        if offer and float(offer.get("price") or 0) > 0:
+            turn_blocks.append(
+                "HEAT CLOSE THIS TURN: he's explicit in this RP — match it filthy "
+                "(one full beat, not just 'fuck baby…'), then tease the photo in "
+                "SELL STATUS. Girlfriend slutty energy; price once at the end."
+            )
+        else:
+            turn_blocks.append(
+                "HEAT CLOSE THIS TURN: thread is burning — dirty reaction to his "
+                "fantasy, then pivot to showing him something nasty. No empty gasp."
+            )
+
     # Fan asking what's IN the unpaid lock — filthy describe, not price frame
     if (
         not sell_paused
@@ -1026,8 +1050,18 @@ def assemble_emma_turn(
         sell_extra = ""
         if tech_name:
             sell_extra = _tp.author_steer(tech_name).strip()
+        _paid_offer_now = bool(
+            offer
+            and float(offer.get("price") or 0) > 0
+            and int(offer.get("level") or 0) > 0
+        )
         if _cf.enabled():
-            note = _cf.minimal_author_note(creator=_creator, extra=sell_extra)
+            note = _cf.minimal_author_note(
+                creator=_creator,
+                extra=sell_extra,
+                heat_close=bool(heat_close_turn and not _paid_offer_now),
+                paid_attach=_paid_offer_now,
+            )
         else:
             move_bit = (
                 _tp.author_steer(tech_name)

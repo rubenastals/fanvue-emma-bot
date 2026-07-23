@@ -644,6 +644,15 @@ def choose_move(
         sig["sell_paused"] = _fm.sell_pressure_paused(
             mem, recent_techniques=list(exclude_names or [])
         )
+        from core.chat_heat import heat_close_eligible
+
+        horny_close = heat_close_eligible(
+            mem or {},
+            fan_message or "",
+            history_turns=None,
+            unpaid=bool(unpaid or eff == "ppv_unpaid"),
+            sell_paused=bool(sig.get("sell_paused")),
+        )
         # Sync reject ladder into signals
         if reject_count:
             sig["reject_step"] = max(int(sig.get("reject_step") or 0), int(reject_count))
@@ -652,6 +661,7 @@ def choose_move(
             pack_id=eff,
             unpaid=bool(unpaid or eff == "ppv_unpaid"),
             fan_pushback=bool(sig.get("fan_pushback")),
+            horny_close=horny_close,
         ):
             print("   creative-first: no ACTIVE MOVE — persona + thread beat only")
             return None
