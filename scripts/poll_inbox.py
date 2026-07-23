@@ -511,6 +511,9 @@ def _handle_fan_chat_body(
         turns = fanvue_messages_to_turns(
             ctx_messages, fan_uuid, creator_uuid, max_messages=hist_max
         )
+        from core.reply_sanitize import scrub_banned_assistant_turns
+
+        turns = scrub_banned_assistant_turns(turns)
         print(
             f"   history: {len(turns)} turns "
             f"(≤{hist_max} msgs / {hist_hours}h) "
@@ -1433,6 +1436,10 @@ def _handle_fan_chat_body(
             bubbles = rest_bubbles
             offer = None  # paid path handled
 
+        from core.reply_sanitize import coerce_sendable_reply
+        from core.language import fan_wants_spanish as _fws_send
+
+        _want_es_send = _fws_send(text or "", mem)
         for i, bubble in enumerate(bubbles):
             first = i == 0 and not free_sent and not ppv_sent
             delay = _human_bubble_delay(bubble, first=first)
@@ -1444,6 +1451,11 @@ def _handle_fan_chat_body(
                 delay,
                 known_ids=pending_ids,
                 keep_typing=True,
+            )
+            bubble = coerce_sendable_reply(
+                bubble,
+                want_spanish=_want_es_send,
+                history_turns=turns,
             )
             # Always deliver at least one bubble for this turn; abort the rest if he wrote
             fv.send_message(fan_uuid, bubble)

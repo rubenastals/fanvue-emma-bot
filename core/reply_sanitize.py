@@ -435,6 +435,56 @@ _IRL_VIDEO_COMMAND = re.compile(
     r"eyes\s+on\s+me\s+when"
     r")\b"
 )
+# Safe replacements when a banned stamp slips through (never reuse in thread if possible)
+_BANNED_STAMP_SUBSTITUTES = (
+    "haha you're cute… don't go quiet on me now babe",
+    "mm good… tell me what you're thinking",
+    "you still there? talk to me",
+    "wait… come back, i liked where this was going",
+)
+
+
+def is_banned_reply_stamp(text: str) -> bool:
+    """IRL/video command lines that loop and confuse fans in text DMs."""
+    return bool(_RETIRED_LOOK_AT_ME.search(text or "") or _IRL_VIDEO_COMMAND.search(text or ""))
+
+
+def scrub_banned_assistant_turns(
+    turns: Optional[List[Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
+    """Remove poisoned assistant lines from prompt history so the model stops echoing."""
+    if not turns:
+        return []
+    out: List[Dict[str, Any]] = []
+    for t in turns:
+        if (t.get("role") or "") == "assistant" and is_banned_reply_stamp(
+            str(t.get("content") or "")
+        ):
+            sub = random.choice(_BANNED_STAMP_SUBSTITUTES)
+            out.append({"role": "assistant", "content": sub})
+            continue
+        out.append(t)
+    return out
+
+
+def coerce_sendable_reply(
+    text: str,
+    *,
+    want_spanish: bool = False,
+    history_turns: Optional[List[Dict[str, Any]]] = None,
+) -> str:
+    """Last gate before Fanvue send — never ship banned stamps."""
+    if not is_banned_reply_stamp(text):
+        return text
+    banned = {
+        _norm_bubble(str(t.get("content") or ""))
+        for t in (history_turns or [])[-12:]
+        if (t.get("role") or "") == "assistant"
+    }
+    for sub in _BANNED_STAMP_SUBSTITUTES:
+        if _norm_bubble(sub) not in banned:
+            return sub
+    return _lang_fallback(want_spanish=want_spanish, history_turns=history_turns)
 # Keep these flirty/human — bland "tell me more" stamps kill the hook in sim+live.
 _EN_LANG_FALLBACKS = (
     "fuck… say that again, slower",
@@ -599,6 +649,8 @@ def _lang_fallback(
         if (turn.get("role") or "") != "assistant":
             continue
         banned.add(_norm_bubble(str(turn.get("content") or "")))
+        if is_banned_reply_stamp(str(turn.get("content") or "")):
+            banned.add(_norm_bubble("look at me when im talking to you"))
     for fp in scheme_guard.recent_openings(history_turns, n=6):
         banned.add(_norm_bubble(fp))
     opts = [p for p in pool if _norm_bubble(p) not in banned]
@@ -1130,9 +1182,11 @@ def apply_post_draft(
         )
 
     # Retired sticky stamp + IRL/video commands (text chat only — confuses fans)
-    if _RETIRED_LOOK_AT_ME.search(reply or "") or _IRL_VIDEO_COMMAND.search(reply or ""):
+    if is_banned_reply_stamp(reply or ""):
         before_ir = reply
-        reply = _lang_fallback(want_spanish=want_spanish, history_turns=turns)
+        reply = coerce_sendable_reply(
+            reply, want_spanish=want_spanish, history_turns=turns
+        )
         print(
             "   🚫 IRL/video command stamp — replaced "
             f"({before_ir[:56]!r} → {reply!r})"
@@ -1470,7 +1524,12 @@ def apply_post_draft(
             print("   🎙️ stripped residual voice stage crumbs")
 
     # Continuity: never resend the same short stamp / near-duplicate bubble
-    if scheme_guard.continuity_loop(reply, turns):
+    if is_banned_reply_stamp(reply or ""):
+        reply = coerce_sendable_reply(
+            reply, want_spanish=want_spanish, history_turns=turns
+        )
+        print("   continuity: banned stamp → safe engage line")
+    elif scheme_guard.continuity_loop(reply, turns):
         if scheme_guard.too_similar_to_last_assistant(
             reply, turns
         ) or (
@@ -1487,11 +1546,11 @@ def apply_post_draft(
             print("   continuity: loop/repeat — noted (no LLM)")
 
     # Kill the retired sticky EN stamp if it ever reappears from history/model
-    if _RETIRED_LOOK_AT_ME.search(reply or "") or _norm_bubble(reply) == _norm_bubble(
-        "Hey... look at me when I'm talking to you."
-    ):
-        reply = _lang_fallback(want_spanish=want_spanish, history_turns=turns)
-        print("   lang: retired sticky 'look at me' stamp → fresh fallback")
+    if is_banned_reply_stamp(reply or ""):
+        reply = coerce_sendable_reply(
+            reply, want_spanish=want_spanish, history_turns=turns
+        )
+        print("   lang: retired sticky 'look at me' stamp → safe engage line")
 
     # Grammar: one polish only if creative rewrite budget remains
     if want_spanish and language.looks_broken_spanish(reply):

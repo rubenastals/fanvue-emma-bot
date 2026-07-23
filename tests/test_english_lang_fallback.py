@@ -17,6 +17,26 @@ from core.reply_sanitize import (
 STAMP = "Hey... look at me when I'm talking to you."
 
 
+def test_coerce_sendable_replaces_stamp():
+    from core.reply_sanitize import coerce_sendable_reply, is_banned_reply_stamp
+
+    bad = "Hey... look at me when I'm talking to you."
+    assert is_banned_reply_stamp(bad)
+    out = coerce_sendable_reply(bad, want_spanish=False, history_turns=[])
+    assert "look at me when" not in out.lower()
+
+
+def test_scrub_history_replaces_poison():
+    from core.reply_sanitize import scrub_banned_assistant_turns
+
+    turns = [
+        {"role": "user", "content": "yea"},
+        {"role": "assistant", "content": "Hey... look at me when I'm talking to you."},
+    ]
+    out = scrub_banned_assistant_turns(turns)
+    assert "look at me when" not in out[-1]["content"].lower()
+
+
 def test_birbo_stamp_blocked_by_regex():
     """Exact line from live Sophia/Birbo thread must never ship."""
     from core.reply_sanitize import _RETIRED_LOOK_AT_ME
