@@ -135,9 +135,6 @@ class Config:
     # Hourly DeepSeek review of last-hour turns only (does not inject into live prompt)
     HOUR_REVIEW_ENABLED = os.getenv("HOUR_REVIEW_ENABLED", "1") == "1"
     HOUR_REVIEW_MINUTES = int(os.getenv("HOUR_REVIEW_MINUTES", "60"))
-    # Pre-send LLM supervisor — OFF by default (was replacing drafts with stamps)
-    REPLY_SUPERVISOR = os.getenv("REPLY_SUPERVISOR", "0") == "1"
-    REPLY_SUPERVISOR_MODEL = os.getenv("REPLY_SUPERVISOR_MODEL", "") or None
     # Coalesce a burst of fan messages: wait for him to finish typing, then
     # answer the whole batch as ONE turn (better analysis, one reply).
     COALESCE_ENABLED = os.getenv("COALESCE_ENABLED", "1") == "1"

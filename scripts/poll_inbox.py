@@ -1865,7 +1865,6 @@ def main():
         f"   brain: REPLY_V2={int(bool(_cfg.REPLY_V2))} "
         f"SIMPLE_PROMPT={int(bool(_cfg.SIMPLE_PROMPT))} "
         f"CREATIVE_FIRST={int(bool(_cfg.CREATIVE_FIRST))} "
-        f"SUPERVISOR={int(bool(_cfg.REPLY_SUPERVISOR))} "
         f"LEAN_CREATIVE={int(bool(_cfg.LEAN_CREATIVE))} "
         f"PHASE_ANALYST={int(bool(_cfg.PHASE_ANALYST))} "
         f"| prompt={PROMPT_VERSION} core_chars={len(_core)} account={aid}"

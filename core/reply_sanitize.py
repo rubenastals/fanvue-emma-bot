@@ -1883,11 +1883,6 @@ def apply_post_draft(
         reply = _trim_dangling_clause(reply)
         print("   ✂ incomplete: final trim before send")
 
-    from core.reply_supervisor import supervise_reply
-
-    if not _creative:
-        reply = supervise_reply(reply, assembled, call=call, budget=rw)
-
     if rw.used:
         print(f"   rewrite budget: used {rw.used}/{rw.max_extra} ({', '.join(rw.log)})")
     else:
