@@ -1719,15 +1719,20 @@ def main():
 
     aid = account_id()
 
-    from config import config as _cfg
-    from core.prompt_core import EMMA_CORE_PROMPT_SIMPLE, PROMPT_VERSION
+    from core.account_context import creator_display_name, validate_account_boot
 
+    validate_account_boot(strict=True)
+
+    from config import config as _cfg
+    from core.prompt_core import get_active_persona, PROMPT_VERSION
+
+    _core = get_active_persona()
     print(
         f"   brain: REPLY_V2={int(bool(_cfg.REPLY_V2))} "
         f"SIMPLE_PROMPT={int(bool(_cfg.SIMPLE_PROMPT))} "
         f"LEAN_CREATIVE={int(bool(_cfg.LEAN_CREATIVE))} "
         f"PHASE_ANALYST={int(bool(_cfg.PHASE_ANALYST))} "
-        f"| prompt={PROMPT_VERSION} core_chars={len(EMMA_CORE_PROMPT_SIMPLE)}"
+        f"| prompt={PROMPT_VERSION} core_chars={len(_core)} account={aid}"
     )
     from core import reengagement as _re
 
@@ -1759,23 +1764,27 @@ def main():
             from pathlib import Path
             from db import vault_store
 
-            map_path = vault_store._default_map_path()
+            map_path = vault_store._default_map_path(aid)
             if map_path and map_path.is_file():
                 raw = json.loads(Path(map_path).read_text(encoding="utf-8"))
-                n = vault_store.replace_items(
-                    raw.get("items") or [],
-                    aid=aid,
-                    catalog_version=Path(map_path).parent.name,
-                )
-                print(f"   vault synced: {n} items from {Path(map_path).name}")
+                err = vault_store.validate_map_for_account(raw, aid)
+                if err:
+                    print(f"   ❌ vault sync blocked: {err}")
+                else:
+                    n = vault_store.replace_items(
+                        raw.get("items") or [],
+                        aid=aid,
+                        catalog_version=Path(map_path).parent.name,
+                    )
+                    print(f"   vault synced: {n} items from {Path(map_path).name}")
         except Exception as e:
             print(f"   ⚠️ vault sync skipped: {e}")
 
-        # Lean creative: wipe Soft lesson flood + repair known corrupt names once at boot
+        # Emma-only one-off boot repairs (do not run on other accounts)
         try:
             from config import config as _cfg
 
-            if getattr(_cfg, "LEAN_CREATIVE", True):
+            if aid == "emma" and getattr(_cfg, "LEAN_CREATIVE", True):
                 from core import lessons as _lessons
                 from db import fan_memory_store as _fms
 
@@ -1838,7 +1847,8 @@ def main():
             creator_uuid=creator_uuid,
         )
     n_cat = len(vault_catalog.load_items())
-    print(f"🔥 Emma polling @{me.get('handle')} every {args.interval}s")
+    _name = creator_display_name()
+    print(f"🔥 {_name} polling @{me.get('handle')} every {args.interval}s (account={aid})")
     print(f"   Vault catalog: {n_cat} photos ready for real PPV")
     if getattr(config, "PPV_EXPIRE_ENABLED", True):
         print(

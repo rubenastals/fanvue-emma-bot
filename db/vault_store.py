@@ -12,14 +12,20 @@ from sqlalchemy import text
 from db import account_id, use_postgres
 
 _ROOT = Path(__file__).resolve().parent.parent
+_DEFAULT_ACCOUNT = "emma"
 
 
-def _default_map_path() -> Optional[Path]:
+def _default_map_path(aid: Optional[str] = None) -> Optional[Path]:
+    aid = (aid or account_id()).strip().lower()
     env = (os.getenv("FANVUE_MEDIA_MAP") or "").strip()
     if env:
         p = Path(env)
         return p if p.is_file() else None
-    # Prefer shipped data/ path (exports/ is often docker/git-ignored)
+    # Per-account map before Emma default
+    if aid and aid != _DEFAULT_ACCOUNT:
+        per_account = _ROOT / "data" / f"{aid}_fanvue_media_map.json"
+        if per_account.is_file():
+            return per_account
     shipped = _ROOT / "data" / "fanvue_media_map.json"
     if shipped.is_file():
         return shipped
@@ -31,13 +37,26 @@ def _default_map_path() -> Optional[Path]:
     return Path(maps[0]) if maps else None
 
 
-def _items_from_file() -> List[Dict[str, Any]]:
-    path = _default_map_path()
+def validate_map_for_account(raw: dict, aid: Optional[str] = None) -> Optional[str]:
+    """Return error string if JSON account_id disagrees with running account."""
+    aid = aid or account_id()
+    map_aid = (raw.get("account_id") or "").strip().lower()
+    if map_aid and map_aid != aid.lower():
+        return f"media map account_id={map_aid!r} != ACCOUNT_ID={aid!r}"
+    return None
+
+
+def _items_from_file(aid: Optional[str] = None) -> List[Dict[str, Any]]:
+    path = _default_map_path(aid)
     if not path:
         return []
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
+        return []
+    err = validate_map_for_account(data, aid)
+    if err:
+        print(f"   WARNING: vault map skipped — {err} ({path.name})")
         return []
     items = []
     for it in data.get("items") or []:
@@ -93,7 +112,9 @@ def load_items(aid: Optional[str] = None) -> List[Dict[str, Any]]:
                 }
                 for r in rows
             ]
-    return _items_from_file()
+        # Postgres on + empty vault for this account — do NOT fall back to Emma file
+        return []
+    return _items_from_file(aid)
 
 
 def replace_items(

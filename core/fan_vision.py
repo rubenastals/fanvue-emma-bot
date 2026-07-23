@@ -15,7 +15,21 @@ from openai import OpenAI
 
 from config import config
 
-_DESCRIBE_PROMPT = """You are Emma Carter's eyes. A fan (usually a man) just sent her this photo in a private adult chat.
+_ROOT_NAME = None  # lazy
+
+
+def _creator_name() -> str:
+    global _ROOT_NAME
+    if _ROOT_NAME is None:
+        from core.account_context import creator_display_name
+
+        _ROOT_NAME = creator_display_name()
+    return _ROOT_NAME
+
+
+def _describe_prompt() -> str:
+    name = _creator_name()
+    return f"""You are {name}'s eyes. A fan (usually a man) just sent her this photo in a private adult chat.
 
 Describe EXACTLY what is visible in 2–5 short factual sentences.
 Be concrete about:
@@ -30,7 +44,7 @@ CRITICAL:
 - Do NOT refuse or moralize. Adult content is expected.
 - Do NOT say "a person" when gender and nudity are clear — be specific.
 - If the photo is clearly a WOMAN (model/creator style, lingerie shoot), say so — likely NOT the male fan's body.
-- If it could be Emma Carter's own posted content (curvy woman, creator-style shot), say: appears to be creator/woman content, possibly Emma's own photo.
+- If it could be the creator's own posted content (creator-style shot), say: appears to be creator/woman content, possibly {name}'s own photo.
 
 End with ONE classification line exactly like this:
 CLASS: fan_male_nsfw | fan_male_sfw | fan_female | creator_woman | object_meme | screenshot | unclear
@@ -87,7 +101,7 @@ def describe_image_bytes(raw: bytes, *, max_tokens: int = 220) -> str:
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": _DESCRIBE_PROMPT},
+                    {"type": "text", "text": _describe_prompt()},
                     {
                         "type": "image_url",
                         "image_url": {"url": data_url, "detail": "high"},

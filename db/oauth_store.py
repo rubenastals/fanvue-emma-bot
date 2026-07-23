@@ -30,6 +30,11 @@ def _file_save(payload: Dict[str, Any]) -> None:
 def load_tokens(aid: Optional[str] = None) -> Optional[Dict[str, Any]]:
     aid = aid or account_id()
     if not use_postgres():
+        if aid != "emma":
+            alt = os.path.join(_ROOT, f".fanvue_tokens.{aid}.json")
+            if os.path.exists(alt):
+                with open(alt, encoding="utf-8") as f:
+                    return json.load(f)
         return _file_load()
     from db.pg import session_scope
 
@@ -44,9 +49,9 @@ def load_tokens(aid: Optional[str] = None) -> Optional[Dict[str, Any]]:
             {"aid": aid},
         ).mappings().first()
         if not row:
-            # Bootstrap from file once if present
+            # Bootstrap from file only for default Emma account (avoid Sophia ← Emma tokens)
             file_tok = _file_load()
-            if file_tok:
+            if file_tok and aid == "emma":
                 save_tokens(file_tok, aid=aid)
                 return file_tok
             return None
@@ -86,8 +91,13 @@ def save_tokens(tokens: Dict[str, Any], aid: Optional[str] = None) -> None:
             "token_type": tokens.get("token_type", "Bearer"),
         }
 
-    # Always keep file mirror for local tooling / emergency
-    _file_save(payload)
+    # Local mirror — per-account file for non-Emma (avoid last-writer overwrite)
+    if aid == "emma":
+        mirror = TOKEN_FILE
+    else:
+        mirror = os.path.join(_ROOT, f".fanvue_tokens.{aid}.json")
+    with open(mirror, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
 
     if not use_postgres():
         return
