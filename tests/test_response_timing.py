@@ -55,3 +55,18 @@ def test_timing_context_after_long_gap():
 def test_wake_context_line():
     plan = TimingPlan(mode="wake")
     assert "woke up" in timing_context_line(plan, None).lower()
+
+
+def test_heating_never_slow_pickup_gate():
+    """Hot threads must not get 20m+ response_gate (Dan/Sophia regression)."""
+    la = ZoneInfo("America/Los_Angeles")
+    afternoon = datetime(2026, 7, 23, 14, 5, tzinfo=la)
+    last = afternoon - timedelta(hours=2)
+    plan = plan_reply_timing(
+        last_emma_reply_at=last,
+        now=afternoon,
+        heat="heating",
+    )
+    assert plan.hold_until is None
+    assert plan.mode == "session"
+    assert plan.delay_seconds <= 60

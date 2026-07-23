@@ -98,10 +98,12 @@ def plan_reply_timing(
         if since < SESSION_WINDOW_MIN:
             return TimingPlan(delay_seconds=rng.uniform(6, 45), mode="session")
 
-    median, cap = _daypart_median(now.hour, account_id=aid)
+    # Hot thread: never park him behind a 15–30m "slow" gate — sell lives on momentum.
     if heat == "heating":
-        median *= 0.45
-    elif heat == "cooling":
+        return TimingPlan(delay_seconds=rng.uniform(8, 55), mode="session")
+
+    median, cap = _daypart_median(now.hour, account_id=aid)
+    if heat == "cooling":
         median *= 1.3
     delay = _heavy_tail(rng, median, cap)
     mode = "slow" if delay > 20 * 60 else "normal"
