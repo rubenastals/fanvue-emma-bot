@@ -63,15 +63,15 @@ def test_opportunistic_respects_cooldown_and_daily_cap():
         vn._enabled = orig  # type: ignore
 
 
-def test_fsm_commitment_still_bypasses_cooldown():
-    """Fan is owed a voice — send even if we just sent (debt path)."""
+def test_fsm_commitment_respects_daily_cap():
+    """Fan owed voice — still blocked at daily cap (Dan spam fix)."""
     decision = SimpleNamespace(mode="tease")
     mem = {
         "messages": 20,
         "open_commitment": {"type": "voice", "hits": 1},
-        "voice_notes_today": 5,
+        "voice_notes_today": 2,
         "voice_notes_day": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-        "last_voice_at": datetime.now(timezone.utc).isoformat(),
+        "last_voice_at": (datetime.now(timezone.utc) - timedelta(hours=10)).isoformat(),
     }
     orig = vn._enabled
     vn._enabled = lambda: True  # type: ignore
@@ -87,7 +87,37 @@ def test_fsm_commitment_still_bypasses_cooldown():
             apply_roll=False,
             history_turns=[],
         )
-        assert ok, why
-        assert "FSM open_voice" in why
+        assert not ok, why
+        assert "daily cap" in why
+    finally:
+        vn._enabled = orig  # type: ignore
+
+
+def test_pre_purchase_lifetime_cap_blocks_fsm():
+    decision = SimpleNamespace(mode="tease")
+    mem = {
+        "messages": 40,
+        "total_spent": 0,
+        "voice_notes_sent": 3,
+        "voice_notes_today": 0,
+        "voice_notes_day": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "open_commitment": {"type": "voice", "hits": 1},
+    }
+    orig = vn._enabled
+    vn._enabled = lambda: True  # type: ignore
+    try:
+        ok, why = vn.should_send(
+            fan_message="yeah",
+            mem=mem,
+            decision=decision,
+            pack_id="phase_pull",
+            unpaid=False,
+            media_sent_this_turn=False,
+            barged=False,
+            apply_roll=False,
+            history_turns=[],
+        )
+        assert not ok, why
+        assert "pre-purchase" in why
     finally:
         vn._enabled = orig  # type: ignore

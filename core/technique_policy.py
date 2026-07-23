@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from config import config
 from core import manipulation
 from core import technique_playbook as playbook
+from core.soft_decline import is_soft_decline
 
 # First N messages: romance / heat / ask-his-photo only — dark cards later.
 EARLY_ROMANCE_MAX_MSGS = 8
@@ -245,22 +246,7 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
         )
     )
     # Soft "not now" / clear no — stop unlock chase (not the same as haggling)
-    soft_decline = bool(
-        re.search(
-            r"(?i)\b("
-            r"no,?\s*sorry|not\s+now|maybe\s+later|another\s+moment|"
-            r"otro\s+momento|next\s+time|otro\s+d[ií]a|"
-            r"not\s+so\s+horny|don'?t\s+want\s+to\s+spend|"
-            r"spend\s+(my\s+)?money|no\s+thanks|no\s+gracias|"
-            r"maybe\s+in\s+another|don'?t\s+worry.*another"
-            r")\b",
-            low,
-        )
-        or re.fullmatch(
-            r"(?i)\s*(no|nope|nah|pass|not\s+now)\s*[.!,]?\s*(sorry)?\s*",
-            low,
-        )
-    )
+    soft_decline = is_soft_decline(low)
     # Asking what's IN the unpaid lock — tease/describe, not price fight
     ask_lock_tease = bool(
         re.search(
@@ -611,6 +597,11 @@ def choose_move(
             sig["msgs"] = int(mem.get("messages") or msgs or 0)
         elif msgs:
             sig["msgs"] = msgs
+        from core import fan_memory as _fm
+
+        sig["sell_paused"] = _fm.sell_pressure_paused(
+            mem, recent_techniques=list(exclude_names or [])
+        )
         # Sync reject ladder into signals
         if reject_count:
             sig["reject_step"] = max(int(sig.get("reject_step") or 0), int(reject_count))

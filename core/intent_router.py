@@ -11,6 +11,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from core import packs
+from core import fan_memory
+from core.soft_decline import is_broke_soft, is_price_pushback, is_soft_decline
 from core.turn_facts import TurnFacts
 from core.turn_policy import (
     MODE_HARD_SELL,
@@ -88,7 +90,7 @@ def build_facts(
         re.search(_FAN_PUSHBACK, low)
         or (re.search(_PRICE_ISSUE, low) and not re.search(_ACCEPT, low))
     )
-    broke_soft = bool(re.search(_BROKE_SOFT, low))
+    broke_soft = is_broke_soft(low)
     heavy_vent = bool(re.search(_HEAVY_VENT, low))
     heated = status in ("warm", "spender", "whale") or msgs >= 6
 
@@ -106,18 +108,7 @@ def build_facts(
             re.I,
         )
     )
-    price_pushback = bool(
-        re.search(
-            r"(?i)\b("
-            r"caro|car[ií]simo|expensive|too (much|expensive)|"
-            r"muy caro|no (me )?lo (pago|compro)|descuento|"
-            r"discount|cheaper|m[aá]s barato|no tengo (plata|dinero|money)|"
-            r"can't afford|cant afford|later|despu[eé]s|nah\b|"
-            r"not (gonna|going to) (pay|buy)|no voy a (pagar|comprar)"
-            r")\b",
-            fan_message or "",
-        )
-    )
+    price_pushback = is_price_pushback(low)
     recent_reject = bool(
         price_pushback
         or (last_reject and now - last_reject < timedelta(hours=2))
@@ -255,10 +246,12 @@ def _hard_route(
 
     # Unpaid lock — never stack a second. Pitch only if he's not friction/cooling.
     if facts.ppv_unpaid:
-        friction = bool(
+        friction = bool(fan_memory.sell_pressure_paused(mem))
+        friction = friction or bool(
             facts.pushback_billing
             or facts.broke_soft
             or facts.heavy_vent
+            or is_soft_decline(fan_message or "")
             or re.search(
                 r"(?i)\b("
                 r"spam|insist|pesad|mentir|enfad|cabre|molest|harta|"

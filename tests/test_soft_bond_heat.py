@@ -100,6 +100,7 @@ def test_choose_heat_on_prove_ask():
     assert move is not None
     assert move.name in {
         "HOT FLIRT",
+        "HEAT",
         "ASK HIS PHOTO",
         "LOVE BOMBING",
         "MICRO COMMITMENT",

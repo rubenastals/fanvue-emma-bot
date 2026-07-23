@@ -203,6 +203,10 @@ def pick_playbook_move(
 
     # 2) Unpaid lock / price objection — ladder (not eternal SELL LOCK chase)
     if unpaid or pid in ("ppv_unpaid", "price_objection"):
+        if sig.get("sell_paused") and not sig.get("buying"):
+            if sig.get("horny"):
+                return HEAT, "sell-cooldown-heat"
+            return BOND, "sell-cooldown-bond"
         # "how do you look in the photo?" → filthy describe, NEVER discount/soft-exit
         if sig.get("ask_lock_tease") and not sig.get("soft_decline"):
             return SELL_LOCK, "unpaid-describe-tease"

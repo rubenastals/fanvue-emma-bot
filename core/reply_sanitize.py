@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from config import config
 from core import fan_memory, language, scheme_guard
+from core.soft_decline import is_price_pushback
 from core.turn_policy import TurnDecision
 from core.reply_assemble import _usable_fan_name
 
@@ -614,9 +615,9 @@ _DISMISS_BROKE = re.compile(
     r")\b"
 )
 _HOLD_FRAME_FALLBACKS = (
-    "i hear you… still, that one's special and it's yours if you want me",
-    "i get it babe… i don't drop this for everyone though — still waiting on you",
-    "mm fair… that photo's still yours when you're ready for me",
+    "i hear you babe… that photo's still there when you want it",
+    "i get it… i don't drop this for everyone though — still waiting on you",
+    "mm fair… come back when you're ready for me",
 )
 
 _HEAT_FALLBACKS = (
@@ -627,6 +628,32 @@ _HEAT_FALLBACKS = (
     "don't just say it… prove it. send me something of YOU",
     "god that made me soft and horny… come closer",
 )
+
+# Love-bomb validation stamps (Dan loop: "only girl", "got me soft", "different from other guys")
+_LOVE_BOMB_LOOP = re.compile(
+    r"(?i)("
+    r"only\s+(girl|one)\b|"
+    r"only\s+girl\s+that\s+matters|"
+    r"something\s+about\s+the\s+way\s+you|"
+    r"got\s+me\s+soft|"
+    r"different\s+from\s+other\s+guys|"
+    r"luckiest\s+girl|"
+    r"feeling\s+soft\s+and\s+special|"
+    r"you'?re\s+my\s+favorite\s+person|"
+    r"only\s+one\s+i'?d\s+let"
+    r")"
+)
+
+
+def _love_bomb_in_history(history_turns: Optional[List[Dict[str, Any]]]) -> bool:
+    if not history_turns:
+        return False
+    for turn in history_turns[-10:]:
+        if (turn.get("role") or "") != "assistant":
+            continue
+        if _LOVE_BOMB_LOOP.search(str(turn.get("content") or "")):
+            return True
+    return False
 
 
 def _recent_abandonment_guilt(
@@ -1212,6 +1239,18 @@ def apply_post_draft(
             f"({before_sb[:56]!r} → {reply!r})"
         )
 
+    if _LOVE_BOMB_LOOP.search(reply or "") and _love_bomb_in_history(turns):
+        before_lb = reply
+        banned = {
+            _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
+        }
+        opts = [p for p in _HEAT_FALLBACKS if _norm_bubble(p) not in banned]
+        reply = random.choice(opts or list(_HEAT_FALLBACKS))
+        print(
+            "   🔥 love-bomb loop stamp — replaced "
+            f"({before_lb[:56]!r} → {reply!r})"
+        )
+
     # Retired sticky stamp + IRL/video commands (text chat only — confuses fans)
     if is_banned_reply_stamp(reply or ""):
         before_ir = reply
@@ -1339,13 +1378,7 @@ def apply_post_draft(
 
     if fan_uuid:
         fan_memory.set_last_mode(fan_uuid, decision.mode, fan_handle=fan_handle)
-        if re.search(
-            r"\b(too expensive|too much|caro|expensive|can'?t|no money|later|nah|pass|"
-            r"cheaper|discount|half|final offer|no,?\s*sorry|not\s+now|"
-            r"another\s+moment|not\s+so\s+horny|don'?t\s+want\s+to\s+spend|"
-            r"pelado|pelá|sin (plata|dinero|pasta)|no tengo (plata|dinero))\b",
-            fan_message.lower(),
-        ):
+        if is_price_pushback(fan_message):
             fan_memory.record_reject(fan_uuid, fan_handle=fan_handle)
             try:
                 from core import convo_log

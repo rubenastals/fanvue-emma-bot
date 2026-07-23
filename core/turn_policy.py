@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
+from core import fan_memory
+
 # Modes (least → most sales pressure)
 MODE_CHILL = "chill"
 MODE_RAPPORT = "rapport"
@@ -262,6 +264,15 @@ def decide_turn(
     free_ok = _free_tease_ok(mem, msgs=msgs, now=now)
 
     if pending_unpaid and not want_another and not buying:
+        if fan_memory.sell_pressure_paused(mem):
+            return TurnDecision(
+                mode=MODE_RAPPORT,
+                reason="unpaid lock but sell paused — bond/heat only",
+                max_bubbles=2,
+                allow_ppv_talk=False,
+                allow_price=False,
+                allow_free_tease=False,
+            )
         return TurnDecision(
             mode=MODE_TEASE,
             reason="unpaid PPV still open — push unlock, don't stack another",

@@ -11,7 +11,7 @@ import os
 import re
 import threading
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from db import fan_memory_store
 
@@ -1104,6 +1104,33 @@ def recent_techniques(fan_uuid: str, *, n: int = 4) -> List[str]:
     mem = get(fan_uuid) or {}
     recent = list(mem.get("recent_techniques") or [])
     return [str(x) for x in recent[-n:] if x]
+
+
+def sell_pressure_paused(
+    mem: Optional[dict],
+    *,
+    recent_techniques: Optional[Sequence[str]] = None,
+    hours: float = 6.0,
+) -> bool:
+    """
+    After soft decline / price push — no unlock nag for a few hours (zero spenders).
+  """
+    mem = mem or {}
+    if float(mem.get("total_spent") or 0) > 0:
+        return False
+    recent = [str(t).upper() for t in (recent_techniques or mem.get("recent_techniques") or []) if t]
+    if any("SOFT EXIT" in t for t in recent[-3:]):
+        return True
+    raw = mem.get("last_reject_at")
+    if not raw:
+        return False
+    try:
+        lr = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if lr.tzinfo is None:
+            lr = lr.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return False
+    return datetime.now(timezone.utc) - lr < timedelta(hours=hours)
 
 
 def set_prefer_spanish(fan_uuid: str, prefer: bool, fan_handle: str = "") -> None:
