@@ -265,7 +265,11 @@ def _hard_route(
 
     # Unpaid lock — never stack a second. Pitch only if he's not friction/cooling.
     if facts.ppv_unpaid:
-        friction = bool(fan_memory.sell_pressure_paused(mem))
+        from core.chat_heat import explicit_horny_now
+
+        friction = bool(fan_memory.sell_pressure_paused(mem)) and not explicit_horny_now(
+            fan_message or ""
+        )
         friction = friction or bool(
             facts.pushback_billing
             or facts.broke_soft

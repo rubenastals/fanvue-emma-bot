@@ -80,16 +80,52 @@ def test_choose_move_cant_right_now_soft_exit():
     assert m.name == "SOFT EXIT"
 
 
-def test_sell_paused_blocks_want_sell_path():
-    """Poller must not attach when TURN says SELL WINDOW CLOSED."""
+def test_sell_paused_blocks_want_sell_on_cold_return():
+    """Poller keeps cooldown on cold return after bills pushback."""
     mem = _mem(
         last_reject_at=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
     )
     assert fan_memory.sell_pressure_paused(mem)
+    from core.chat_heat import explicit_horny_now, heat_close_eligible
+
+    text = "hey"
     want_sell = True
     if fan_memory.sell_pressure_paused(mem):
-        want_sell = False
+        if not explicit_horny_now(text) and not heat_close_eligible(
+            mem, text, sell_paused=True
+        ):
+            want_sell = False
     assert want_sell is False
+
+
+def test_sell_paused_bypass_on_explicit_horny_return():
+    mem = _mem(
+        last_reject_at=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
+    )
+    from core.chat_heat import explicit_horny_now, heat_close_eligible
+
+    text = "fuck baby I need to see your wet pussy now"
+    want_sell = False
+    if fan_memory.sell_pressure_paused(mem):
+        if explicit_horny_now(text) or heat_close_eligible(
+            mem, text, sell_paused=True
+        ):
+            want_sell = True
+    assert want_sell is True
+
+
+def test_unpaid_explicit_horny_routes_ppv_unpaid_not_pull():
+    """After bills pause, explicit horny return → unlock nudge pack, not phase_pull."""
+    mem = _mem(
+        last_reject_at=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
+    )
+    r = route(
+        mem,
+        "fuck baby spread your legs for me",
+        delivery_truth={"ppv_unpaid": True},
+    )
+    assert r.pack_id == "ppv_unpaid"
+    assert r.decision.allow_ppv_talk is True
 
 
 def test_sell_paused_injects_sell_window_turn_line(monkeypatch):

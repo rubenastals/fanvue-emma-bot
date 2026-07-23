@@ -143,6 +143,37 @@ def heat_label(score: int) -> str:
     return "COLD"
 
 
+def explicit_horny_now(fan_message: str) -> bool:
+    """Graphic horny content THIS message (not just warm banter)."""
+    from core.turn_policy import _HORNY
+
+    return bool(re.search(_HORNY, (fan_message or "").lower()))
+
+
+def _thread_horny(
+    fan_message: str,
+    history_turns: Optional[List[dict]] = None,
+    *,
+    facts: Any = None,
+) -> bool:
+    from core.turn_policy import _HORNY
+
+    horny = bool(getattr(facts, "horny", False) if facts is not None else False)
+    if not horny:
+        horny = explicit_horny_now(fan_message or "")
+    if not horny:
+        horny = bool(_HEAT_WORDS.search(fan_message or ""))
+    if not horny and history_turns:
+        for turn in history_turns[-6:]:
+            if turn.get("role") != "user":
+                continue
+            body = (turn.get("content") or "").strip()
+            if re.search(_HORNY, body.lower()) or _HEAT_WORDS.search(body):
+                horny = True
+                break
+    return horny
+
+
 def heat_close_eligible(
     mem: dict,
     fan_message: str,
@@ -157,7 +188,7 @@ def heat_close_eligible(
 
     Code may attach; prompt must tease the lock after matching his RP.
     """
-    if sell_paused or unpaid:
+    if unpaid:
         return False
     mem = mem or {}
     if mem.get("fan_boundary_active") or mem.get("photo_refusal_active"):
@@ -167,33 +198,34 @@ def heat_close_eligible(
 
         if is_fan_boundary(fan_message or ""):
             return False
-        from core import fan_memory
-
-        if fan_memory.sell_pressure_paused(mem):
-            return False
     except Exception:
         pass
+
+    # After soft decline: only resume sell on a clearly horny message this turn.
+    if sell_paused and not explicit_horny_now(fan_message or ""):
+        return False
 
     msgs = int(mem.get("messages") or 0)
     if msgs < 6:
         return False
 
-    from core.turn_policy import _HORNY
+    return _thread_horny(fan_message, history_turns, facts=facts)
 
-    horny = bool(getattr(facts, "horny", False) if facts is not None else False)
-    if not horny:
-        horny = bool(re.search(_HORNY, (fan_message or "").lower()))
-    if not horny:
-        horny = bool(_HEAT_WORDS.search(fan_message or ""))
-    if not horny and history_turns:
-        for turn in history_turns[-6:]:
-            if turn.get("role") != "user":
-                continue
-            body = (turn.get("content") or "").strip()
-            if re.search(_HORNY, body.lower()) or _HEAT_WORDS.search(body):
-                horny = True
-                break
-    return horny
+
+def hot_unpaid_nudge_eligible(
+    mem: dict,
+    fan_message: str,
+    *,
+    facts: Any = None,
+    history_turns: Optional[List[dict]] = None,
+    sell_paused: bool = False,
+) -> bool:
+    """Unpaid lock exists but thread is hot — filthy unlock nudge, not bond-only."""
+    if sell_paused and not explicit_horny_now(fan_message or ""):
+        return False
+    if int((mem or {}).get("messages") or 0) < 6:
+        return False
+    return _thread_horny(fan_message, history_turns, facts=facts)
 
 
 def active_window_minutes(score: int) -> int:

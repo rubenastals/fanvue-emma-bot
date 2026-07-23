@@ -465,6 +465,30 @@ def choose_offer(
             1.0,
             "code",
         )
+
+    from core import fan_memory as _fan_memory
+    from core.chat_heat import _thread_horny, heat_close_eligible
+
+    unpaid_now = bool(mem.get("last_ppv_pending")) or bool(
+        getattr(facts, "ppv_unpaid", False) if facts is not None else False
+    )
+    sell_paused = _fan_memory.sell_pressure_paused(mem)
+    if heat_close_eligible(
+        mem,
+        fan_message,
+        facts=facts,
+        history_turns=history_turns,
+        unpaid=unpaid_now,
+        sell_paused=sell_paused,
+    ):
+        return OfferChoice(
+            True,
+            candidates[0],
+            "heat-close: explicit RP → attach cheap PPV",
+            0.88,
+            "code",
+        )
+
     # $0 fans: no AI sell without ask/horny — rapport close only when warm enough
     if _zero_spender(mem) and not direct and not max_dirty:
         from core.turn_policy import _HORNY
@@ -485,13 +509,15 @@ def choose_offer(
         # Free + depth + warm signal — avoids pushy sell on shy short chats
         rapport_close = msgs_n >= 12 and frees_n >= 1 and warm_signal
         if not horny_now and not rapport_close and not deep_heat:
-            return OfferChoice(
-                False,
-                None,
-                "zero-spender needs clear ask/horny this turn",
-                1.0,
-                "code",
-            )
+            # Hot thread may still close via heat_close above; this gate is AI-only path.
+            if not _thread_horny(fan_message, history_turns, facts=facts):
+                return OfferChoice(
+                    False,
+                    None,
+                    "zero-spender needs clear ask/horny this turn",
+                    1.0,
+                    "code",
+                )
     # Right after a lock vanished — reconnect first. No new PPV for ~10 min,
     # even on "enséñamela" (that was the extreme that felt spammy).
     # Only exception: he explicitly wants the dirtiest shot again.
@@ -501,26 +527,6 @@ def choose_offer(
             None,
             "lock just expired — reconnect before a new PPV",
             1.0,
-            "code",
-        )
-
-    from core.chat_heat import heat_close_eligible
-
-    unpaid_now = bool(mem.get("last_ppv_pending")) or bool(
-        getattr(facts, "ppv_unpaid", False) if facts is not None else False
-    )
-    if heat_close_eligible(
-        mem,
-        fan_message,
-        facts=facts,
-        history_turns=history_turns,
-        unpaid=unpaid_now,
-    ):
-        return OfferChoice(
-            True,
-            candidates[0],
-            "heat-close: explicit RP → attach cheap PPV",
-            0.88,
             "code",
         )
 

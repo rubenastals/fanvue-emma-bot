@@ -734,13 +734,11 @@ def assemble_emma_turn(
     unpaid_gate = bool(delivery_truth and delivery_truth.get("ppv_unpaid"))
     status_active = bool(ppv_status and ppv_status.get("active"))
     sell_paused = fan_memory.sell_pressure_paused(mem)
-    if sell_paused:
-        turn_blocks.append(
-            "SELL WINDOW: CLOSED — he pushed back on price or needs space. "
-            "Zero product talk, no lock hints. Be warm; react to what he said."
-        )
-
-    from core.chat_heat import heat_close_eligible
+    from core.chat_heat import (
+        explicit_horny_now,
+        heat_close_eligible,
+        hot_unpaid_nudge_eligible,
+    )
 
     heat_close_turn = heat_close_eligible(
         mem,
@@ -750,7 +748,23 @@ def assemble_emma_turn(
         unpaid=bool(unpaid_gate or status_active),
         sell_paused=sell_paused,
     )
-    if heat_close_turn and not voice_will_send and not sell_paused:
+    hot_unpaid_nudge = hot_unpaid_nudge_eligible(
+        mem,
+        fan_message or "",
+        facts=route_result.facts if route_result else None,
+        history_turns=turns,
+        sell_paused=sell_paused,
+    )
+    if sell_paused and not explicit_horny_now(fan_message or "") and not (
+        heat_close_turn or hot_unpaid_nudge
+    ):
+        turn_blocks.append(
+            "SELL WINDOW: CLOSED — he pushed back on price or needs space. "
+            "Zero product talk, no lock hints. Be warm; react to what he said."
+        )
+    if heat_close_turn and not voice_will_send and (
+        not sell_paused or explicit_horny_now(fan_message or "")
+    ):
         if offer and float(offer.get("price") or 0) > 0:
             turn_blocks.append(
                 "HEAT CLOSE THIS TURN: he's explicit in this RP — match it filthy "
@@ -762,6 +776,16 @@ def assemble_emma_turn(
                 "HEAT CLOSE THIS TURN: thread is burning — dirty reaction to his "
                 "fantasy, then pivot to showing him something nasty. No empty gasp."
             )
+    if (
+        hot_unpaid_nudge
+        and (unpaid_gate or status_active)
+        and not voice_will_send
+    ):
+        turn_blocks.append(
+            "HOT UNPAID NUDGE: thread is burning — match his RP filthy (one full beat), "
+            "then tease unlocking the EXISTING lock. No new PPV; no empty 'fuck baby…'. "
+            "Girlfriend slutty energy; one soft unlock hint at the end."
+        )
 
     # Fan asking what's IN the unpaid lock — filthy describe, not price frame
     if (
@@ -785,12 +809,13 @@ def assemble_emma_turn(
         )
     # Friction path: unpaid exists but router chose reconnect — no unlock nag
     soft_unpaid = bool(
-        sell_paused
+        (sell_paused and not hot_unpaid_nudge)
         or (
             (unpaid_gate or status_active)
             and pack_id == "phase_pull"
             and route_result
             and (route_result.active or {}).get("ppv_unpaid")
+            and not hot_unpaid_nudge
         )
     )
     # One LOCK STATUS block only — skip when voice note attaches (fan wants audio, not lock push)
@@ -1059,7 +1084,9 @@ def assemble_emma_turn(
             note = _cf.minimal_author_note(
                 creator=_creator,
                 extra=sell_extra,
-                heat_close=bool(heat_close_turn and not _paid_offer_now),
+                heat_close=bool(
+                    (heat_close_turn or hot_unpaid_nudge) and not _paid_offer_now
+                ),
                 paid_attach=_paid_offer_now,
             )
         else:
