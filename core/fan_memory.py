@@ -1264,9 +1264,11 @@ def thaw_boundary_after_warmth(
             return False
         mem["fan_boundary_active"] = False
         mem["fan_boundary_reason"] = ""
+        mem["photo_refusal_active"] = False
+        mem["photo_refusal_reason"] = ""
+        mem["never_ask_fan_pic"] = True
         mem["reengage_paused_until_fan_writes"] = False
         mem["reengage_pause_reason"] = ""
-        # photo_refusal_active stays True — no ask-pic pressure later
         _put(fan_uuid, mem)
         return True
 

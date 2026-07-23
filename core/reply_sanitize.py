@@ -1311,6 +1311,7 @@ def apply_post_draft(
 
     _pb_mem: dict = fan_memory.get(fan_uuid) or {} if fan_uuid else {}
     _reconciling = boundary_reconciling(fan_message or "", _pb_mem)
+    _creative = bool(getattr(config, "CREATIVE_FIRST", True))
     _pushback_mode = thread_in_pushback_mode(
         fan_message or "", turns, _pb_mem
     )
@@ -1319,7 +1320,7 @@ def apply_post_draft(
     ) and not _reconciling
 
     # Fan JUST messaged — never abandonment / "guys leave" / silence guilt
-    if _ABANDONMENT_GUILT.search(reply or ""):
+    if not _creative and _ABANDONMENT_GUILT.search(reply or ""):
         before_sg = reply
         banned = {
             _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
@@ -1330,8 +1331,10 @@ def apply_post_draft(
             "   🔇 abandonment-guilt on active turn — replaced "
             f"({before_sg[:56]!r} → {reply!r})"
         )
-    elif _recent_abandonment_guilt(turns) and scheme_guard.too_similar_to_last_assistant(
-        reply, turns
+    elif (
+        not _creative
+        and _recent_abandonment_guilt(turns)
+        and scheme_guard.too_similar_to_last_assistant(reply, turns)
     ):
         banned = {
             _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
@@ -1341,7 +1344,7 @@ def apply_post_draft(
         print("   🔇 abandonment-guilt loop (near-duplicate) — fresh engage line")
 
     # Soft therapist stamp kills heat — replace with dirty-sweet engage
-    if _SOFT_BOND_STAMP.search(reply or "") and not _pushback_mode:
+    if not _creative and _SOFT_BOND_STAMP.search(reply or "") and not _pushback_mode:
         before_sb = reply
         banned = {
             _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
@@ -1353,7 +1356,7 @@ def apply_post_draft(
             f"({before_sb[:56]!r} → {reply!r})"
         )
 
-    if _LOVE_BOMB_LOOP.search(reply or "") and _early_bond_phase(fan_uuid, turns):
+    if not _creative and _LOVE_BOMB_LOOP.search(reply or "") and _early_bond_phase(fan_uuid, turns):
         before_lb = reply
         banned = {
             _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
@@ -1365,7 +1368,8 @@ def apply_post_draft(
             f"({before_lb[:56]!r} → {reply!r})"
         )
     elif (
-        _LOVE_BOMB_LOOP.search(reply or "")
+        not _creative
+        and _LOVE_BOMB_LOOP.search(reply or "")
         and _love_bomb_in_history(turns)
         and not _pushback_mode
     ):
@@ -1380,7 +1384,8 @@ def apply_post_draft(
             f"({before_lb[:56]!r} → {reply!r})"
         )
     elif (
-        _LOVE_BOMB_LOOP.search(reply or "")
+        not _creative
+        and _LOVE_BOMB_LOOP.search(reply or "")
         and _love_bomb_count(turns) >= 2
         and not _pushback_mode
     ):
@@ -1395,7 +1400,7 @@ def apply_post_draft(
             f"({before_lb[:56]!r} → {reply!r})"
         )
 
-    if _assistant_duplicate_in_history(reply or "", turns):
+    if not _creative and _assistant_duplicate_in_history(reply or "", turns):
         before_dup = reply
         reply = _lang_fallback(want_spanish=want_spanish, history_turns=turns)
         print(
@@ -1448,11 +1453,15 @@ def apply_post_draft(
     if _boundary_mode:
         _ask_pic = re.search(
             r"(?i)\b(send\s+(me\s+)?(a\s+)?(pic|photo|selfie)|your\s+(pic|photo|face)|"
-            r"see\s+who|wanna\s+see|let\s+me\s+see|secrets?|shy\s+about|offended|"
-            r"\$\s*\d|open\s+this\s+photo|unlock)\b",
+            r"see\s+who|wanna\s+see|let\s+me\s+see|open\s+this\s+photo|unlock|\$\s*\d)\b",
             reply or "",
         )
-        if _ask_pic or is_sexual_heat_reply(reply or ""):
+        _heat_strip = (
+            not _creative
+            and not _reconciling
+            and is_sexual_heat_reply(reply or "")
+        )
+        if _ask_pic or _heat_strip:
             before_pr = reply
             banned = {
                 _norm_bubble(str(t.get("content") or ""))
@@ -1719,9 +1728,13 @@ def apply_post_draft(
         reply = scheme_guard.fallback_blame_own_it(want_spanish=want_spanish)
         print("   👻 blame-after-ghost → own-it fallback (no LLM)")
 
-    # Soft enforce ACTIVE MOVE: one LLM rewrite if draft ignored the playbook beat.
-    # Style rewrites (rival-fan / Ay openings) removed — Group A; CORE guides tone only.
-    if tech_name and tech_name.upper() != "SOFT EXIT" and not _reconciling:
+    # Soft enforce ACTIVE MOVE — disabled in creative-first (was homogenizing replies)
+    if (
+        not _creative
+        and tech_name
+        and tech_name.upper() != "SOFT EXIT"
+        and not _reconciling
+    ):
         from core import technique_policy as _tp
         from core import technique_playbook as _pb
 
@@ -1820,12 +1833,12 @@ def apply_post_draft(
             print("   🎙️ stripped residual voice stage crumbs")
 
     # Continuity: never resend the same short stamp / near-duplicate bubble
-    if is_banned_reply_stamp(reply or ""):
+    if not _creative and is_banned_reply_stamp(reply or ""):
         reply = coerce_sendable_reply(
             reply, want_spanish=want_spanish, history_turns=turns
         )
         print("   continuity: banned stamp → safe engage line")
-    elif scheme_guard.continuity_loop(reply, turns):
+    elif not _creative and scheme_guard.continuity_loop(reply, turns):
         if scheme_guard.too_similar_to_last_assistant(
             reply, turns
         ) or (
@@ -1842,7 +1855,7 @@ def apply_post_draft(
             print("   continuity: loop/repeat — noted (no LLM)")
 
     # Kill the retired sticky EN stamp if it ever reappears from history/model
-    if is_banned_reply_stamp(reply or ""):
+    if not _creative and is_banned_reply_stamp(reply or ""):
         reply = coerce_sendable_reply(
             reply, want_spanish=want_spanish, history_turns=turns
         )
@@ -1872,7 +1885,8 @@ def apply_post_draft(
 
     from core.reply_supervisor import supervise_reply
 
-    reply = supervise_reply(reply, assembled, call=call, budget=rw)
+    if not _creative:
+        reply = supervise_reply(reply, assembled, call=call, budget=rw)
 
     if rw.used:
         print(f"   rewrite budget: used {rw.used}/{rw.max_extra} ({', '.join(rw.log)})")

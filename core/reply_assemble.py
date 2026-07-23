@@ -577,13 +577,16 @@ def assemble_emma_turn(
             )
         if action_line:
             turn_blocks.append(action_line)
-        turn_blocks.append(
-            "HUMAN RHYTHM THIS TURN:\n"
-            "- Default: ONE WhatsApp bubble (~60–90 chars). Two only if he wrote a lot.\n"
-            "- React to his LAST line first — one beat, not an essay or list.\n"
-            "- No paragraphs, no customer-support tone, no stacked questions.\n"
-            "- Second bubble is rare; never plan 3+ messages."
-        )
+        from core import creative_first as _cf
+
+        if not _cf.enabled():
+            turn_blocks.append(
+                "HUMAN RHYTHM THIS TURN:\n"
+                "- Default: ONE WhatsApp bubble (~60–90 chars). Two only if he wrote a lot.\n"
+                "- React to his LAST line first — one beat, not an essay or list.\n"
+                "- No paragraphs, no customer-support tone, no stacked questions.\n"
+                "- Second bubble is rare; never plan 3+ messages."
+            )
         # Soft unpaid reconnect (friction) — no FOMO / guilt stack
         soft_unpaid = bool(
             (bool(delivery_truth and delivery_truth.get("ppv_unpaid"))
@@ -621,7 +624,7 @@ def assemble_emma_turn(
                 f"   move: {move.name} fam={move.family_id or '-'} "
                 f"why={move.why} (pack={pack_id})"
             )
-        if recent_emojis:
+        if recent_emojis and not _cf.enabled():
             turn_blocks.append(
                 f"EMOJI BAN — you used these recently: {recent_emojis}. "
                 "Do NOT repeat these combos. Pick something different or use no emoji."

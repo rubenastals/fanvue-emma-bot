@@ -555,7 +555,7 @@ def _handle_fan_chat_body(
                 fan_uuid, fan_handle=fan_handle
             )
             if fan_memory.thaw_boundary_after_warmth(
-                fan_uuid, fan_handle=fan_handle, min_streak=3
+                fan_uuid, fan_handle=fan_handle, min_streak=2
             ):
                 print(f"   🌡 boundary thaw @{fan_handle} after {streak} warm msgs")
                 mem = fan_memory.get(fan_uuid) or mem
@@ -1864,6 +1864,8 @@ def main():
     print(
         f"   brain: REPLY_V2={int(bool(_cfg.REPLY_V2))} "
         f"SIMPLE_PROMPT={int(bool(_cfg.SIMPLE_PROMPT))} "
+        f"CREATIVE_FIRST={int(bool(_cfg.CREATIVE_FIRST))} "
+        f"SUPERVISOR={int(bool(_cfg.REPLY_SUPERVISOR))} "
         f"LEAN_CREATIVE={int(bool(_cfg.LEAN_CREATIVE))} "
         f"PHASE_ANALYST={int(bool(_cfg.PHASE_ANALYST))} "
         f"| prompt={PROMPT_VERSION} core_chars={len(_core)} account={aid}"

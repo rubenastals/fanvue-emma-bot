@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from config import config
+from core import creative_first
 from core import manipulation
 from core import technique_playbook as playbook
 from core.fan_pushback import (
@@ -647,6 +648,13 @@ def choose_move(
         if reject_count:
             sig["reject_step"] = max(int(sig.get("reject_step") or 0), int(reject_count))
         recent = list(exclude_names or [])
+        if creative_first.skip_active_move(
+            pack_id=eff,
+            unpaid=bool(unpaid or eff == "ppv_unpaid"),
+            fan_pushback=bool(sig.get("fan_pushback")),
+        ):
+            print("   creative-first: no ACTIVE MOVE — persona + thread beat only")
+            return None
         move, why = playbook.pick_playbook_move(
             pack_id=eff,
             sig=sig,

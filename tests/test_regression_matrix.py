@@ -63,7 +63,8 @@ def test_production_live_flags():
     assert config.REPLY_V2 is False
     assert config.INJECT_LESSONS is False
     assert config.PHASE_ANALYST is False
-    assert int(getattr(config, "MAX_CREATIVE_REWRITES", 1)) == 1
+    assert int(getattr(config, "MAX_CREATIVE_REWRITES", 0)) == 0
+    assert config.CREATIVE_FIRST is True
     # Do NOT blindly inflate history (Copilot anti-pattern)
     assert int(config.HISTORY_MAX_MESSAGES) <= 64
     assert int(config.HISTORY_HOURS) <= 72

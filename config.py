@@ -86,7 +86,9 @@ class Config:
     REPLY_SOFT_MAX_CHARS = int(os.getenv("REPLY_SOFT_MAX_CHARS", "120"))
     # After the creative draft: at most this many LLM rewrites (lang/length/grammar).
     # Hard lies (delivery/lock/price/bluff/ghost) never spend this — strip/fallback only.
-    MAX_CREATIVE_REWRITES = int(os.getenv("MAX_CREATIVE_REWRITES", "1"))
+    MAX_CREATIVE_REWRITES = int(os.getenv("MAX_CREATIVE_REWRITES", "0"))
+    # Creative-first: persona + thread lead; code blocks hard lies only
+    CREATIVE_FIRST = os.getenv("CREATIVE_FIRST", "1") == "1"
 
     # Chat history fed to DeepSeek (not the whole inbox — recent window only).
     # Too much history → model imitates old bland turns and loses voice consistency.
@@ -133,8 +135,8 @@ class Config:
     # Hourly DeepSeek review of last-hour turns only (does not inject into live prompt)
     HOUR_REVIEW_ENABLED = os.getenv("HOUR_REVIEW_ENABLED", "1") == "1"
     HOUR_REVIEW_MINUTES = int(os.getenv("HOUR_REVIEW_MINUTES", "60"))
-    # Temporary pre-send LLM supervisor (humanity gate — not scheme/lock rules)
-    REPLY_SUPERVISOR = os.getenv("REPLY_SUPERVISOR", "1") == "1"
+    # Pre-send LLM supervisor — OFF by default (was replacing drafts with stamps)
+    REPLY_SUPERVISOR = os.getenv("REPLY_SUPERVISOR", "0") == "1"
     REPLY_SUPERVISOR_MODEL = os.getenv("REPLY_SUPERVISOR_MODEL", "") or None
     # Coalesce a burst of fan messages: wait for him to finish typing, then
     # answer the whole batch as ONE turn (better analysis, one reply).
