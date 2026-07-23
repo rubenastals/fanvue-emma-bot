@@ -464,13 +464,11 @@ def choose_offer(
 
     from core.sell_gate import chill_turn, should_attach_ppv
 
-    if chill_turn(
-        mem, fan_message, facts=facts, history_turns=history_turns
-    ):
+    if chill_turn(mem, fan_message, facts=facts, history_turns=history_turns):
         return OfferChoice(
             False,
             None,
-            "chill-turn: no attach this beat",
+            "heavy vent: comfort first",
             1.0,
             "code",
         )

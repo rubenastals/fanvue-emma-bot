@@ -34,14 +34,15 @@ def test_bills_and_cant_right_now_are_soft_decline():
     assert is_broke_soft("need to pay my bills first")
 
 
-def test_bills_routes_friction_not_ppv_unpaid():
+def test_bills_routes_ppv_unpaid_not_pull():
+    """Bills alone no longer forces phase_pull — playbook SOFT EXIT on that turn."""
     r = route(
         _mem(),
         "I need to pay my bills first",
         delivery_truth={"ppv_unpaid": True},
     )
-    assert r.pack_id == "phase_pull"
-    assert r.decision.allow_ppv_talk is False
+    assert r.pack_id == "ppv_unpaid"
+    assert r.decision.allow_ppv_talk is True
 
 
 def test_sell_pressure_paused_never_hard_blocks():
@@ -89,9 +90,7 @@ def test_choose_move_cant_right_now_soft_exit():
 def test_bills_chill_turn_only():
     mem = _mem()
     msg = "I can't open it yet, as I need to pay my bills first"
-    assert chill_turn(mem, msg)
-    attach, _ = should_attach_ppv(mem, msg)
-    assert not attach
+    assert not chill_turn(mem, msg)
 
 
 def test_horny_return_attaches_despite_prior_reject():

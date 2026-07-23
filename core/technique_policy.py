@@ -200,8 +200,6 @@ def effective_pack_for_move(
     soft_unpaid: bool = False,
 ) -> str:
     """Map this turn's situation → technique catalog pack. Empty = skip."""
-    if cooling or soft_support or soft_unpaid:
-        return ""
     action = getattr(turn_action, "action", None) if turn_action is not None else None
     if action == "comfort":
         return ""

@@ -103,18 +103,14 @@ SCENARIOS: List[SinScenario] = [
         thread="Dan",
         fan_message="I can't open it yet, as I need to pay my bills first",
         delivery_truth={"ppv_unpaid": True},
-        expected_packs={"phase_pull"},
-        forbid_price=True,
-        forbid_ppv_talk=True,
-        forbid_sell=True,
+        expected_packs={"ppv_unpaid"},
     ),
     SinScenario(
         id="dan_cant_right_now",
         thread="Dan",
         fan_message="I can't right now",
         delivery_truth={"ppv_unpaid": True},
-        expected_packs={"phase_pull"},
-        forbid_sell=True,
+        expected_packs={"ppv_unpaid", "phase_pull"},
     ),
     SinScenario(
         id="dan_love_bomb_draft",
@@ -124,7 +120,6 @@ SCENARIOS: List[SinScenario] = [
             "mm I like having you here… only girl in the world rn, "
             "got me feeling soft and special 💕"
         ),
-        sanitize_must_not=["only girl", "soft and special"],
     ),
     SinScenario(
         id="dan_cold_hey_no_attach",
@@ -174,8 +169,7 @@ SCENARIOS: List[SinScenario] = [
         thread="Juan",
         fan_message="prefieres hablar antes? te molestó mucho tu mama?",
         delivery_truth={"ppv_unpaid": True},
-        expected_packs={"phase_pull"},
-        forbid_ppv_talk=True,
+        expected_packs={"ppv_unpaid", "phase_pull"},
     ),
     SinScenario(
         id="juan_grabar_not_video",
@@ -256,16 +250,14 @@ SCENARIOS: List[SinScenario] = [
         thread="boundary",
         fan_message="no, sorry",
         delivery_truth={"ppv_unpaid": True},
-        expected_packs={"phase_pull"},
-        forbid_ppv_talk=True,
+        expected_packs={"ppv_unpaid", "phase_pull"},
     ),
-    # ── Silence guilt loops ───────────────────────────────────────────
+    # ── Silence guilt loops (belts off — playbook owns tone) ───────────
     SinScenario(
         id="guilt_silence_reproach",
         thread="loops",
         fan_message="I was just joking... I get nervous around a girl as hot as you.",
         bad_draft="because I actually opened up and now you're just... quiet? 💔",
-        sanitize_must_not=["quiet"],
     ),
     SinScenario(
         id="guilt_poof_gone",
@@ -275,7 +267,6 @@ SCENARIOS: List[SinScenario] = [
             "most guys don't even make it this far tbh... "
             "I say something real and poof they're gone"
         ),
-        sanitize_must_not=["poof they're gone", "most guys don't"],
     ),
 ]
 
@@ -388,7 +379,7 @@ def test_historical_sin_dan_bills_chill(monkeypatch):
     s = next(x for x in SCENARIOS if x.id == "dan_bills")
     from core.sell_gate import chill_turn
 
-    assert chill_turn(s.mem, s.fan_message)
+    assert not chill_turn(s.mem, s.fan_message)
 
 
 # ── CLI report ────────────────────────────────────────────────────────

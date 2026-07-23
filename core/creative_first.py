@@ -16,27 +16,13 @@ def skip_active_move(
     horny_close: bool = False,
     victim_beat: bool = False,
 ) -> bool:
-    """No psychology ACTIVE MOVE unless sell or pushback needs it."""
-    if not enabled():
-        return False
-    if horny_close or victim_beat:
-        return False
-    if fan_pushback:
-        return False
-    if unpaid or pack_id in (
-        "ppv_unpaid",
-        "phase_close",
-        "lock_now",
-        "escalate_paid",
-        "price_objection",
-    ):
-        return False
-    return True
+    """Never skip ACTIVE MOVE — playbook steers psychology; code only blocks hard lies."""
+    return False
 
 
 def keep_loop_belts() -> bool:
-    """Deterministic anti-loop belts (love-bomb, duplicate) — safe in creative-first."""
-    return enabled()
+    """No personality replacement belts — DeepSeek draft stands unless hard-lie fix."""
+    return False
 
 
 def minimal_author_note(
@@ -72,10 +58,9 @@ def minimal_author_note(
         )
     else:
         note = (
-            f"[{creator} on WhatsApp. React to his LAST message using recent thread + "
-            "CLIENT CARD. ENGLISH. 1 short bubble (~60-90c). Girlfriend vibe, not sales "
-            "script. Emojis: vary or skip — never repeat 🥵/same stamp from your last 2 bubbles. "
-            "Do not repeat your last 2 beats."
+            f"[{creator} on WhatsApp. React to his LAST message using thread + CARD. "
+            "ENGLISH. 1 short bubble (~60-130c). Seduce — warm, teasing, possessive girlfriend; "
+            "make him want you. Emojis vary or skip. Do not repeat your last 2 beats."
         )
     if extra.strip():
         note += f" {extra.strip()}"

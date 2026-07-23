@@ -630,13 +630,6 @@ def assemble_emma_turn(
             unpaid=_unpaid_early,
             fan_uuid=fan_uuid or "",
         )
-        soft_unpaid = bool(
-            _sell_gate.chill
-            and not _sell_gate.nudge_unpaid
-            and pack_id == "phase_pull"
-            and route_result
-            and (route_result.active or {}).get("ppv_unpaid")
-        )
         exclude_techs = (
             fan_memory.recent_techniques(fan_uuid, n=4) if fan_uuid else []
         )
@@ -646,14 +639,14 @@ def assemble_emma_turn(
             msgs=msgs_n,
             reject_count=objection_step,
             no_lock=no_lock,
-            soft_support=soft_support,
+            soft_support=False,
             ban_withdrawal=ban_withdrawal,
             ban_rival_fan=ban_rival,
             exclude_names=exclude_techs,
             turn_action=turn_action,
             unpaid=_unpaid_early,
-            cooling=cooling,
-            soft_unpaid=soft_unpaid,
+            cooling=False,
+            soft_unpaid=False,
             mem=mem,
             fan_message=fan_message or "",
             victim_beat=_sell_gate.victim_beat,
@@ -677,21 +670,6 @@ def assemble_emma_turn(
         beat = scheme_guard.thread_beat_block(turns, mem)
         if beat:
             turn_blocks.append(beat)
-        _early_unpaid = bool(
-            (delivery_truth and delivery_truth.get("ppv_unpaid"))
-            or (ppv_status and ppv_status.get("active"))
-        )
-        if msgs_n < 8 and not _early_unpaid:
-            turn_blocks.append(
-                "EARLY ROMANCE THIS TURN (first ~8 messages — strategy law):\n"
-                "- Goal: make him fall for you — warm, hot, chosen, almost-boyfriend.\n"
-                "- DO: compliments, dirty-sweet flirt, ask about him, ASK for HIS selfie/pic, "
-                "mirror his energy, build heat.\n"
-                "- DON'T: guilt, abandonment ('guys leave / poof they're gone'), rival jealousy, "
-                "fake emergency, ego challenges, pressure-sell.\n"
-                "- Those darker cards come LATER when he's hooked. Right now you seduce.\n"
-                "- English only. One short WhatsApp bubble."
-            )
         if pack_id == "phase_hook" and msgs_n <= 2:
             turn_blocks.append(
                 "WELCOME THIS TURN (first messages):\n"
@@ -764,11 +742,6 @@ def assemble_emma_turn(
     victim_beat = gate.victim_beat
     chill = gate.chill
 
-    if chill and not hot_unpaid_nudge and not victim_beat:
-        turn_blocks.append(
-            "CHILL TURN: he said not now — bond or heat only. "
-            "No lock mention this beat. Door stays open."
-        )
     if victim_beat and (unpaid_gate or status_active) and not voice_will_send:
         turn_blocks.append(
             "VICTIM BEAT THIS TURN: hurt girlfriend — he got you worked up but won't "
@@ -822,18 +795,8 @@ def assemble_emma_turn(
             f"LOCK TEASE ASK: he asked what's in the unpaid lock{label_bit}. "
             "Give a short filthy describe of THAT photo + light unlock nudge — no soft-exit."
         )
-    # Friction path: unpaid exists but router chose reconnect — no unlock nag
-    soft_unpaid = bool(
-        (chill and not hot_unpaid_nudge and not victim_beat)
-        or (
-            (unpaid_gate or status_active)
-            and pack_id == "phase_pull"
-            and route_result
-            and (route_result.active or {}).get("ppv_unpaid")
-            and not hot_unpaid_nudge
-            and not victim_beat
-        )
-    )
+    # Friction path: unpaid + router chose reconnect — playbook SOFT EXIT handles tone
+    soft_unpaid = False
     # One LOCK STATUS block only — skip when voice note attaches (fan wants audio, not lock push)
     if soft_unpaid and not voice_will_send:
         turn_blocks.append(
@@ -1167,9 +1130,7 @@ def assemble_emma_turn(
                 "Gratis ask → deny, push unlock."
             )
         elif chill:
-            note += (
-                " CHILL TURN: he said not now — bond/heat only, no unlock nag this beat."
-            )
+            pass  # playbook SOFT EXIT owns tone — no extra AUTHOR nag
     paid_offer_now = bool(
         offer
         and float(offer.get("price") or 0) > 0

@@ -263,50 +263,14 @@ def _hard_route(
         )
         return RouteResult("phase_hook", d, facts, {"phase_hook": True})
 
-    # Unpaid lock — never stack a second. Pitch only if he's not friction/cooling.
+    # Unpaid lock — never stack a second. Stay on ppv_unpaid unless fan is upset.
     if facts.ppv_unpaid:
-        from core.sell_gate import chill_turn
+        from core.fan_pushback import is_fan_boundary
 
-        friction = chill_turn(mem, fan_message or "", facts=facts)
-        friction = friction or bool(
-            facts.pushback_billing
-            or facts.heavy_vent
-            or is_soft_decline(fan_message or "")
-            or re.search(
-                r"(?i)\b("
-                r"spam|insist|pesad|mentir|enfad|cabre|molest|harta|"
-                r"deja de|para ya|basta|shut up|enough|"
-                r"no (me )?interes|no quiero|caro|expensive|"
-                r"masivo|presión|presion|venderme|vender|"
-                # Soft decline / not now — stop unlock nag (chase kills conversion)
-                r"no,?\s*sorry|not\s+now|maybe\s+later|another\s+moment|"
-                r"otro\s+momento|despu[eé]s|later|nah\b|pass\b|"
-                r"not\s+so\s+horny|don'?t\s+want\s+to\s+spend|"
-                r"spend\s+my\s+money|no\s+money|can'?t\s+afford|"
-                r"maybe\s+in\s+another|next\s+time|otro\s+d[ií]a|"
-                # Emotional / wants to talk — do NOT nag the unpaid lock
-                r"hablar|talk|prefieres\s+hablar|solo\s+vender|only\s+sell|"
-                r"qu[eé]\s+te\s+pas|what\s+happened|mam[aá]|familia|family|"
-                r"est[aá]s\s+bien|todo\s+bien|te\s+pas[oó]|dif[ií]cil|"
-                r"cuento|cu[eé]ntame|tell\s+me"
-                r")\b",
-                fan_message or "",
-            )
-            # Bare soft nos
-            or bool(
-                re.fullmatch(
-                    r"(?i)\s*(no|nope|nah|pass|not\s+now|no\s+thanks|no\s+gracias)"
-                    r"\s*[.!,]?\s*(sorry)?\s*",
-                    fan_message or "",
-                )
-            )
-            # Bare "si/ok/bien" after a check-in — reconnect, don't FOMO the lock
-            or bool(
-                re.fullmatch(
-                    r"(?i)\s*(s[ií]+|ok|okay|bien|yes|yeah|yep|vale)\s*[.!]?\s*",
-                    fan_message or "",
-                )
-            )
+        friction = bool(
+            facts.heavy_vent
+            or is_fan_boundary(fan_message or "")
+            or facts.pushback_billing
         )
         if friction:
             facts.hard_pack = "phase_pull"

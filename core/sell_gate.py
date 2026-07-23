@@ -42,18 +42,9 @@ def chill_turn(
     history_turns: Optional[List[dict]] = None,
 ) -> bool:
     """
-    Aflojar ESTE turno — no attach, no unlock nag. Not a multi-hour block.
+    Aflojar ESTE turno solo en vent emocional fuerte — no bloquear spiral/sell.
     """
-    if getattr(facts, "heavy_vent", False):
-        return True
-    msg = (fan_message or "").strip()
-    if is_soft_decline(msg) or is_broke_soft(msg):
-        # Bills / not now — bond this beat; next horny turn can sell again.
-        if not explicit_horny_now(msg) and not _thread_horny(
-            msg, history_turns, facts=facts
-        ):
-            return True
-    return False
+    return bool(getattr(facts, "heavy_vent", False))
 
 
 def victim_eligible(
