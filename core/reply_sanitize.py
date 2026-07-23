@@ -40,6 +40,20 @@ _VOICE_PAREN_DIR = re.compile(
 )
 # Unbracketed / partial: Voice Note: … or [Voice Note:
 _VOICE_NOTE_LABEL = re.compile(r"(?i)\[?\s*voice\s*notes?\s*:")
+# Stage-direction crumbs the model invents instead of real chat
+# e.g. *voice note plays* / *sends a voice note* / (voice note plays)
+_VOICE_STAGE_ACTION = re.compile(
+    r"(?i)(?:"
+    r"[*\[\(]\s*voice\s*notes?\s*(?:plays?|playing|sent|sends?|sending|attached|here)\s*[*\]\)]"
+    r"|"
+    r"[*\[\(]\s*(?:sends?|sending|sent|plays?|playing|attaches?)\s+(?:a\s+|an\s+|the\s+)?"
+    r"voice\s*notes?\s*[*\]\)]"
+    r"|"
+    r"^\s*voice\s*notes?\s*(?:plays?|playing)\s*$"
+    r")"
+)
+# Whole bubble is only a stage crumb (after strip → empty / punctuation)
+_STAGE_ONLY_BUBBLE = re.compile(r"^[\s*._\-–—~…!?]*$")
 # Spanish nicknames — strip only in English mode (Spanglish leak).
 _BANNED_SPANISH_IN_ENGLISH = re.compile(
     r"(?i)(?:\s*[,.]?\s*)\b("
@@ -339,11 +353,13 @@ def looks_like_voice_script_dump(text: str) -> bool:
         return True
     if _VOICE_PAREN_DIR.search(text):
         return True
+    if _VOICE_STAGE_ACTION.search(text):
+        return True
     return False
 
 
 def strip_voice_stage_leaks(text: str) -> str:
-    """Remove [Voice Note:…] / (breathy, soft) stage crumbs from chat text."""
+    """Remove [Voice Note:…] / (breathy, soft) / *voice note plays* stage crumbs."""
     if not text:
         return text
     cleaned = _STAGE_BRACKETS.sub("", text)
@@ -354,9 +370,24 @@ def strip_voice_stage_leaks(text: str) -> str:
         cleaned,
     )
     cleaned = _VOICE_PAREN_DIR.sub("", cleaned)
+    cleaned = _VOICE_STAGE_ACTION.sub("", cleaned)
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
     cleaned = re.sub(r" +([,.!?…])", r"\1", cleaned)
     return cleaned.strip()
+
+
+def is_voice_stage_only_bubble(text: str) -> bool:
+    """True if bubble is only a stage direction (must never ship to Fanvue)."""
+    raw = (text or "").strip()
+    if not raw:
+        return True
+    cleaned = strip_voice_stage_leaks(raw)
+    if cleaned != raw and (not cleaned or _STAGE_ONLY_BUBBLE.match(cleaned)):
+        return True
+    # Bare line: voice note plays
+    if re.fullmatch(r"(?i)\*?voice\s*notes?\s*(?:plays?|playing)\*?", raw):
+        return True
+    return False
 
 
 def _sanitize_reply(

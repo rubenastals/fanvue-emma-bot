@@ -1436,12 +1436,15 @@ def _handle_fan_chat_body(
             bubbles = rest_bubbles
             offer = None  # paid path handled
 
-        from core.reply_sanitize import coerce_sendable_reply
+        from core.reply_sanitize import coerce_sendable_reply, is_voice_stage_only_bubble
         from core.language import fan_wants_spanish as _fws_send
 
         _want_es_send = _fws_send(text or "", mem)
         for i, bubble in enumerate(bubbles):
-            first = i == 0 and not free_sent and not ppv_sent
+            if is_voice_stage_only_bubble(bubble):
+                print(f"   🎙️ drop stage bubble (not sent): {bubble[:50]!r}")
+                continue
+            first = i == 0 and not free_sent and not ppv_sent and bubbles_sent == 0
             delay = _human_bubble_delay(bubble, first=first)
             # Typing stays on for EVERY bubble (re-pinged inside sleep)
             interrupted = _sleep_interruptible(
@@ -1457,6 +1460,9 @@ def _handle_fan_chat_body(
                 want_spanish=_want_es_send,
                 history_turns=turns,
             )
+            if is_voice_stage_only_bubble(bubble):
+                print(f"   🎙️ drop stage bubble after coerce: {bubble[:50]!r}")
+                continue
             # Always deliver at least one bubble for this turn; abort the rest if he wrote
             fv.send_message(fan_uuid, bubble)
             bubbles_sent += 1
