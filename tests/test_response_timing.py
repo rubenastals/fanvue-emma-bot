@@ -70,3 +70,19 @@ def test_heating_never_slow_pickup_gate():
     assert plan.hold_until is None
     assert plan.mode == "session"
     assert plan.delay_seconds <= 60
+
+
+def test_thread_horny_rp_counts_as_heating_for_timing():
+    from core.response_timing import heat_label_for_timing
+
+    label = heat_label_for_timing(
+        fan_message="I will feel you squirm with pleasure",
+        turns=[
+            {"role": "user", "content": "you make me so hard"},
+            {"role": "assistant", "content": "mm tell me more"},
+        ],
+        messages=[],
+        fan_uuid="x",
+        mem={"status": "warm", "messages": 40},
+    )
+    assert label == "heating"

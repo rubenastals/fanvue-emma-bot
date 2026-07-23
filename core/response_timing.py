@@ -132,11 +132,19 @@ def heat_label_for_timing(
     fan_uuid: Optional[str],
     mem: Optional[dict],
 ) -> str:
-    from core.chat_heat import chat_heat_score, is_hot_score
+    from core.chat_heat import (
+        _thread_horny,
+        chat_heat_score,
+        explicit_horny_now,
+        is_hot_score,
+    )
     from core.reply_assemble import _looks_cooling
 
     if _looks_cooling(fan_message, turns):
         return "cooling"
+    # Align with sell_gate heat-close: RP can be hot without literal pussy/cock words.
+    if explicit_horny_now(fan_message) or _thread_horny(fan_message, turns):
+        return "heating"
     score = chat_heat_score(messages, fan_uuid or "", mem or {})
     if is_hot_score(score):
         return "heating"
