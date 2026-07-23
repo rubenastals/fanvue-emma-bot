@@ -958,11 +958,11 @@ def _enforce_delivery_truth(
 
 def _char_budgets() -> tuple[int, int, int]:
     """max_len per bubble, max bubbles, soft total chars for one reply."""
-    max_len = max(80, int(getattr(config, "BUBBLE_MAX_CHARS", 160) or 160))
+    max_len = max(60, int(getattr(config, "BUBBLE_MAX_CHARS", 100) or 100))
     max_bubbles = max(1, int(getattr(config, "MAX_BUBBLES", 2) or 2))
     soft_total = max(
         max_len,
-        int(getattr(config, "REPLY_SOFT_MAX_CHARS", 200) or 200),
+        int(getattr(config, "REPLY_SOFT_MAX_CHARS", 120) or 120),
     )
     return max_len, max_bubbles, soft_total
 
@@ -1161,8 +1161,8 @@ def split_into_messages(
     Slight overshoot (~15%) allowed so a finished thought stays intact.
     """
     if max_len is None:
-        max_len = int(getattr(config, "BUBBLE_MAX_CHARS", 200) or 200)
-    max_len = max(80, int(max_len))
+        max_len = int(getattr(config, "BUBBLE_MAX_CHARS", 100) or 100)
+    max_len = max(60, int(max_len))
     # Prefer complete sentences over ugly chops
     soft_len = int(max_len * 1.15)
 
@@ -1222,7 +1222,7 @@ def split_into_messages(
     if not parts:
         parts = _soft_slice(reply)
 
-    default_cap = int(getattr(config, "MAX_BUBBLES", 3) or 3)
+    default_cap = int(getattr(config, "MAX_BUBBLES", 2) or 2)
     hard_cap = max(1, max_bubbles if max_bubbles is not None else default_cap)
     if len(parts) > hard_cap:
         # Keep first N bubbles; if the last kept one is mid-clause, merge the
