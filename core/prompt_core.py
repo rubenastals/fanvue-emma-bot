@@ -15,7 +15,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 
 HARD_BAN_PET_NAMES = ("caro", "papi", "nena", "nene")
 
-PROMPT_VERSION = "20260722-heat-not-therapy-v21"
+PROMPT_VERSION = "20260723-emma-v2-examples"
 
 # Legacy CORE when SIMPLE_PROMPT=0 + LEAN_CREATIVE=1 (NOT the V2 brain).
 # V2 uses emma_prompt_v2; live SIMPLE uses get_active_persona() → emma.md.
@@ -97,7 +97,23 @@ def _load_persona_file() -> str | None:
     return None
 
 
-def get_active_persona() -> str:
+def _apply_language_rule(text: str, *, want_spanish: bool = False) -> str:
+    if "{{LANGUAGE_RULE}}" not in text:
+        return text
+    from config import config
+
+    if getattr(config, "ENGLISH_ONLY", True):
+        want_spanish = False
+    lang_rule = (
+        "Natural American English, every turn."
+        if not want_spanish
+        else "Natural Spanish (Spain), every turn."
+    )
+    return text.replace("{{LANGUAGE_RULE}}", lang_rule)
+
+
+def get_active_persona(*, want_spanish: bool = False) -> str:
     """Return the active CORE prompt — PERSONA_FILE, personas/{ACCOUNT_ID}.md, or Emma."""
     custom = _load_persona_file()
-    return custom if custom else EMMA_CORE_PROMPT_SIMPLE
+    text = custom if custom else EMMA_CORE_PROMPT_SIMPLE
+    return _apply_language_rule(text, want_spanish=want_spanish)

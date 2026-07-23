@@ -32,6 +32,19 @@ from core.system_prompt import EMMA_SYSTEM_PROMPT  # legacy fat prompt (non-lean
 
 from core.reply_types import AssembledTurn
 
+
+def _recent_emma_openers(history_turns: List[dict], n: int = 3, chars: int = 28) -> List[str]:
+    outs: List[str] = []
+    for t in reversed(history_turns or []):
+        if t.get("role") == "assistant":
+            first = (t.get("content") or "").strip().split("\n")[0][:chars]
+            if first:
+                outs.append(first)
+        if len(outs) >= n:
+            break
+    return outs
+
+
 def _sender_uuid(msg: dict) -> Optional[str]:
     sender = msg.get("sender")
     if isinstance(sender, dict):
@@ -723,12 +736,8 @@ def assemble_emma_turn(
         label = str((ppv_status or {}).get("label") or "").strip()
         label_bit = f' ("{label}")' if label else ""
         turn_blocks.append(
-            "LOCK TEASE ASK — CRITICAL:\n"
-            f"- He asked how you look / what's in the unpaid lock{label_bit}.\n"
-            "- ANSWER with a short filthy WhatsApp describe of THAT photo "
-            "(pose, body, vibe) + light unlock nudge.\n"
-            "- HARD BAN this turn: discounts, 'i hear you', soft-exit, "
-            "'when you're ready', price lectures."
+            f"LOCK TEASE ASK: he asked what's in the unpaid lock{label_bit}. "
+            "Give a short filthy describe of THAT photo + light unlock nudge — no soft-exit."
         )
     # Friction path: unpaid exists but router chose reconnect — no unlock nag
     soft_unpaid = bool(
@@ -743,11 +752,7 @@ def assemble_emma_turn(
     # One LOCK STATUS block only — skip when voice note attaches (fan wants audio, not lock push)
     if soft_unpaid and not voice_will_send:
         turn_blocks.append(
-            "LOCK STATUS — UNPAID EXISTS BUT DO NOT PITCH THIS TURN:\n"
-            "- There is still one unpaid lock in chat — do NOT stack another.\n"
-            "- He is upset / cooling / calling out pressure. Reconnect as a human.\n"
-            "- HARD BAN: unlock FOMO, 'ábrelo ya', scarcity spam, guilt.\n"
-            "- At most one soft line that something is still there — no close question."
+            "LOCK STATUS: unpaid lock exists — reconnect warm, no unlock nag this turn."
         )
     elif (unpaid_gate or status_active) and not voice_will_send:
         if status_active and ppv_status:
@@ -775,16 +780,12 @@ def assemble_emma_turn(
     if re.search(r"(?i)\b(v[ií]deo|video|clip|grabaci[oó]n|film|filmar)\b", fan_message or ""):
         if status_active or unpaid_gate:
             turn_blocks.append(
-                "FAN ASKED ABOUT VIDEO — CRITICAL:\n"
-                "- You have NO videos. Catalog = PHOTOS only.\n"
-                "- ONE unpaid PHOTO lock is already waiting (see LOCK STATUS above).\n"
-                "- Say clearly: no video — only THAT photo at the REAL price in LOCK STATUS.\n"
-                "- Never promise video, clip, bundle, or 'both for $X'. Push the waiting photo lock."
+                "VIDEO ASK: no videos — only the waiting PHOTO lock (see LOCK STATUS). "
+                "Never promise clip/bundle."
             )
         else:
             turn_blocks.append(
-                "FAN ASKED ABOUT VIDEO: You have NO videos — photos only. "
-                "Never promise to record or send a clip. Tease a vault PHOTO only if STATUS attaches."
+                "VIDEO ASK: photos only — never promise a clip. Tease a vault photo only if STATUS attaches."
             )
 
     # Fan calling out fake wait-time — obey LOCK STATUS "sent X min ago"
@@ -808,11 +809,7 @@ def assemble_emma_turn(
         left = ppv_status.get("minutes_left")
         left_bit = f" ~{left} min left on the clock." if left is not None else ""
         turn_blocks.append(
-            "TIMING CORRECTION — CRITICAL:\n"
-            f"- LOCK STATUS says this photo was sent {ago}.{left_bit}\n"
-            "- You previously invented a wrong wait time. Own it briefly / soft laugh, "
-            "then use ONLY that real 'sent … ago' number — never 'da igual' with both numbers.\n"
-            "- Do NOT claim you've been waiting longer than LOCK STATUS."
+            f"TIMING: lock sent {ago}.{left_bit} Use only that real timing — no invented wait."
         )
 
     # Fan bluffs that he saw/liked a lock he never paid for (common after expiry)
@@ -824,39 +821,25 @@ def assemble_emma_turn(
         if status_active or unpaid_gate:
             if fan_saw_bluff:
                 turn_blocks.append(
-                    "FAN BLUFF — CRITICAL:\n"
-                    "- He claims he liked/saw the locked photo, but LOCK STATUS says "
-                    "he has NOT purchased it. He cannot have seen it.\n"
-                    "- Do NOT say 'me alegro que te gustara' / 'glad you liked it' / "
-                    "'esa era solo un poquito'.\n"
-                    "- Call the bluff playfully and push THIS unlock — scroll up."
+                    f"FACT: he never purchased the last lock ({ppv_status.get('ago') or 'recent'}). "
+                    "He can't have seen it — call the bluff playfully, don't validate it."
                 )
         else:
             # Expired / none — only shout when he claims he saw it, or soft-note
             # when we are NOT attaching a new lock (don't block a fresh close).
             if fan_saw_bluff:
+                extra = (
+                    " SELL STATUS attaches a NEW lock — sell that, not the expired one."
+                    if offer
+                    else ""
+                )
                 turn_blocks.append(
-                    "FAN BLUFF — CRITICAL:\n"
-                    "- Last timed PPV expired or was unsent WITHOUT purchase. "
-                    "He NEVER unlocked that photo. He is lying or teasing.\n"
-                    "- HARD BAN: 'me alegro que te gustara', 'glad you liked it', "
-                    "'esa era solo un poquito', 'qué te pareció'.\n"
-                    "- Call the bluff with a smirk: he never opened it / it vanished unpaid / "
-                    "he can't know how hot it was.\n"
-                    "- Do NOT apologize or gift a replacement for content he never bought.\n"
-                    + (
-                        "- SELL STATUS is ATTACHING a NEW lock this turn — sell THAT "
-                        "(different from the expired one). Do not validate the old photo."
-                        if offer
-                        else "- Flirt / reconnect; only sell if SELL STATUS says ATTACHING."
-                    )
+                    "FACT: last PPV expired unpaid — he never unlocked it. "
+                    f"Don't validate 'glad you liked it'.{extra}"
                 )
             elif not offer:
                 turn_blocks.append(
-                    "LAST PPV TRUTH:\n"
-                    "- The previous timed lock left WITHOUT purchase (expired/unsent). "
-                    "He never saw that photo.\n"
-                    "- Do not talk about it as if he already enjoyed it."
+                    "LAST PPV: previous lock expired unpaid — he never saw it; don't talk like he did."
                 )
 
     if delivery_truth and delivery_truth.get("free_in_chat") is True:
@@ -940,12 +923,20 @@ def assemble_emma_turn(
         name_confirmed=bool(mem.get("name_confirmed")),
     )
 
+    openers = _recent_emma_openers(turns)
+    if openers:
+        listed = " | ".join(f'"{o}…"' for o in openers)
+        turn_blocks.append(
+            f"[VARIETY: your last openers were {listed} — start this bubble differently, "
+            "and don't reuse the last emojis you sent.]"
+        )
+
     if lean:
         core_prompt = None
         if simple:
             from core.prompt_core import get_active_persona, PROMPT_VERSION
 
-            core_prompt = get_active_persona()
+            core_prompt = get_active_persona(want_spanish=bool(want_spanish))
         else:
             PROMPT_VERSION = "legacy"
         messages, sizes = prompt_layers.build_system_layers(

@@ -73,8 +73,8 @@ class Config:
     DEEPSEEK_FAST_MODEL = os.getenv("DEEPSEEK_FAST_MODEL", "deepseek-chat")
     TEMPERATURE = float(os.getenv("DEEPSEEK_TEMPERATURE", "1.0"))
     TOP_P = float(os.getenv("DEEPSEEK_TOP_P", "0.95"))
-    FREQUENCY_PENALTY = float(os.getenv("DEEPSEEK_FREQUENCY_PENALTY", "0.4"))
-    PRESENCE_PENALTY = float(os.getenv("DEEPSEEK_PRESENCE_PENALTY", "0.5"))
+    FREQUENCY_PENALTY = float(os.getenv("DEEPSEEK_FREQUENCY_PENALTY", "0.1"))
+    PRESENCE_PENALTY = float(os.getenv("DEEPSEEK_PRESENCE_PENALTY", "0.0"))
     # Ceiling so the API can finish the thought; length rewrite + splitter keep it short.
     # Too low → API hard-cuts mid-sentence ("frases a medias").
     MAX_RESPONSE_TOKENS = int(os.getenv("MAX_RESPONSE_TOKENS", "280"))

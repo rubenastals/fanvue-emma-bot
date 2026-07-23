@@ -19,6 +19,24 @@ from core.reply_assemble import _usable_fan_name
 if TYPE_CHECKING:
     from core.reply_types import AssembledTurn
 
+SANITIZE_STATS: Dict[str, int] = {"turns": 0, "belt_hits": 0, "fallbacks": 0}
+
+
+def _sanitize_stat(*, fallback: bool = False) -> None:
+    SANITIZE_STATS["belt_hits"] += 1
+    if fallback:
+        SANITIZE_STATS["fallbacks"] += 1
+
+
+def _maybe_log_sanitize_stats() -> None:
+    t = SANITIZE_STATS["turns"]
+    if t and t % 25 == 0:
+        s = SANITIZE_STATS
+        print(
+            f"   sanitize: {s['belt_hits']}/{s['turns']} belts, "
+            f"{s['fallbacks']} fallbacks"
+        )
+
 # Always banned as address words.
 _BANNED_ALWAYS = re.compile(
     r"(?i)(?:\s*[,.]?\s*)\b(caro|papi|nena|nene)\b\.?"
@@ -1307,6 +1325,10 @@ def apply_post_draft(
 
     # R2: after the creative draft, at most N LLM rewrites (default 1 = lang/length).
     # Hard money/media lies never spend the budget — strip or deterministic fallback.
+    SANITIZE_STATS["turns"] += 1
+    _draft_in = reply
+    _used_fallback = False
+
     rw = RewriteBudget(
         max_extra=max(0, int(getattr(config, "MAX_CREATIVE_REWRITES", 1) or 0))
     )
@@ -1344,6 +1366,7 @@ def apply_post_draft(
         }
         opts = [p for p in _ABANDONMENT_FALLBACKS if _norm_bubble(p) not in banned]
         reply = random.choice(opts or list(_ABANDONMENT_FALLBACKS))
+        _used_fallback = True
         print(
             "   🔇 abandonment-guilt on active turn — replaced "
             f"({before_sg[:56]!r} → {reply!r})"
@@ -1358,6 +1381,7 @@ def apply_post_draft(
         }
         opts = [p for p in _ABANDONMENT_FALLBACKS if _norm_bubble(p) not in banned]
         reply = random.choice(opts or list(_ABANDONMENT_FALLBACKS))
+        _used_fallback = True
         print("   🔇 abandonment-guilt loop (near-duplicate) — fresh engage line")
 
     # Soft therapist stamp kills heat — replace with dirty-sweet engage
@@ -1926,6 +1950,10 @@ def apply_post_draft(
     )
     if decision.scheme_errors:
         print(f"   ⚠️ {scheme_guard.summarize(decision.scheme_errors)}")
+
+    if reply != _draft_in:
+        _sanitize_stat(fallback=_used_fallback)
+    _maybe_log_sanitize_stats()
 
     return reply, decision
 
