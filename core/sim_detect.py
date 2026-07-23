@@ -19,6 +19,7 @@ _RETIRED_LANG_STAMPS = (
     "say that again… slower",
     "you're trouble, you know that?",
     "come here… talk to me properly",
+    "hey... look at me when i'm talking to you.",
 )
 
 # Store / sales-caption energy (banned for PPV) — tight; "just for you" alone is fine

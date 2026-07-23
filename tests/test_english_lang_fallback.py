@@ -17,6 +17,14 @@ from core.reply_sanitize import (
 STAMP = "Hey... look at me when I'm talking to you."
 
 
+def test_birbo_stamp_blocked_by_regex():
+    """Exact line from live Sophia/Birbo thread must never ship."""
+    from core.reply_sanitize import _RETIRED_LOOK_AT_ME
+
+    bad = "Hey... look at me when I'm talking to you."
+    assert _RETIRED_LOOK_AT_ME.search(bad)
+
+
 def test_stamp_never_returned():
     history = [{"role": "assistant", "content": STAMP}]
     out = _force_english_cleanup(

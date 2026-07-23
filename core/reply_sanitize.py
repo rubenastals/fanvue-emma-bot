@@ -424,6 +424,17 @@ _BANNED_ADDRESS = _BANNED_ALWAYS
 
 
 # Stock line that looped live ("Hey... look at me when I'm talking to you.") — gone.
+# IRL/video commands make no sense in text-only DMs.
+_RETIRED_LOOK_AT_ME = re.compile(
+    r"(?i)\blook\s+at\s+me\s+when\s+i.?m\s+talking"
+)
+_IRL_VIDEO_COMMAND = re.compile(
+    r"(?i)\b("
+    r"look\s+at\s+me\s+when\s+i.?m\s+talking|"
+    r"look\s+me\s+in\s+the\s+eye|"
+    r"eyes\s+on\s+me\s+when"
+    r")\b"
+)
 # Keep these flirty/human — bland "tell me more" stamps kill the hook in sim+live.
 _EN_LANG_FALLBACKS = (
     "fuck… say that again, slower",
@@ -1118,6 +1129,15 @@ def apply_post_draft(
             f"({before_sb[:56]!r} → {reply!r})"
         )
 
+    # Retired sticky stamp + IRL/video commands (text chat only — confuses fans)
+    if _RETIRED_LOOK_AT_ME.search(reply or "") or _IRL_VIDEO_COMMAND.search(reply or ""):
+        before_ir = reply
+        reply = _lang_fallback(want_spanish=want_spanish, history_turns=turns)
+        print(
+            "   🚫 IRL/video command stamp — replaced "
+            f"({before_ir[:56]!r} → {reply!r})"
+        )
+
     # Fake crisis / landlord-rent savior — structural ban
     if _FAKE_CRISIS.search(reply or ""):
         before_cr = reply
@@ -1467,7 +1487,7 @@ def apply_post_draft(
             print("   continuity: loop/repeat — noted (no LLM)")
 
     # Kill the retired sticky EN stamp if it ever reappears from history/model
-    if _norm_bubble(reply) == _norm_bubble(
+    if _RETIRED_LOOK_AT_ME.search(reply or "") or _norm_bubble(reply) == _norm_bubble(
         "Hey... look at me when I'm talking to you."
     ):
         reply = _lang_fallback(want_spanish=want_spanish, history_turns=turns)
