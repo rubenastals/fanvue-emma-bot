@@ -1021,6 +1021,10 @@ def _handle_fan_chat_body(
                 f"   SELL: gratis refused ({frees_done} free already) — force paid path"
             )
 
+        if fan_memory.sell_pressure_paused(mem):
+            want_sell = False
+            print("   SELL: blocked — post-pushback cooldown (sell_pressure_paused)")
+
         from core import ppv_concede, voice_notes as _vn
         from core.turn_action import (
             ACTION_ATTACH_FREE,
@@ -1124,7 +1128,7 @@ def _handle_fan_chat_body(
         _voice_blocks_photo = bool(turn_action.blocks_photo)
 
         # Code-owned concede attach (bypass selector reject on "caro")
-        if forced_concede_offer and not (
+        if forced_concede_offer and not fan_memory.sell_pressure_paused(mem) and not (
             turn_action.action == ACTION_SEND_VOICE or _voice_blocks_photo
         ):
             offer = forced_concede_offer
@@ -1263,6 +1267,13 @@ def _handle_fan_chat_body(
             print(
                 f"   🚫 drop offer ${float(offer.get('price') or 0):.0f} — "
                 f"ACTION={turn_action.action} blocks photo"
+            )
+            offer = None
+            turn_action.offer = None
+        if fan_memory.sell_pressure_paused(mem) and offer:
+            print(
+                f"   🚫 drop offer ${float(offer.get('price') or 0):.0f} — "
+                "sell_pressure_paused (prompt says SELL WINDOW CLOSED)"
             )
             offer = None
             turn_action.offer = None

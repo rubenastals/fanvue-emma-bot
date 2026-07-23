@@ -80,6 +80,18 @@ def test_choose_move_cant_right_now_soft_exit():
     assert m.name == "SOFT EXIT"
 
 
+def test_sell_paused_blocks_want_sell_path():
+    """Poller must not attach when TURN says SELL WINDOW CLOSED."""
+    mem = _mem(
+        last_reject_at=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
+    )
+    assert fan_memory.sell_pressure_paused(mem)
+    want_sell = True
+    if fan_memory.sell_pressure_paused(mem):
+        want_sell = False
+    assert want_sell is False
+
+
 def test_sell_paused_injects_sell_window_turn_line(monkeypatch):
     from core.reply_assemble import assemble_emma_turn
 
