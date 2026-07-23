@@ -1,5 +1,19 @@
 {
   "version": 1,
   "account_id": "sophia",
-  "items": []
+  "items": [
+    {
+      "file": "1",
+      "fanvue_media_uuid": "0699c1a4-c6b8-49bd-ad23-894903b22ce8",
+      "media_uuid": "0699c1a4-c6b8-49bd-ad23-894903b22ce8",
+      "level": 2,
+      "score": 4,
+      "price": 7.0,
+      "price_eur_suggested": 7.0,
+      "fanvue_folder": "Sophia_L2_topless",
+      "folder": "Sophia_L2_topless",
+      "vault_label": "Topless",
+      "label": "Topless"
+    }
+  ]
 }
