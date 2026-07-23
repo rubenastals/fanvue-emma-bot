@@ -104,8 +104,8 @@ def test_soft_decline_exits_sell_lock():
         unpaid=True,
         recent_techs=["SELL LOCK", "SELL LOCK"],
     )
-    assert move.name == "SOFT EXIT"
-    assert "decline" in why
+    assert move.name == "VICTIM"
+    assert "victim" in why
 
 
 def test_sell_streak_victim_not_soft_exit():

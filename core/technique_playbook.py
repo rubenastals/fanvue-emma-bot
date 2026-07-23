@@ -267,7 +267,11 @@ def pick_playbook_move(
     # 2) Unpaid lock / price objection — ladder (not eternal SELL LOCK chase)
     if unpaid or pid in ("ppv_unpaid", "price_objection"):
         sell_streak = sum(1 for t in recent[-3:] if t == "SELL LOCK")
-        # Clear no / not now — stop unlock nag immediately (this turn)
+        # sell_gate + reject ladder beat generic soft-decline exit
+        if sig.get("victim_beat") or sell_streak >= 2 or int(sig.get("reject_step") or 0) >= 2:
+            if sig.get("soft_decline") or sig.get("price_push"):
+                return VICTIM, "decline-victim-press"
+        # Clear no / not now — first gentle decline only (keep door open)
         if sig.get("soft_decline"):
             return SOFT_EXIT, "decline-soft-exit"
         # Pitched hard, won't buy — victim guilt + unlock (even if thread still warm)

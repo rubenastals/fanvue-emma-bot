@@ -87,6 +87,21 @@ def test_choose_move_cant_right_now_soft_exit():
     assert m.name == "SOFT EXIT"
 
 
+def test_bills_after_reject_ladder_is_victim_not_soft_exit():
+    """Hot thread + unpaid + bills after real reject history → guilt, not 'no rush'."""
+    m = choose_move(
+        "ppv_unpaid",
+        unpaid=True,
+        msgs=40,
+        reject_count=3,
+        mem=_mem(price_objection_step=3),
+        fan_message="I need to pay my bills first",
+        victim_beat=True,
+    )
+    assert m is not None
+    assert m.name == "VICTIM"
+
+
 def test_bills_chill_turn_only():
     mem = _mem()
     msg = "I can't open it yet, as I need to pay my bills first"

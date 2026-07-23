@@ -664,6 +664,8 @@ def choose_move(
         # Sync reject ladder into signals
         if reject_count:
             sig["reject_step"] = max(int(sig.get("reject_step") or 0), int(reject_count))
+        if victim_beat:
+            sig["victim_beat"] = True
         recent = list(exclude_names or [])
         if creative_first.skip_active_move(
             pack_id=eff,
