@@ -385,6 +385,23 @@ def _chat_is_hot(messages: List[dict], fan_uuid: str, mem: dict) -> bool:
     return False
 
 
+def _fan_active_recently(
+    messages: List[dict],
+    fan_uuid: str,
+    *,
+    minutes: int = 25,
+) -> bool:
+    """True if the fan sent anything in the last N minutes (even if Emma replied after)."""
+    now = datetime.now(timezone.utc)
+    for msg in messages[:14]:
+        if _sender_uuid(msg) != fan_uuid:
+            continue
+        ts = _msg_ts(msg)
+        if ts and now - ts < timedelta(minutes=minutes):
+            return True
+    return False
+
+
 def _creator_last_is_read(
     messages: List[dict], creator_uuid: str
 ) -> Tuple[bool, Optional[datetime]]:
@@ -573,6 +590,9 @@ def run_pass(fv, chats: List[dict], creator_uuid: str) -> int:
         if not fan_uuid:
             continue
 
+        if int(chat.get("unreadMessagesCount") or 0) > 0:
+            continue
+
         mem = fan_memory.get(fan_uuid)
         if not mem or int(mem.get("messages") or 0) < 1:
             continue
@@ -582,6 +602,9 @@ def run_pass(fv, chats: List[dict], creator_uuid: str) -> int:
         except Exception:
             continue
         if not messages:
+            continue
+
+        if _fan_active_recently(messages, fan_uuid):
             continue
 
         newest = messages[0]

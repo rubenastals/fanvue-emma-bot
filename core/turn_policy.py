@@ -243,6 +243,18 @@ def decide_turn(
     truth = delivery_truth or {}
     free_in_chat = truth.get("free_in_chat")  # True / False / None
 
+    from core.fan_pushback import fan_has_pushback
+
+    if fan_has_pushback(text):
+        return TurnDecision(
+            mode=MODE_RAPPORT,
+            reason="fan pushback — acknowledge honestly, one bubble",
+            max_bubbles=1,
+            allow_ppv_talk=False,
+            allow_price=False,
+            allow_free_tease=False,
+        )
+
     # Group A sell bans removed. Truth gates + creative sell default.
 
     fan_sent_media = bool(re.search(_FAN_SENT_MEDIA, low))

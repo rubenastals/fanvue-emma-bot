@@ -636,6 +636,8 @@ _LOVE_BOMB_LOOP = re.compile(
     r"only\s+girl\s+that\s+matters|"
     r"something\s+about\s+the\s+way\s+you|"
     r"got\s+me\s+soft|"
+    r"feeling\s+soft|"
+    r"you'?re\s+different|"
     r"different\s+from\s+other\s+guys|"
     r"luckiest\s+girl|"
     r"feeling\s+soft\s+and\s+special|"
@@ -1250,6 +1252,46 @@ def apply_post_draft(
             "   🔥 love-bomb loop stamp — replaced "
             f"({before_lb[:56]!r} → {reply!r})"
         )
+
+    from core.fan_pushback import (
+        fan_has_pushback,
+        pick_pushback_fallback,
+        reply_invents_sunglasses,
+    )
+
+    vision_desc = ""
+    if fan_uuid:
+        mem = fan_memory.get(fan_uuid) or {}
+        vision_desc = str(mem.get("last_fan_image_desc") or "")
+
+    if reply_invents_sunglasses(reply or "", vision_desc):
+        before_sg = reply
+        banned = {
+            _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
+        }
+        opts = [p for p in _HEAT_FALLBACKS if _norm_bubble(p) not in banned]
+        reply = random.choice(opts or list(_HEAT_FALLBACKS))
+        print(
+            "   👁 false sunglasses ask — replaced "
+            f"({before_sg[:56]!r} → {reply!r})"
+        )
+
+    if fan_has_pushback(fan_message or ""):
+        _ask_pic = re.search(
+            r"(?i)\b(send|pic|photo|selfie|sunglasses|another\s+pic)\b",
+            reply or "",
+        )
+        if _ask_pic or _LOVE_BOMB_LOOP.search(reply or ""):
+            before_pb = reply
+            banned = {
+                _norm_bubble(str(t.get("content") or ""))
+                for t in (turns or [])[-8:]
+            }
+            reply = pick_pushback_fallback(fan_message or "", banned=banned)
+            print(
+                "   🗣 fan pushback — replaced ask-pic/love-bomb "
+                f"({before_pb[:56]!r} → {reply!r})"
+            )
 
     # Retired sticky stamp + IRL/video commands (text chat only — confuses fans)
     if is_banned_reply_stamp(reply or ""):

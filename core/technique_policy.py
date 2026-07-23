@@ -19,6 +19,12 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from config import config
 from core import manipulation
 from core import technique_playbook as playbook
+from core.fan_pushback import (
+    fan_has_pushback,
+    is_ai_complaint,
+    is_flattery_skeptic,
+    is_vision_correction,
+)
 from core.soft_decline import is_soft_decline
 
 # First N messages: romance / heat / ask-his-photo only — dark cards later.
@@ -318,6 +324,18 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
         and msgs < 8
         and frees < 1
     )
+    fan_sent_photo = bool(mem.get("last_fan_image_desc"))
+    if mem.get("last_fan_image_at"):
+        try:
+            from datetime import datetime, timedelta, timezone
+
+            ts = datetime.fromisoformat(
+                str(mem["last_fan_image_at"]).replace("Z", "+00:00")
+            )
+            fan_sent_photo = datetime.now(timezone.utc) - ts < timedelta(hours=72)
+        except Exception:
+            fan_sent_photo = bool(mem.get("last_fan_image_desc"))
+    fan_pushback = fan_has_pushback(low)
     return {
         "spent": spent,
         "purchases": purchases,
@@ -338,6 +356,11 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
         "soft_clarify": soft_clarify,
         "shy_short": shy_short,
         "zero_spender": spent <= 0 and purchases <= 0,
+        "fan_sent_photo": fan_sent_photo,
+        "fan_pushback": fan_pushback,
+        "ai_complaint": is_ai_complaint(low),
+        "flattery_skeptic": is_flattery_skeptic(low),
+        "vision_correction": is_vision_correction(low),
     }
 
 
