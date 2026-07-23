@@ -21,8 +21,13 @@ def test_warm_apology_detected():
 
 
 def test_reconcile_after_warm_streak():
-    mem = {"fan_boundary_active": True, "boundary_warm_streak": 3}
-    assert boundary_reconciling("thanks you're sweet", mem)
+    mem = {"fan_boundary_active": True, "boundary_warm_streak": 1}
+    assert boundary_reconciling("why would you call me mystery man", mem)
+
+
+def test_reconcile_normal_question():
+    mem = {"photo_refusal_active": True, "fan_boundary_active": False}
+    assert boundary_reconciling("not really...", mem)
 
 
 def test_playbook_reconcile_picks_bond_not_soft_exit():

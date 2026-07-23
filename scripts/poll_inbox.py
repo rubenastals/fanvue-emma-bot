@@ -549,7 +549,7 @@ def _handle_fan_chat_body(
                 fan_uuid, fan_handle=fan_handle, reason="fan boundary"
             )
         elif (mem.get("fan_boundary_active") or mem.get("photo_refusal_active")) and (
-            is_boundary_warm_message(text)
+            not is_fan_boundary(text)
         ):
             streak = fan_memory.record_boundary_warm_turn(
                 fan_uuid, fan_handle=fan_handle

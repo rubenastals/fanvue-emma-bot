@@ -118,16 +118,22 @@ def boundary_reconciling(
     fan_message: str,
     mem: Optional[dict],
     *,
-    min_streak: int = 2,
+    min_streak: int = 1,
 ) -> bool:
-    """Sticky boundary memory but fan is warm again — allow BOND/HEAT, not SOFT EXIT loop."""
+    """
+    Sticky boundary memory but fan is chatting normally again —
+    not SOFT EXIT / PPV stamp every turn.
+    """
     mem = mem or {}
     if not (mem.get("fan_boundary_active") or mem.get("photo_refusal_active")):
         return False
     if is_fan_upset_boundary(fan_message or "") or is_photo_refusal(fan_message or ""):
         return False
-    if not is_boundary_warm_message(fan_message or ""):
+    t = (fan_message or "").strip()
+    if len(t) < 2:
         return False
+    if not mem.get("fan_boundary_active") and mem.get("photo_refusal_active"):
+        return True
     return int(mem.get("boundary_warm_streak") or 0) >= min_streak
 
 

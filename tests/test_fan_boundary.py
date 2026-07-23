@@ -19,10 +19,10 @@ def test_pushy_reported_is_boundary():
     assert is_fan_boundary("you're being too pushy")
 
 
-def test_boundary_blocks_ask_pic_move():
+def test_photo_refusal_sticky_uses_bond_not_soft_exit():
     sig = {
         "msgs": 5,
-        "fan_boundary": True,
+        "fan_boundary": False,
         "photo_refusal": True,
         "horny": True,
         "flirting": True,
@@ -30,8 +30,22 @@ def test_boundary_blocks_ask_pic_move():
     move, why = pick_playbook_move(
         pack_id="phase_pull", sig=sig, unpaid=True, recent_techs=[]
     )
+    assert move.name == "BOND"
+    assert why == "photo-refusal-chat"
+
+
+def test_upset_boundary_still_soft_exit():
+    sig = {
+        "msgs": 5,
+        "fan_boundary": True,
+        "photo_refusal": True,
+        "horny": True,
+    }
+    move, why = pick_playbook_move(
+        pack_id="phase_pull", sig=sig, unpaid=True, recent_techs=[]
+    )
     assert move.name == "SOFT EXIT"
-    assert "boundary" in why
+    assert "upset" in why
 
 
 def test_boundary_persists_in_thread():

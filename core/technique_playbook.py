@@ -141,10 +141,10 @@ SOFT_EXIT = PlayMove(
         "Never unlock nag / 'it's disappearing' / 'you're killing me' chase."
     ),
     how=(
-        "Mechanism: step back warmly — door open, no chase. "
-        "Short. Acknowledge him. He knows where the photo is. Stay sweet."
+        "Mechanism: step back warmly — no chase. Short. Acknowledge him. "
+        "Only mention a waiting photo if SELL STATUS says a lock is attaching."
     ),
-    example_beat="ok babe… no pressure. you know where that photo is when you're ready 😘",
+    example_beat="ok fair… no rush. tell me what's actually on your mind",
     signals=(
         r"(?i)\b(when\s+you.?re\s+ready|you\s+know\s+where|no\s+pressure|"
         r"door.?s?\s+open|whenever\s+you|i.?ll\s+be\s+here|ok\s+babe|"
@@ -205,7 +205,7 @@ def pick_playbook_move(
     ):
         return BOND, "fan-pushback-bond"
 
-    # Fan upset / privacy boundary — de-escalate, never sell or ask pics
+    # Fan upset this turn / sticky upset — de-escalate once
     if sig.get("boundary_reconciling"):
         if sig.get("compliment") or sig.get("flirting"):
             if "HEAT" in recent[-2:]:
@@ -217,8 +217,12 @@ def pick_playbook_move(
             return BOND, "boundary-reconcile-bond"
         return BOND, "boundary-reconcile-bond"
 
-    if sig.get("fan_boundary") or sig.get("photo_refusal"):
-        return SOFT_EXIT, "fan-boundary-soft-exit"
+    if sig.get("fan_boundary"):
+        return SOFT_EXIT, "fan-upset-soft-exit"
+
+    # Photo refusal sticky — no ask-pic, but normal chat is BOND not PPV stamp
+    if sig.get("photo_refusal"):
+        return BOND, "photo-refusal-chat"
 
     # He already sent a photo — react to it, don't ask for another selfie
     if sig.get("fan_sent_photo"):

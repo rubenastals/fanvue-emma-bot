@@ -956,7 +956,20 @@ def _enforce_delivery_truth(
     )
 
 
-def _char_budgets() -> tuple[int, int, int]:
+# SOFT EXIT PPV stamp — only when a real unpaid lock exists
+_SOFT_EXIT_PPV_STAMP = re.compile(
+    r"(?i)\b("
+    r"no\s+pressure|you\s+know\s+where(\s+to\s+find\s+me)?|"
+    r"when\s+you.?re\s+ready|that\s+photo\s+is\s+when|door.?s?\s+open"
+    r")\b"
+)
+
+
+def _soft_exit_stamp_without_lock(reply: str, *, lock_active: bool) -> bool:
+    if lock_active:
+        return False
+    return bool(_SOFT_EXIT_PPV_STAMP.search(reply or ""))
+
     """max_len per bubble, max bubbles, soft total chars for one reply."""
     max_len = max(60, int(getattr(config, "BUBBLE_MAX_CHARS", 100) or 100))
     max_bubbles = max(1, int(getattr(config, "MAX_BUBBLES", 2) or 2))
@@ -1288,6 +1301,7 @@ def apply_post_draft(
         boundary_reconciling,
         fan_has_pushback,
         is_sexual_heat_reply,
+        pick_boundary_fallback,
         pick_photo_refusal_fallback,
         pick_pushback_fallback,
         reply_invents_sunglasses,
@@ -1453,6 +1467,21 @@ def apply_post_draft(
                 "   📷 boundary mode — stripped sell/pic pressure "
                 f"({before_pr[:56]!r} → {reply!r})"
             )
+
+    if _soft_exit_stamp_without_lock(reply or "", lock_active=bool(lock_active or status_active or unpaid_gate)):
+        before_se = reply
+        banned = {
+            _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
+        }
+        reply = pick_boundary_fallback(
+            fan_message or "",
+            turns=turns,
+            banned=banned,
+        )
+        print(
+            "   🚫 soft-exit PPV stamp (no lock) — replaced "
+            f"({before_se[:56]!r} → {reply!r})"
+        )
 
     # Retired sticky stamp + IRL/video commands (text chat only — confuses fans)
     if is_banned_reply_stamp(reply or ""):
