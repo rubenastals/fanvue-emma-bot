@@ -298,6 +298,110 @@ def _human_bubble_delay(text: str, *, first: bool, prev_text: str = "") -> float
     return human_typing_delay(text, first=first, prev_text=prev_text)
 
 
+def _apply_response_timing(
+    fv: FanvueConnector,
+    fan_uuid: str,
+    fan_handle: str,
+    *,
+    messages: list,
+    turns: list,
+    text: str,
+    creator_uuid: str,
+    mem: dict,
+    pending_chrono: list,
+) -> tuple:
+    """
+    Pickup delay / sleep gate before draft.
+    Returns (proceed, plan, gap_minutes). proceed=False → leave messages unprocessed.
+    """
+    from datetime import timedelta
+    import time
+
+    from core.persona_time import la_now
+    from core.reply_assemble import _parse_msg_time
+    from core.response_timing import heat_label_for_timing, plan_reply_timing
+
+    if not getattr(config, "RESPONSE_TIMING_ENABLED", True):
+        return True, None, None
+
+    now = la_now()
+    gate = fan_memory.get_response_gate(fan_uuid)
+    if gate is not None:
+        g = gate.astimezone(now.tzinfo) if gate.tzinfo and now.tzinfo else gate
+        if now < g:
+            reason = (mem or {}).get("response_gate_reason") or "wait"
+            print(f"   ⏰ response gate until {g.strftime('%H:%M %Z')} ({reason})")
+            return False, None, None
+        fan_memory.clear_response_gate(fan_uuid, fan_handle=fan_handle)
+
+    last_at = None
+    for m in messages:
+        if _sender_uuid(m) == creator_uuid:
+            last_at = _parse_msg_time(m)
+            if last_at:
+                break
+
+    heat = heat_label_for_timing(
+        fan_message=text,
+        turns=turns,
+        messages=messages,
+        fan_uuid=fan_uuid,
+        mem=mem,
+    )
+    plan = plan_reply_timing(
+        last_emma_reply_at=last_at,
+        heat=heat,
+        now=now,
+        account_id=getattr(config, "ACCOUNT_ID", None),
+    )
+
+    gap_min = None
+    oldest = pending_chrono[0] if pending_chrono else None
+    if oldest:
+        ts = _parse_msg_time(oldest)
+        if ts:
+            ts = ts.astimezone(now.tzinfo) if ts.tzinfo and now.tzinfo else ts
+            gap_min = max(0.0, (now - ts).total_seconds() / 60.0)
+
+    if plan.hold_until:
+        hold = plan.hold_until
+        hold = hold.astimezone(now.tzinfo) if hold.tzinfo and now.tzinfo else hold
+        if now < hold:
+            fan_memory.set_response_gate(
+                fan_uuid,
+                plan.hold_until,
+                fan_handle=fan_handle,
+                reason=plan.mode,
+            )
+            print(
+                f"   😴 asleep — hold until {hold.strftime('%H:%M %Z')} ({plan.mode})"
+            )
+            return False, plan, gap_min
+
+    if plan.delay_seconds > 0:
+        max_sleep = float(getattr(config, "RESPONSE_TIMING_SLEEP_MAX", 120))
+        if plan.delay_seconds > max_sleep:
+            until = now + timedelta(seconds=plan.delay_seconds)
+            fan_memory.set_response_gate(
+                fan_uuid,
+                until,
+                fan_handle=fan_handle,
+                reason=plan.mode,
+            )
+            print(
+                f"   ⏰ pickup ~{plan.delay_seconds / 60:.0f}m ({plan.mode}) "
+                f"— resume {until.strftime('%H:%M %Z')}"
+            )
+            return False, plan, gap_min
+        print(f"   ⏳ pickup {plan.delay_seconds:.0f}s ({plan.mode})")
+        with _typing_keepalive(fv, fan_uuid):
+            time.sleep(plan.delay_seconds)
+        if gap_min is not None:
+            gap_min += plan.delay_seconds / 60.0
+
+    return True, plan, gap_min
+
+
 def _sleep_interruptible(
     fv: FanvueConnector,
     fan_uuid: str,
@@ -1164,6 +1268,23 @@ def _handle_fan_chat_body(
             turn_action.offer = None
         _will_attach_photo = bool(offer and not unpaid)
 
+        timing_plan = None
+        gap_minutes = None
+        if not use_v2:
+            ok_timing, timing_plan, gap_minutes = _apply_response_timing(
+                fv,
+                fan_uuid,
+                fan_handle,
+                messages=messages,
+                turns=turns,
+                text=text,
+                creator_uuid=creator_uuid,
+                mem=mem,
+                pending_chrono=pending_chrono,
+            )
+            if not ok_timing:
+                break
+
         try:
             # Refresh thin CLIENT CARD before draft (async extract may lag).
             try:
@@ -1212,6 +1333,8 @@ def _handle_fan_chat_body(
                         route_result=route_result,
                         voice_will_send=voice_planned[0],
                         turn_action=turn_action,
+                        response_timing_plan=timing_plan,
+                        fan_message_age_minutes=gap_minutes,
                     )
         except Exception as e:
             import traceback
@@ -1870,6 +1993,7 @@ def main():
         f"   brain: REPLY_V2={int(bool(_cfg.REPLY_V2))} "
         f"SIMPLE_PROMPT={int(bool(_cfg.SIMPLE_PROMPT))} "
         f"CREATIVE_FIRST={int(bool(_cfg.CREATIVE_FIRST))} "
+        f"RESP_TIMING={int(bool(_cfg.RESPONSE_TIMING_ENABLED))} "
         f"LEAN_CREATIVE={int(bool(_cfg.LEAN_CREATIVE))} "
         f"PHASE_ANALYST={int(bool(_cfg.PHASE_ANALYST))} "
         f"| prompt={PROMPT_VERSION} core_chars={len(_core)} account={aid}"

@@ -115,6 +115,8 @@ def generate_emma_reply(
     route_result: Optional[RouteResult] = None,
     voice_will_send: bool = False,
     turn_action: Optional[Any] = None,
+    response_timing_plan: Optional[Any] = None,
+    fan_message_age_minutes: Optional[float] = None,
 ) -> Tuple[str, TurnDecision]:
     """
     Assemble → creative draft → sanitize.
@@ -136,6 +138,8 @@ def generate_emma_reply(
         route_result=route_result,
         voice_will_send=voice_will_send,
         turn_action=turn_action,
+        response_timing_plan=response_timing_plan,
+        fan_message_age_minutes=fan_message_age_minutes,
     )
 
     def _call(msgs: List[Dict[str, str]]) -> str:

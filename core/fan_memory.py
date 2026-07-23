@@ -1468,6 +1468,47 @@ def set_note(fan_uuid: str, note: str, fan_handle: str = "") -> None:
         _put(fan_uuid, mem)
 
 
+def _parse_gate_dt(raw: Optional[str]) -> Optional[datetime]:
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, TypeError):
+        return None
+
+
+def get_response_gate(fan_uuid: str) -> Optional[datetime]:
+    """Don't reply before this time (asleep / long pickup delay)."""
+    return _parse_gate_dt((get(fan_uuid) or {}).get("response_gate_until"))
+
+
+def set_response_gate(
+    fan_uuid: str, until: datetime, *, fan_handle: str = "", reason: str = ""
+) -> None:
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        mem["response_gate_until"] = until.isoformat()
+        if reason:
+            mem["response_gate_reason"] = reason[:80]
+        _put(fan_uuid, mem)
+
+
+def clear_response_gate(fan_uuid: str, fan_handle: str = "") -> None:
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid)
+        if not mem:
+            return
+        if "response_gate_until" not in mem and "response_gate_reason" not in mem:
+            return
+        mem.pop("response_gate_until", None)
+        mem.pop("response_gate_reason", None)
+        _put(fan_uuid, mem)
+
+
 def set_last_fan_image(
     fan_uuid: str,
     description: str,

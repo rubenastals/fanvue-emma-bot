@@ -147,6 +147,9 @@ class Config:
     # Show the "Emma is typing…" bubbles the whole time she's thinking/analyzing.
     TYPING_WHILE_THINKING = os.getenv("TYPING_WHILE_THINKING", "1") == "1"
     TYPING_PING_SEC = float(os.getenv("TYPING_PING_SEC", "2.5"))
+    # Pickup delay before draft (above per-bubble send_timing). Long delays → gate, not sleep.
+    RESPONSE_TIMING_ENABLED = os.getenv("RESPONSE_TIMING_ENABLED", "1") == "1"
+    RESPONSE_TIMING_SLEEP_MAX = float(os.getenv("RESPONSE_TIMING_SLEEP_MAX", "120"))
     # Human-like pause before each bubble (wall-clock; no Fanvue poll stacking)
     BUBBLE_DELAY_FIRST_MIN = float(os.getenv("BUBBLE_DELAY_FIRST_MIN", "6.0"))
     BUBBLE_DELAY_FIRST_MAX = float(os.getenv("BUBBLE_DELAY_FIRST_MAX", "10.0"))

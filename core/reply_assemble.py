@@ -376,6 +376,8 @@ def assemble_emma_turn(
     route_result: Optional[RouteResult] = None,
     voice_will_send: bool = False,
     turn_action: Optional[Any] = None,
+    response_timing_plan: Optional[Any] = None,
+    fan_message_age_minutes: Optional[float] = None,
 ) -> AssembledTurn:
     """
     Prompt + memory + ONE situation pack + mode-aware author's note.
@@ -539,6 +541,19 @@ def assemble_emma_turn(
             )
 
     turn_blocks: List[str] = []
+
+    if simple:
+        from core import daily_state
+        from core.response_timing import timing_context_line
+
+        _aid = (getattr(config, "ACCOUNT_ID", None) or "emma").strip().lower()
+        turn_blocks.append(daily_state.turn_block(account_id=_aid))
+        if response_timing_plan is not None:
+            _tl = timing_context_line(
+                response_timing_plan, fan_message_age_minutes
+            )
+            if _tl:
+                turn_blocks.append(_tl)
 
     # Soft lessons NEVER in live path unless operator forces INJECT_LESSONS=1
     if getattr(config, "INJECT_LESSONS", False):
