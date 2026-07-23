@@ -75,6 +75,68 @@ def test_boundary_fallback_thanks_not_game():
     assert any(w in out.lower() for w in ("sweet", "thank", "cute", "smile"))
 
 
+def test_supervisor_rewrite_not_blocked_by_exhausted_budget(monkeypatch):
+    """move-hit can spend sanitize budget; supervisor rewrite must still run."""
+    monkeypatch.setattr(sup, "enabled", lambda: True)
+    evals = {"n": 0}
+
+    def _eval(reply, _a):
+        evals["n"] += 1
+        if "fixed" in (reply or "").lower():
+            return sup.SupervisorVerdict(ok=True)
+        return sup.SupervisorVerdict(ok=False, why="off topic")
+
+    monkeypatch.setattr(sup, "evaluate_reply", _eval)
+    assembled = SimpleNamespace(
+        fan_message="what do you like in your free time",
+        turns=[{"role": "user", "content": "what do you like in your free time"}],
+        messages=[],
+        fan_uuid="fan-1",
+        offer=None,
+        voice_will_send=False,
+    )
+    out = sup.supervise_reply(
+        "open this photo baby",
+        assembled,
+        call=lambda _m: "fixed — gym and music mostly lol",
+    )
+    assert "fixed" in out.lower()
+    assert evals["n"] >= 2
+
+
+def test_supervisor_rejects_bad_static_fallback(monkeypatch):
+    monkeypatch.setattr(sup, "enabled", lambda: True)
+    monkeypatch.setattr(
+        sup,
+        "evaluate_reply",
+        lambda reply, _a: sup.SupervisorVerdict(
+            ok="gym" in (reply or "").lower(),
+            why="off topic" if "game" in (reply or "").lower() else "",
+        ),
+    )
+    monkeypatch.setattr(
+        sup,
+        "_pick_fallback",
+        lambda *_a, **_k: "tell me more about that game then",
+    )
+    monkeypatch.setattr(
+        sup,
+        "_contextual_fallback_llm",
+        lambda _a, hint="": "honestly gym and music lol… you?",
+    )
+    assembled = SimpleNamespace(
+        fan_message="what do you like in your free time",
+        turns=[],
+        messages=[],
+        fan_uuid="fan-1",
+        offer=None,
+        voice_will_send=False,
+    )
+    out = sup.supervise_reply("bad draft", assembled, call=lambda _m: "still bad")
+    assert "game" not in out.lower()
+    assert "gym" in out.lower()
+
+
 def test_supervisor_fallback_on_reject(monkeypatch):
     monkeypatch.setattr(sup, "enabled", lambda: True)
     calls = {"n": 0}

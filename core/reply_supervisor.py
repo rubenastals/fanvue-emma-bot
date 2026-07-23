@@ -244,7 +244,7 @@ def supervise_reply(
     budget: Optional["RewriteBudget"] = None,
 ) -> str:
     """
-    Final humanity gate. On reject: one rewrite if budget allows, else fallback.
+    Final humanity gate. On reject: dedicated rewrite, then validated fallback.
     Fail-open if the supervisor API is down.
     """
     if not enabled():
@@ -259,28 +259,35 @@ def supervise_reply(
     print(f"   🛡 supervisor reject: {verdict.why or 'bad vibe'}")
 
     hint = (verdict.rewrite_hint or verdict.why or "").strip()
-    if hint and budget is not None and budget.can_spend():
-        fix = budget.spend(
-            "supervisor",
-            call,
-            assembled.messages
-            + [
-                {"role": "assistant", "content": reply},
-                {
-                    "role": "user",
-                    "content": (
-                        f"SUPERVISOR REJECT — fix and resend. {hint} "
-                        "Keep ONE short WhatsApp bubble (~90 chars). "
-                        "React to his LAST message. No sell unless context says attach."
-                    ),
-                },
-            ],
-        )
+    # Supervisor rewrite is safety-critical — never steal the sanitize move-hit budget.
+    if hint:
+        try:
+            fix = call(
+                assembled.messages
+                + [
+                    {"role": "assistant", "content": reply},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"SUPERVISOR REJECT — fix and resend. {hint} "
+                            "Keep ONE short WhatsApp bubble (~90 chars). "
+                            "React to his LAST message. No sell unless context says attach."
+                        ),
+                    },
+                ]
+            )
+        except Exception as exc:
+            print(f"   ⚠️ supervisor rewrite failed: {exc}")
+            fix = None
         if (fix or "").strip():
             recheck = evaluate_reply(fix, assembled)
             if recheck is None or recheck.ok:
                 print("   🛡 supervisor rewrite accepted")
                 return (fix or "").strip()
+            print(
+                f"   🛡 supervisor rewrite still bad: "
+                f"{(recheck.why if recheck else 'recheck failed')}"
+            )
 
     from core.reply_sanitize import _norm_bubble
 
@@ -289,5 +296,18 @@ def supervise_reply(
         for t in (assembled.turns or [])[-8:]
     }
     fb = _pick_fallback(assembled, banned=banned, hint=hint)
+    fb_check = evaluate_reply(fb, assembled)
+    if fb_check is not None and not fb_check.ok:
+        print(f"   🛡 static fallback also bad: {fb_check.why}")
+        llm = _contextual_fallback_llm(
+            assembled, hint=fb_check.rewrite_hint or fb_check.why or hint
+        )
+        if llm:
+            llm_check = evaluate_reply(llm, assembled)
+            if llm_check is None or llm_check.ok:
+                print(f"   🛡 contextual fallback → {llm!r}")
+                return llm
+            print(f"   🛡 contextual fallback still bad: {llm_check.why}")
+            fb = llm  # better than static stamp; last resort
     print(f"   🛡 supervisor fallback → {fb!r}")
     return fb
