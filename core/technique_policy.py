@@ -335,7 +335,7 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
             fan_sent_photo = datetime.now(timezone.utc) - ts < timedelta(hours=72)
         except Exception:
             fan_sent_photo = bool(mem.get("last_fan_image_desc"))
-    fan_pushback = fan_has_pushback(low)
+    fan_pushback = fan_has_pushback(low) or bool(mem.get("pushback_active"))
     return {
         "spent": spent,
         "purchases": purchases,

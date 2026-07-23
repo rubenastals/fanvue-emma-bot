@@ -642,11 +642,14 @@ def _send_generated(
 
     # One bubble only — nudges must not double-text
     bubble = re.sub(r"\s+", " ", (reply or "").strip())[:180]
+    from core.send_timing import human_typing_delay
+
+    delay = human_typing_delay(bubble, first=True)
     try:
         fv.send_typing_indicator(fan_uuid, True)
     except Exception:
         pass
-    time.sleep(random.uniform(2.0, 3.5))
+    time.sleep(delay)
     fv.send_message(fan_uuid, bubble)
     try:
         fv.send_typing_indicator(fan_uuid, False)
@@ -697,11 +700,9 @@ def run_pass(fv, chats: List[dict], creator_uuid: str) -> int:
         if not mem or int(mem.get("messages") or 0) < 1:
             continue
 
-        if reengage_paused(mem):
-            print(
-                f"   reengage skip @{fan_handle}: paused until fan writes "
-                f"({mem.get('reengage_pause_reason') or 'manual'})"
-            )
+        if reengage_paused(mem) or mem.get("pushback_active"):
+            reason = mem.get("reengage_pause_reason") or mem.get("pushback_reason") or "pushback"
+            print(f"   reengage skip @{fan_handle}: paused ({reason})")
             continue
 
         try:

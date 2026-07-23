@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any, Dict, List, Optional
 
 _AI_COMPLAINT = re.compile(
     r"(?i)\b("
@@ -9,7 +10,8 @@ _AI_COMPLAINT = re.compile(
     r"not\s+(a\s+)?real\s+person|talk\s+to\s+(a\s+)?real|"
     r"you'?re\s+(a\s+)?bot|this\s+is\s+a\s+bot|"
     r"stop\s+using\s+(the\s+)?ai|fake\s+chat|"
-    r"robot|chatbot|not\s+automated"
+    r"turn\s+off\s+the\s+robot|stop\s+the\s+robot|"
+    r"robot|chatbot|not\s+automated|automated"
     r")\b"
 )
 
@@ -60,6 +62,55 @@ def fan_has_pushback(text: str) -> bool:
         or is_flattery_skeptic(low)
         or is_vision_correction(low)
     )
+
+
+_SEXUAL_HEAT = re.compile(
+    r"(?i)\b("
+    r"sports\s+bra|lingerie|wondering\s+what\s+you'?d\s+do|"
+    r"next\s+to\s+me|in\s+bed|touching\s+myself|getting\s+me\s+wet|"
+    r"horny|so\s+hard|so\s+wet|naked|nude|pussy|cock|dick|"
+    r"fuck(?:ing)?|cum|stroke|jerk\s+off|turn(?:s|ed)?\s+on|"
+    r"😈|🍆|💦"
+    r")\b"
+)
+
+
+def is_sexual_heat_reply(text: str) -> bool:
+    return bool(_SEXUAL_HEAT.search(text or ""))
+
+
+def pushback_in_turns(
+    turns: Optional[List[Dict[str, Any]]],
+    *,
+    lookback: int = 10,
+) -> bool:
+    """Recent fan messages called us out — stays hot even if this turn is short."""
+    if not turns:
+        return False
+    seen = 0
+    for turn in reversed(turns):
+        if (turn.get("role") or "") != "user":
+            continue
+        seen += 1
+        if fan_has_pushback(str(turn.get("content") or "")):
+            return True
+        if seen >= lookback:
+            break
+    return False
+
+
+def thread_in_pushback_mode(
+    fan_message: str,
+    turns: Optional[List[Dict[str, Any]]],
+    mem: Optional[dict],
+) -> bool:
+    """No heat / flirt / sell pressure — fan is skeptical or thinks we're a bot."""
+    mem = mem or {}
+    if mem.get("pushback_active"):
+        return True
+    if fan_has_pushback(fan_message or ""):
+        return True
+    return pushback_in_turns(turns)
 
 
 def vision_mentions_sunglasses(description: str) -> bool:

@@ -1284,6 +1284,18 @@ def apply_post_draft(
         max_extra=max(0, int(getattr(config, "MAX_CREATIVE_REWRITES", 1) or 0))
     )
 
+    from core.fan_pushback import (
+        is_sexual_heat_reply,
+        pick_pushback_fallback,
+        reply_invents_sunglasses,
+        thread_in_pushback_mode,
+    )
+
+    _pb_mem: dict = fan_memory.get(fan_uuid) or {} if fan_uuid else {}
+    _pushback_mode = thread_in_pushback_mode(
+        fan_message or "", turns, _pb_mem
+    )
+
     # Fan JUST messaged — never abandonment / "guys leave" / silence guilt
     if _ABANDONMENT_GUILT.search(reply or ""):
         before_sg = reply
@@ -1307,7 +1319,7 @@ def apply_post_draft(
         print("   🔇 abandonment-guilt loop (near-duplicate) — fresh engage line")
 
     # Soft therapist stamp kills heat — replace with dirty-sweet engage
-    if _SOFT_BOND_STAMP.search(reply or ""):
+    if _SOFT_BOND_STAMP.search(reply or "") and not _pushback_mode:
         before_sb = reply
         banned = {
             _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
@@ -1330,7 +1342,11 @@ def apply_post_draft(
             "   💬 early validation stamp — replaced "
             f"({before_lb[:56]!r} → {reply!r})"
         )
-    elif _LOVE_BOMB_LOOP.search(reply or "") and _love_bomb_in_history(turns):
+    elif (
+        _LOVE_BOMB_LOOP.search(reply or "")
+        and _love_bomb_in_history(turns)
+        and not _pushback_mode
+    ):
         before_lb = reply
         banned = {
             _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
@@ -1341,7 +1357,11 @@ def apply_post_draft(
             "   🔥 love-bomb loop stamp — replaced "
             f"({before_lb[:56]!r} → {reply!r})"
         )
-    elif _LOVE_BOMB_LOOP.search(reply or "") and _love_bomb_count(turns) >= 2:
+    elif (
+        _LOVE_BOMB_LOOP.search(reply or "")
+        and _love_bomb_count(turns) >= 2
+        and not _pushback_mode
+    ):
         before_lb = reply
         banned = {
             _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
@@ -1361,35 +1381,37 @@ def apply_post_draft(
             f"({before_dup[:56]!r} → {reply!r})"
         )
 
-    from core.fan_pushback import (
-        fan_has_pushback,
-        pick_pushback_fallback,
-        reply_invents_sunglasses,
-    )
+    from core.fan_pushback import fan_has_pushback
 
-    vision_desc = ""
-    if fan_uuid:
-        mem = fan_memory.get(fan_uuid) or {}
-        vision_desc = str(mem.get("last_fan_image_desc") or "")
+    vision_desc = str(_pb_mem.get("last_fan_image_desc") or "")
 
     if reply_invents_sunglasses(reply or "", vision_desc):
         before_sg = reply
         banned = {
             _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
         }
-        opts = [p for p in _HEAT_FALLBACKS if _norm_bubble(p) not in banned]
-        reply = random.choice(opts or list(_HEAT_FALLBACKS))
+        if _pushback_mode:
+            reply = pick_pushback_fallback(fan_message or "", banned=banned)
+        else:
+            opts = [p for p in _HEAT_FALLBACKS if _norm_bubble(p) not in banned]
+            reply = random.choice(opts or list(_HEAT_FALLBACKS))
         print(
             "   👁 false sunglasses ask — replaced "
             f"({before_sg[:56]!r} → {reply!r})"
         )
 
-    if fan_has_pushback(fan_message or ""):
+    if _pushback_mode:
+        _sexual = is_sexual_heat_reply(reply or "")
         _ask_pic = re.search(
             r"(?i)\b(send|pic|photo|selfie|sunglasses|another\s+pic)\b",
             reply or "",
         )
-        if _ask_pic or _LOVE_BOMB_LOOP.search(reply or ""):
+        if (
+            _sexual
+            or _ask_pic
+            or _LOVE_BOMB_LOOP.search(reply or "")
+            or _SOFT_BOND_STAMP.search(reply or "")
+        ):
             before_pb = reply
             banned = {
                 _norm_bubble(str(t.get("content") or ""))
@@ -1397,7 +1419,7 @@ def apply_post_draft(
             }
             reply = pick_pushback_fallback(fan_message or "", banned=banned)
             print(
-                "   🗣 fan pushback — replaced ask-pic/love-bomb "
+                "   🗣 pushback mode — stripped heat/flirt "
                 f"({before_pb[:56]!r} → {reply!r})"
             )
 

@@ -291,18 +291,11 @@ def _pending_fan_messages(messages: list, fan_uuid: str, processed: set) -> list
     return pending
 
 
-def _human_bubble_delay(text: str, *, first: bool) -> float:
-    """Human typing pause scaled to the bubble length."""
-    n = len(text or "")
-    if first:
-        lo = float(getattr(config, "BUBBLE_DELAY_FIRST_MIN", 4.0))
-        hi = float(getattr(config, "BUBBLE_DELAY_FIRST_MAX", 6.5))
-        delay = lo + min(1.8, n / 70.0) + random.uniform(0.0, 0.7)
-        return min(hi, max(lo, delay))
-    lo = float(getattr(config, "BUBBLE_DELAY_NEXT_MIN", 2.8))
-    hi = float(getattr(config, "BUBBLE_DELAY_NEXT_MAX", 4.8))
-    delay = lo + min(1.4, n / 85.0) + random.uniform(0.0, 0.6)
-    return min(hi, max(lo, delay))
+def _human_bubble_delay(text: str, *, first: bool, prev_text: str = "") -> float:
+    """Human typing pause scaled to bubble length (chars/sec + think time)."""
+    from core.send_timing import human_typing_delay
+
+    return human_typing_delay(text, first=first, prev_text=prev_text)
 
 
 def _sleep_interruptible(
@@ -530,13 +523,20 @@ def _handle_fan_chat_body(
             pause_reengage_until_fan_writes,
         )
 
+        from core.fan_pushback import fan_has_pushback
+
         if fan_reopened_conversation(text):
             clear_conversation_closed(fan_uuid, fan_handle=fan_handle)
+            if not fan_has_pushback(text):
+                fan_memory.clear_pushback_active(fan_uuid, fan_handle=fan_handle)
         if fan_text_is_farewell(text):
             mark_conversation_closed(
                 fan_uuid, fan_handle=fan_handle, reason=text[:80]
             )
-        elif fan_text_is_robot_complaint(text):
+        elif fan_text_is_robot_complaint(text) or fan_has_pushback(text):
+            fan_memory.mark_pushback_active(
+                fan_uuid, fan_handle=fan_handle, reason=text[:80]
+            )
             pause_reengage_until_fan_writes(
                 fan_uuid, fan_handle=fan_handle, reason=text[:80]
             )
@@ -1200,6 +1200,11 @@ def _handle_fan_chat_body(
             or getattr(config, "MAX_BUBBLES", 3)
             or 3
         )
+        from core.fan_pushback import thread_in_pushback_mode
+
+        if thread_in_pushback_mode(text or "", turns, mem):
+            max_bubbles = 1
+            print("   🗣 pushback mode: 1 bubble max, no heat")
         bubbles = split_into_messages(
             reply,
             max_len=int(getattr(config, "BUBBLE_MAX_CHARS", 200) or 200),
@@ -1487,7 +1492,8 @@ def _handle_fan_chat_body(
                 print(f"   🎙️ drop stage bubble (not sent): {bubble[:50]!r}")
                 continue
             first = i == 0 and not free_sent and not ppv_sent and bubbles_sent == 0
-            delay = _human_bubble_delay(bubble, first=first)
+            prev = bubbles[i - 1] if i > 0 else ""
+            delay = _human_bubble_delay(bubble, first=first, prev_text=prev)
             # Typing stays on for EVERY bubble (re-pinged inside sleep)
             interrupted = _sleep_interruptible(
                 fv,

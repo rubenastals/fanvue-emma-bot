@@ -1150,6 +1150,32 @@ def set_prefer_spanish(fan_uuid: str, prefer: bool, fan_handle: str = "") -> Non
         _put(fan_uuid, mem)
 
 
+def mark_pushback_active(
+    fan_uuid: str,
+    *,
+    fan_handle: str = "",
+    reason: str = "",
+) -> None:
+    """Fan called us out (bot/AI/script) — no heat until cleared."""
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        mem["pushback_active"] = True
+        mem["pushback_reason"] = (reason or "pushback")[:120]
+        mem["pushback_at"] = _now()
+        _put(fan_uuid, mem)
+
+
+def clear_pushback_active(fan_uuid: str, *, fan_handle: str = "") -> None:
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        mem["pushback_active"] = False
+        mem["pushback_reason"] = ""
+        mem["pushback_at"] = None
+        _put(fan_uuid, mem)
+
+
 def mark_nudge(
     fan_uuid: str,
     kind: str,
