@@ -202,16 +202,29 @@ def plan_turn_action(
         fan_message, decision=decision, pack_id=pack_id, facts=facts
     )
 
+    # Opportunistic audio (heating spiral) must NOT starve PPV when vault is ready.
+    # Committed voice (fan asked / debt / FSM) still wins.
+    why_l = (voice_why or "").lower()
+    voice_committed = voice_ok and (
+        "fsm open_voice" in why_l
+        or "fan asked" in why_l
+        or "debt" in why_l
+        or "owed" in why_l
+        or "kill beg" in why_l
+        or "db commitment" in why_l
+    )
+
     # Voice send / photo-block / comfort / unpaid → never pick a new offer
     offer: Optional[Dict[str, Any]] = None
     demote_reason = ""
-    if (
-        not voice_ok
-        and not blocks_photo
+    can_pick_offer = (
+        (not voice_ok or not voice_committed)
+        and (not blocks_photo or (voice_ok and not voice_committed))
         and not comfort
         and not unpaid
-    ):
-        if want_free:
+    )
+    if can_pick_offer:
+        if want_free and not voice_ok:
             offer = vault_catalog.select_free_tease(mem2)
         elif want_sell:
             selection = offer_selector.choose_offer(
@@ -222,10 +235,16 @@ def plan_turn_action(
             )
             if selection.sell_now:
                 offer = selection.offer
+                # Paid close beats spam voice during horny RP
+                if offer and voice_ok and not voice_committed:
+                    voice_ok = False
+                    blocks_photo = False
+                    demote_reason = f"prefer PPV over opportunistic voice ({voice_why})"
             else:
                 demote_reason = (selection.reason or "")[:120]
                 pack_id = "phase_pull"
 
+    # If opportunistic voice still won and no offer, keep voice; else classify
     ta = classify_turn_action(
         voice_ok=voice_ok,
         voice_why=voice_why,

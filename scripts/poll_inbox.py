@@ -829,6 +829,27 @@ def _handle_fan_chat_body(
         want_sell = bool(decision.allow_price) or (
             route_result.pack_id in _CONVERT_PACKS
         )
+        # Horny / buying $0 fans with paid vault ready → try PPV this turn
+        # (was starved by opportunistic voice spam).
+        if (
+            not want_sell
+            and not unpaid
+            and (
+                bool(getattr(route_result.facts, "horny", False))
+                or bool(getattr(route_result.facts, "buying", False))
+            )
+        ):
+            try:
+                from core import vault_catalog as _vc_sell
+
+                if any(
+                    int(i.get("level") or 0) >= 1 and float(i.get("price") or 0) > 0
+                    for i in (_vc_sell.load_items() or [])
+                ):
+                    want_sell = True
+                    print("   SELL: horny/buying + paid vault → force sell path")
+            except Exception:
+                pass
         want_free = bool(getattr(decision, "allow_free_tease", False)) and not want_sell
 
         # Already got a free tease — gratis ask = push paid, never another L0.

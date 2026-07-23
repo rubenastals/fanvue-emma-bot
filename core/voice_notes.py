@@ -413,6 +413,13 @@ def should_send(
     ):
         return False, "too early in chat"
 
+    # Hard caps — were configured but never enforced (Dan got 6 audios in ~20m)
+    max_day = int(getattr(config, "VOICE_NOTES_MAX_PER_DAY", 2) or 2)
+    if _voice_count_today(mem) >= max_day:
+        return False, f"daily cap ({max_day})"
+    if _mem_voice_fresh(mem):
+        return False, "cooldown after last voice"
+
     mode = (getattr(decision, "mode", "") or "").lower()
     if mode in ("hard_sell", "chill"):
         return False, f"mode={mode}"
