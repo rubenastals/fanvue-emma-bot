@@ -95,6 +95,28 @@ def creator_soft_closed(messages: List[dict], creator_uuid: str) -> bool:
     return False
 
 
+def fan_text_is_robot_complaint(text: str) -> bool:
+    t = (text or "").strip()
+    if not t:
+        return False
+    return bool(
+        re.search(
+            r"(?i)\b("
+            r"turn\s+off\s+the\s+robot|stop\s+the\s+robot|"
+            r"automated\s+chat|not\s+the\s+automated|"
+            r"stop\s+using\s+(the\s+)?ai|ai\s+feature|"
+            r"talk\s+to\s+(a\s+)?real\s+person"
+            r")\b",
+            t,
+        )
+    )
+
+
+def reengage_paused(mem: Optional[dict]) -> bool:
+    """No auto nudges until the fan writes again (no time limit)."""
+    return bool((mem or {}).get("reengage_paused_until_fan_writes"))
+
+
 def conversation_closed(
     messages: List[dict],
     fan_uuid: str,
@@ -103,6 +125,9 @@ def conversation_closed(
 ) -> bool:
     """Hard stop for mid-flow nudges — fan said bye / left for work."""
     mem = mem or {}
+    if reengage_paused(mem):
+        return True
+
     closed_at = mem.get("conversation_closed_at")
     if closed_at and str(closed_at).strip():
         try:
@@ -141,6 +166,7 @@ def mark_conversation_closed(
             {
                 "conversation_closed_at": datetime.now(timezone.utc).isoformat(),
                 "conversation_closed_reason": (reason or "farewell")[:120],
+                "reengage_paused_until_fan_writes": True,
             },
             fan_handle=fan_handle,
         )
@@ -148,7 +174,46 @@ def mark_conversation_closed(
         pass
 
 
-def clear_conversation_closed(fan_uuid: str, *, fan_handle: str = "") -> None:
+def fan_reopened_conversation(text: str) -> bool:
+    """Fan wrote again — clear pause only on a real message, not '?' spam."""
+    t = (text or "").strip()
+    if len(t) < 2:
+        return False
+    if re.fullmatch(r"[\?\.\!…]+", t):
+        return False
+    return True
+
+
+def pause_reengage_until_fan_writes(
+    fan_uuid: str,
+    *,
+    fan_handle: str = "",
+    reason: str = "",
+) -> None:
+    """Hard pause: no auto nudges until fan sends a real message."""
+    from core import fan_memory
+
+    if not fan_uuid:
+        return
+    try:
+        fan_memory.patch_fanvue_platform(
+            fan_uuid,
+            {
+                "reengage_paused_until_fan_writes": True,
+                "reengage_pause_reason": (reason or "manual")[:120],
+            },
+            fan_handle=fan_handle,
+        )
+    except Exception:
+        pass
+
+
+def clear_conversation_closed(
+    fan_uuid: str,
+    *,
+    fan_handle: str = "",
+) -> None:
+    """Fan reopened — allow re-engage again."""
     from core import fan_memory
 
     if not fan_uuid:
@@ -159,6 +224,8 @@ def clear_conversation_closed(fan_uuid: str, *, fan_handle: str = "") -> None:
             {
                 "conversation_closed_at": "",
                 "conversation_closed_reason": "",
+                "reengage_paused_until_fan_writes": False,
+                "reengage_pause_reason": "",
             },
             fan_handle=fan_handle,
         )

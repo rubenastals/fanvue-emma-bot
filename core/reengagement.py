@@ -30,6 +30,7 @@ from core.farewell import (
     conversation_closed,
     fan_closed_in_messages,
     mark_conversation_closed,
+    reengage_paused,
 )
 from core.reply_engine import split_into_messages
 from core.turn_policy import TurnDecision
@@ -619,6 +620,13 @@ def run_pass(fv, chats: List[dict], creator_uuid: str) -> int:
 
         mem = fan_memory.get(fan_uuid)
         if not mem or int(mem.get("messages") or 0) < 1:
+            continue
+
+        if reengage_paused(mem):
+            print(
+                f"   reengage skip @{fan_handle}: paused until fan writes "
+                f"({mem.get('reengage_pause_reason') or 'manual'})"
+            )
             continue
 
         try:
