@@ -78,3 +78,21 @@ def test_choose_move_cant_right_now_soft_exit():
     )
     assert m is not None
     assert m.name == "SOFT EXIT"
+
+
+def test_sell_paused_injects_sell_window_turn_line(monkeypatch):
+    from core.reply_assemble import assemble_emma_turn
+
+    mem = _mem(
+        last_reject_at=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
+    )
+    monkeypatch.setattr(fan_memory, "get", lambda _u: mem)
+    monkeypatch.setattr(fan_memory, "sell_pressure_paused", lambda _m, **kw: True)
+    assembled = assemble_emma_turn(
+        "hey",
+        history_turns=[{"role": "user", "content": "hey"}],
+        fan_uuid="fan-sell-pause",
+        fan_handle="dan",
+    )
+    blob = "\n".join(m["content"] for m in assembled.messages if m["role"] == "system")
+    assert "SELL WINDOW: CLOSED" in blob

@@ -734,6 +734,11 @@ def assemble_emma_turn(
     unpaid_gate = bool(delivery_truth and delivery_truth.get("ppv_unpaid"))
     status_active = bool(ppv_status and ppv_status.get("active"))
     sell_paused = fan_memory.sell_pressure_paused(mem)
+    if sell_paused:
+        turn_blocks.append(
+            "SELL WINDOW: CLOSED — he pushed back on price or needs space. "
+            "Zero product talk, no lock hints. Be warm; react to what he said."
+        )
     # Fan asking what's IN the unpaid lock — filthy describe, not price frame
     if (
         not sell_paused
