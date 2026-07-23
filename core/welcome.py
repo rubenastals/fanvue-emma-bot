@@ -34,6 +34,19 @@ _TEMPLATES_ES = [
     "mmm por fin — qué bien que te hayas suscrito. háblame 👀",
 ]
 
+WELCOME_MARKERS = (
+    "glad you subscribed",
+    "so glad you're here",
+    "finally talk",
+    "now we can actually talk",
+    "now we can finally talk",
+    "now we can chat properly",
+    "been waiting for you to sub",
+    "talk to me 👀",
+    "te hayas suscrito",
+    "podemos hablar",
+)
+
 
 def _parse_iso(value: Optional[str]) -> Optional[datetime]:
     if not value:
@@ -67,25 +80,20 @@ def _fan_has_real_chat(messages: list, fan_uuid: str) -> bool:
     return False
 
 
-def _already_welcomed_by_us(messages: list, creator_uuid: str) -> bool:
+def welcome_message_sent(messages: list, creator_uuid: str) -> bool:
     for m in messages or []:
         sender = m.get("sender") or {}
         sid = sender.get("uuid") if isinstance(sender, dict) else None
         if sid != creator_uuid:
             continue
         text = (m.get("text") or "").lower()
-        if any(
-            k in text
-            for k in (
-                "glad you subscribed",
-                "finally talk",
-                "te hayas suscrito",
-                "podemos hablar",
-                "been waiting for you to sub",
-            )
-        ):
+        if any(k in text for k in WELCOME_MARKERS):
             return True
     return False
+
+
+def _already_welcomed_by_us(messages: list, creator_uuid: str) -> bool:
+    return welcome_message_sent(messages, creator_uuid)
 
 
 def run_pass(fv, creator_uuid: str) -> int:

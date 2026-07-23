@@ -1,0 +1,69 @@
+---
+description: Norma al conectar una cuenta Fanvue nueva — welcome, membership, repesca
+globs:
+alwaysApply: true
+---
+
+# Nueva cuenta Fanvue — onboarding obligatorio
+
+Cuando conectamos OAuth / arrancamos poller de una **cuenta nueva**, ejecutar el sweep antes de confiar en el live loop.
+
+## Checklist (orden)
+
+```bash
+export ACCOUNT_ID=<id>
+python scripts/onboard_new_account.py --dry-run   # revisar
+python scripts/onboard_new_account.py             # enviar
+```
+
+Equivalente manual: `welcome_unopened_subs.py` + `churn_welcome_fix.py` (el onboard script une ambos).
+
+## Reglas duras
+
+### 1. Welcome — solo subs activos sin abrir chat
+
+- **Sí:** `membership=active_sub`, nunca escribieron, no hay welcome en historial, thread no está live.
+- **No:** `expired` / `cancelled` / `follower` — **nunca** mandar "glad you subscribed".
+- **No:** si el fan ya habló (`_fan_has_real_chat`) o `mem.messages > 0`.
+- **No:** si `thread_is_live` — fan escribió hace poco, habló último, o hubo ida y vuelta en la última hora.
+
+Lógica central: `core/account_onboard.py` → `evaluate_welcome()`.
+
+### 2. Expired con welcome equivocado → churn apology
+
+Si ya les mandamos subscribe-welcome y `status=expired`:
+
+- Mensaje tipo: *"wow I just saw you cancelled… that's sad"*
+- **Nunca** excusa de glitch / app rota (`follower_fix` eliminado).
+- Followers con welcome erróneo: **no** auto-mensaje (skip).
+
+### 3. Repesca — leer historial antes de nudge
+
+El poller (`reengagement.run_pass`) llama `repesca_appropriate()` además de timing/heat:
+
+- Skip si thread live (misma heurística que welcome).
+- Skip si fan negativo / opt-out en últimos mensajes.
+- Skip si ya mandamos 2+ burbujas seguidas o el último msg ya era nudge.
+- Fan habló último → no repesca (responder, no nudges).
+
+**No spamear chats activos.** Si hay duda, `--dry-run` primero.
+
+### 4. Live loop (después del sweep)
+
+- `welcome.run_pass` — ventana 15–50 min post-sub (subs nuevos).
+- `reengagement.run_pass` — tiers HOT/WARM/COLD + context gate.
+
+## Archivos
+
+| Qué | Dónde |
+|-----|--------|
+| Decisión welcome/membership | `core/account_onboard.py` |
+| Sweep al conectar | `scripts/onboard_new_account.py` |
+| Backfill welcome solo | `scripts/welcome_unopened_subs.py` |
+| Churn post-welcome | `scripts/churn_welcome_fix.py` |
+| Gate repesca en live | `core/reengagement.py` |
+| Setup segunda modelo | `docs/SETUP_SEGUNDA_MODELO.md` §6 |
+
+## Después de "va bien"
+
+`python scripts/save_good_backup.py "onboarding <cuenta> ok"` antes de más experimentos.

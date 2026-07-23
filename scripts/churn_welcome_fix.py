@@ -1,4 +1,6 @@
-"""Apologize to fans who got a subscribe welcome but already cancelled / never subbed.
+"""Apologize to expired fans who got a subscribe welcome by mistake.
+
+Prefer `scripts/onboard_new_account.py` on new account connect.
 
 Usage:
     ACCOUNT_ID=sophia python scripts/churn_welcome_fix.py --dry-run
@@ -20,6 +22,8 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(_ROOT, ".env"))
 
+from core.welcome import welcome_message_sent
+
 _CHURN_TEMPLATES = [
     "wait… I just saw you cancelled? that's kinda sad ngl 😔 what happened?",
     "oh no… I just noticed you unsubscribed. that bummed me out a little tbh",
@@ -27,34 +31,9 @@ _CHURN_TEMPLATES = [
     "wow I just saw you cancelled… that's sad. did I do something wrong?",
 ]
 
-_FOLLOWER_FIX = [
-    "hey sorry if that last message was weird — must've glitched on my end. how are you?",
-    "lol ignore that last text, my app sent the wrong thing. you good?",
-]
 
-
-def _active_subscriber_ids(fv, creator_uuid: str) -> set[str]:
-    ids: set[str] = set()
-    for page in range(1, 21):
-        batch = fv.list_subscribers(creator_uuid, page=page, size=50)
-        if not batch:
-            break
-        for s in batch:
-            uid = s.get("uuid")
-            if uid:
-                ids.add(uid)
-        if len(batch) < 50:
-            break
-    return ids
-
-
-def _welcome_sent_wrongly(messages: list, creator_uuid: str) -> bool:
-    keys = (
-        "glad you subscribed",
-        "finally talk",
-        "been waiting for you to sub",
-        "talk to me 👀",
-    )
+def _churn_already_sent(messages: list, creator_uuid: str) -> bool:
+    keys = ("cancelled", "unsubscribed", "left?", "saw you", "bummed me out")
     for m in messages or []:
         sender = m.get("sender") or {}
         sid = sender.get("uuid") if isinstance(sender, dict) else None
@@ -67,21 +46,21 @@ def _welcome_sent_wrongly(messages: list, creator_uuid: str) -> bool:
 
 
 def _collect_targets(fv, creator_uuid: str, blocked: set[str]) -> list[dict]:
+    from core.account_onboard import active_subscriber_ids, list_all_chats
     from db import fan_memory_store
 
-    active = _active_subscriber_ids(fv, creator_uuid)
+    active = active_subscriber_ids(fv, creator_uuid)
     all_mem = fan_memory_store.load_all() or {}
     out: list[dict] = []
+    seen: set[str] = set()
 
-    for fan_uuid, mem in all_mem.items():
-        handle = (mem.get("handle") or "").lower()
-        if not fan_uuid or handle in blocked:
-            continue
+    def _maybe_add(fan_uuid: str, handle: str):
+        handle_l = (handle or "").lower()
+        if not fan_uuid or handle_l in blocked or fan_uuid in seen:
+            return
+        mem = all_mem.get(fan_uuid) or {}
         if mem.get("churn_apology_sent_at"):
-            continue
-        wk = mem.get("welcome_kind") or ""
-        if wk not in ("backfill_batch", "subscribe_delay"):
-            continue
+            return
         try:
             ins = fv.get_fan_insights(fan_uuid)
         except Exception:
@@ -89,32 +68,37 @@ def _collect_targets(fv, creator_uuid: str, blocked: set[str]) -> list[dict]:
         status = (ins.get("status") or "").lower()
         in_active = fan_uuid in active
         if in_active and status == "subscriber":
-            continue
+            return
+        if status == "follower":
+            return
         try:
             messages = fv.get_messages(fan_uuid, size=8)
         except Exception:
             messages = []
-        if not _welcome_sent_wrongly(messages, creator_uuid):
-            continue
-        if status in ("expired", "cancelled", "inactive", "churned") or (
-            not in_active and status != "follower"
-        ):
-            kind = "churn"
-            text = random.choice(_CHURN_TEMPLATES)
-        elif status == "follower" or not in_active:
-            kind = "follower_fix"
-            text = random.choice(_FOLLOWER_FIX)
-        else:
-            continue
+        if not welcome_message_sent(messages, creator_uuid):
+            return
+        if _churn_already_sent(messages, creator_uuid):
+            return
+        if status not in ("expired", "cancelled", "inactive", "churned") and in_active:
+            return
+        seen.add(fan_uuid)
         out.append(
             {
                 "fan_uuid": fan_uuid,
-                "handle": mem.get("handle") or handle,
+                "handle": handle or handle_l,
                 "status": status,
-                "kind": kind,
-                "text": text,
+                "kind": "churn",
+                "text": random.choice(_CHURN_TEMPLATES),
             }
         )
+
+    for fan_uuid, mem in all_mem.items():
+        _maybe_add(fan_uuid, mem.get("handle") or "")
+
+    for chat in list_all_chats(fv):
+        user = chat.get("user") or {}
+        _maybe_add(user.get("uuid"), user.get("handle") or "")
+
     return out
 
 
@@ -147,9 +131,9 @@ def main() -> None:
     print(f"account={account_id()} creator=@{me.get('handle')}")
 
     targets = _collect_targets(fv, creator_uuid, blocked)
-    print(f"\n{len(targets)} fan(s) need churn/follower fix:\n")
+    print(f"\n{len(targets)} fan(s) need churn apology:\n")
     for t in targets:
-        print(f"  @{t['handle']} status={t['status']} [{t['kind']}] → {t['text']!r}")
+        print(f"  @{t['handle']} status={t['status']} → {t['text']!r}")
 
     if args.dry_run:
         print("\n(dry-run)")

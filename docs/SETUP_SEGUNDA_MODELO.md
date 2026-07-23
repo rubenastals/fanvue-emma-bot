@@ -138,6 +138,31 @@ En Fanvue: manda un DM a la nueva creadora y comprueba que el PPV adjunta UUIDs 
 
 ---
 
+## 6. Onboarding de chats (obligatorio al conectar)
+
+Antes de confiar en el poller en vivo, barrer subs y chats existentes:
+
+```bash
+export ACCOUNT_ID=sofia
+python scripts/onboard_new_account.py --dry-run   # revisar quién recibe qué
+python scripts/onboard_new_account.py             # welcome + churn fix
+```
+
+**Qué hace:**
+
+| Caso | Acción |
+|------|--------|
+| Sub **activo**, nunca abrió chat | Welcome opener |
+| **Expired** con welcome equivocado | Churn apology ("vi que te fuiste/cancelaste") |
+| Follower / expired sin welcome | Skip |
+| Chat **activo** (fan escribió hace poco) | Skip — no spamear |
+
+El poller en vivo después usa `welcome.run_pass` (subs nuevos 15–50 min) y `reengagement.run_pass` con gate de contexto (`repesca_appropriate`) para no repescar threads vivos.
+
+Norma completa: `.cursor/rules/new-account-onboarding.mdc`
+
+---
+
 ## Datos que necesitas antes de empezar
 
 Para rellenar la persona y el deploy:

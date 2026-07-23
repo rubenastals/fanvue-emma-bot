@@ -31,6 +31,7 @@ from core.farewell import (
     mark_conversation_closed,
     reengage_paused,
 )
+from core.account_onboard import repesca_appropriate
 
 # Tier timing (minutes unless noted)
 NUDGE_HOT_MINUTES = int(os.getenv("NUDGE_HOT_MINUTES", "6"))
@@ -744,6 +745,13 @@ def run_pass(fv, chats: List[dict], creator_uuid: str) -> int:
             pass
 
         if _fan_active_recently(messages, fan_uuid, heat_score=heat_score):
+            continue
+
+        repesca_ok, repesca_reason = repesca_appropriate(
+            messages, fan_uuid, creator_uuid, mem, now=now
+        )
+        if not repesca_ok:
+            print(f"   reengage skip @{fan_handle}: context ({repesca_reason})")
             continue
 
         hot = is_hot_score(heat_score)
