@@ -521,6 +521,25 @@ def _handle_fan_chat_body(
         )
 
         mem = fan_memory.observe_message(fan_uuid, fan_handle, text)
+        from core.farewell import (
+            clear_conversation_closed,
+            fan_reopened_conversation,
+            fan_text_is_farewell,
+            fan_text_is_robot_complaint,
+            mark_conversation_closed,
+            pause_reengage_until_fan_writes,
+        )
+
+        if fan_reopened_conversation(text):
+            clear_conversation_closed(fan_uuid, fan_handle=fan_handle)
+        if fan_text_is_farewell(text):
+            mark_conversation_closed(
+                fan_uuid, fan_handle=fan_handle, reason=text[:80]
+            )
+        elif fan_text_is_robot_complaint(text):
+            pause_reengage_until_fan_writes(
+                fan_uuid, fan_handle=fan_handle, reason=text[:80]
+            )
         try:
             from core import fanvue_insights
 

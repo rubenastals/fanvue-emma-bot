@@ -56,3 +56,23 @@ def test_victim_weight_lower_than_share():
     assert reengagement.NUDGE_ANGLES["victim_soft"]["weight"] < (
         reengagement.NUDGE_ANGLES["share_moment"]["weight"]
     )
+
+
+def test_fan_active_recently_blocks_nudge_window():
+    from datetime import datetime, timedelta, timezone
+
+    fan = "fan-uuid"
+    now = datetime.now(timezone.utc)
+    messages = [
+        {
+            "sender": {"uuid": fan},
+            "sentAt": (now - timedelta(minutes=5)).isoformat(),
+            "text": "hey",
+        },
+        {
+            "sender": {"uuid": "creator"},
+            "sentAt": (now - timedelta(minutes=3)).isoformat(),
+            "text": "hi",
+        },
+    ]
+    assert reengagement._fan_active_recently(messages, fan, minutes=25)

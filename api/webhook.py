@@ -160,6 +160,22 @@ async def fanvue_webhook(request: Request):
         _verify_signature(raw, request.headers.get("X-Fanvue-Signature", ""))
 
         data = json.loads(raw)
+        event_type = data.get("type")
+
+        if event_type == "creator.message.reaction":
+            from core.fan_memory import record_fan_reaction
+            from core.webhook_events import parse_message_reaction
+
+            fan_uuid, emoji, msg_uuid = parse_message_reaction(data)
+            if fan_uuid and emoji:
+                record_fan_reaction(
+                    fan_uuid,
+                    emoji=emoji,
+                    message_uuid=msg_uuid,
+                    actor_uuid=fan_uuid,
+                )
+            return {"status": "reaction_recorded", "fan_uuid": fan_uuid}
+
         fan_uuid, message_uuid, message_text = _parse_message_webhook(data)
 
         if not fan_uuid:

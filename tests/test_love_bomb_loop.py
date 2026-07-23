@@ -45,3 +45,45 @@ def test_repeated_love_bomb_stamp_replaced():
     )
     assert "only girl" not in out.lower()
     assert "soft and special" not in out.lower()
+
+
+def test_dan_exact_duplicate_replaced():
+    from core.reply_sanitize import _norm_bubble
+
+    stamp = (
+        "mm I like having you here dan... something about the way you're so sure "
+        "of me already got me feeling soft and special 💕"
+    )
+    turns = [
+        {"role": "assistant", "content": stamp},
+        {"role": "user", "content": "Naughty"},
+    ]
+    assembled = SimpleNamespace(
+        messages=[],
+        decision=SimpleNamespace(mode="rapport", pack_id="phase_pull"),
+        pack_id="phase_pull",
+        tech_name="BOND",
+        phase_name="",
+        want_spanish=False,
+        fan_uuid="test-fan",
+        fan_handle="dan",
+        fan_message="Naughty",
+        turns=turns,
+        offer=None,
+        ppv_status=None,
+        voice_will_send=False,
+        lock_active=False,
+        no_lock=True,
+        status_active=False,
+        unpaid_gate=False,
+        never_bought=True,
+        fan_saw_bluff=False,
+    )
+    out, _ = apply_post_draft(stamp, assembled, call=lambda _m: "fuck… keep talking")
+    assert _norm_bubble(out) != _norm_bubble(stamp)
+
+
+def test_dan_spanish_love_bomb_detected():
+    from core.reply_sanitize import _LOVE_BOMB_LOOP
+
+    assert _LOVE_BOMB_LOOP.search("eres muy especial y único, me haces sentir bien")

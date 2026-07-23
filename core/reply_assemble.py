@@ -878,6 +878,11 @@ def assemble_emma_turn(
 
         turn_blocks.append(vision_system_block(vision_desc))
 
+    from core.fan_pushback import fan_has_pushback, pushback_turn_block
+
+    if fan_has_pushback(fan_message or ""):
+        turn_blocks.append(pushback_turn_block(fan_message or ""))
+
     if voice_will_send:
         turn_blocks.append(
             "VOICE NOTE THIS TURN: An audio file attaches after your text — naturally, no intro. "
@@ -1035,8 +1040,15 @@ def assemble_emma_turn(
         note += (
             " FAN PHOTO attached — obey vision block: react to what's IN the pic. "
             "If it's not HIS body / it's your own content / wrong pic: call it out, "
-            "don't fake arousal. Demand HIS pic if he dodged."
+            "don't fake arousal."
         )
+        if not mem.get("last_fan_image_desc"):
+            note += " Demand HIS pic only if he dodged sending one."
+        else:
+            note += (
+                " He ALREADY sent a photo — do NOT ask for another pic or invent "
+                "sunglasses/hats not in the vision description."
+            )
     note = prompt_layers.clip_author(note)
 
     turns_out = [dict(t) for t in turns]
