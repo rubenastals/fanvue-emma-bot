@@ -29,11 +29,6 @@ _CHURN_TEMPLATES = [
     "wow I just saw you cancelled… that's sad. did I do something wrong?",
 ]
 
-_FOLLOWER_FIX = [
-    "hey sorry if that last message was weird — must've glitched on my end. how are you?",
-    "lol ignore that last text, my app sent the wrong thing. you good?",
-]
-
 
 def _active_subscriber_ids(fv, creator_uuid: str) -> set[str]:
     ids: set[str] = set()
@@ -68,7 +63,7 @@ def _list_all_chats(fv) -> list[dict]:
 
 
 def _churn_already_sent(messages: list, creator_uuid: str) -> bool:
-    keys = ("cancelled", "unsubscribed", "left?", "saw you", "bummed me out", "glitched")
+    keys = ("cancelled", "unsubscribed", "left?", "saw you", "bummed me out")
     for m in messages or []:
         sender = m.get("sender") or {}
         sid = sender.get("uuid") if isinstance(sender, dict) else None
@@ -116,10 +111,8 @@ def _classify_fan(
     ):
         kind = "churn"
         text = random.choice(_CHURN_TEMPLATES)
-    elif status == "follower" or not in_active:
-        kind = "follower_fix"
-        text = random.choice(_FOLLOWER_FIX)
     else:
+        # Followers / non-subs: skip — churn tone doesn't fit and glitch excuses sound fake.
         return None
     seen.add(fan_uuid)
     return {
