@@ -266,22 +266,24 @@ def pick_playbook_move(
 
     # 2) Unpaid lock / price objection — ladder (not eternal SELL LOCK chase)
     if unpaid or pid in ("ppv_unpaid", "price_objection"):
+        sell_streak = sum(1 for t in recent[-3:] if t == "SELL LOCK")
+        # Clear no / not now — stop unlock nag immediately (this turn)
+        if sig.get("soft_decline"):
+            return SOFT_EXIT, "decline-soft-exit"
+        # Pitched hard, won't buy — victim guilt + unlock (even if thread still warm)
+        if sell_streak >= 2 and not sig.get("buying"):
+            return VICTIM, "sell-streak-victim"
         if sig.get("ask_lock_tease") and not sig.get("soft_decline"):
             return SELL_LOCK, "unpaid-describe-tease"
         if sig.get("horny") or sig.get("flirting"):
             return SELL_LOCK, "unpaid-hot-press"
-        # Clear no / not now — stop unlock nag immediately (this turn)
-        if sig.get("soft_decline"):
-            return SOFT_EXIT, "decline-soft-exit"
-        # Already soft-exited recently → bond, don't re-pitch the lock
+        # Already soft-exited recently — if he heats up again, press the lock
         if "SOFT EXIT" in recent[-2:]:
+            if sig.get("horny") or sig.get("flirting"):
+                return SELL_LOCK, "post-exit-hot-press"
+            if sell_streak >= 1 or reject >= 1:
+                return VICTIM, "post-exit-victim"
             return BOND, "post-exit-bond"
-        # Too many sell-lock teases in a row without buy → victim or soft exit
-        sell_streak = sum(1 for t in recent[-3:] if t == "SELL LOCK")
-        if sell_streak >= 2 and not sig.get("buying") and not sig.get("horny"):
-            if reject >= 2:
-                return VICTIM, "sell-streak-victim"
-            return SOFT_EXIT, "sell-streak-soft-exit"
         # Price fight = this msg pushes price, OR sticky price_objection pack.
         price_fight = bool(sig.get("price_push") or pid == "price_objection")
         if price_fight:

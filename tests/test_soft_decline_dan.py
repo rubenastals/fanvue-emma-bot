@@ -66,7 +66,7 @@ def test_playbook_hot_unpaid_presses_sell_lock():
 def test_playbook_victim_after_sell_streak():
     move, why = pick_playbook_move(
         pack_id="ppv_unpaid",
-        sig={"msgs": 40, "horny": False, "buying": False, "reject_step": 2},
+        sig={"msgs": 40, "horny": True, "buying": False, "reject_step": 0},
         unpaid=True,
         recent_techs=["SELL LOCK", "SELL LOCK"],
     )

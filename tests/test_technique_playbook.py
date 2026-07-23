@@ -108,14 +108,14 @@ def test_soft_decline_exits_sell_lock():
     assert "decline" in why
 
 
-def test_sell_streak_soft_exits():
+def test_sell_streak_victim_not_soft_exit():
     move, why = pb.pick_playbook_move(
         pack_id="ppv_unpaid",
         sig={"msgs": 14, "soft_decline": False, "buying": False, "horny": False},
         unpaid=True,
         recent_techs=["SELL LOCK", "SELL LOCK"],
     )
-    assert move.name == "SOFT EXIT"
+    assert move.name == "VICTIM"
 
 
 def test_after_soft_exit_bonds_not_resell():

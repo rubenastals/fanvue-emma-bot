@@ -14,11 +14,12 @@ def skip_active_move(
     unpaid: bool,
     fan_pushback: bool,
     horny_close: bool = False,
+    victim_beat: bool = False,
 ) -> bool:
     """No psychology ACTIVE MOVE unless sell or pushback needs it."""
     if not enabled():
         return False
-    if horny_close:
+    if horny_close or victim_beat:
         return False
     if fan_pushback:
         return False
@@ -44,6 +45,7 @@ def minimal_author_note(
     extra: str = "",
     heat_close: bool = False,
     paid_attach: bool = False,
+    victim_unpaid: bool = False,
 ) -> str:
     """One short steer — thread + card drive the reply, not a rule essay."""
     if paid_attach:
@@ -52,6 +54,14 @@ def minimal_author_note(
             "then tease the PHOTO lock attaching with your bubble. "
             "Girlfriend slutty energy, not a store caption. Price once at the end. "
             "ENGLISH. ~90-140 chars. Do not repeat your last 2 beats."
+        )
+    elif victim_unpaid:
+        note = (
+            f"[{creator} on WhatsApp. Hurt girlfriend beat — he got you worked up but "
+            "won't unlock. Short vulnerable guilt (used / no effort / won't prove it), "
+            "then tease the EXISTING lock waiting. NO random smalltalk, NO 'how was your day', "
+            "NO catching-your-breath dodge. ENGLISH. ~90-130 chars. "
+            "Do not repeat your last 2 beats."
         )
     elif heat_close:
         note = (

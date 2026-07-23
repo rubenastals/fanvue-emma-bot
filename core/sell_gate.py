@@ -2,7 +2,7 @@
 Single sell policy — when to attach PPV or nudge an unpaid lock.
 
 Never hard-block sales for hours because of bills / broke signals.
-Chill = this turn only (soft decline, sell streak). Hot = always press.
+Chill = this turn only (soft decline on THIS message). Hot = always press.
 """
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ class SellGateResult:
     attach: bool
     nudge_unpaid: bool
     chill: bool
+    victim_beat: bool
     reason: str
 
 
@@ -52,8 +53,31 @@ def chill_turn(
             msg, history_turns, facts=facts
         ):
             return True
+    return False
+
+
+def victim_eligible(
+    mem: dict,
+    fan_message: str,
+    *,
+    facts: Any = None,
+    history_turns: Optional[List[dict]] = None,
+    unpaid: bool = False,
+) -> bool:
+    """Unpaid lock + he won't buy after real sell pressure → guilt + unlock push."""
+    if not unpaid:
+        return False
+    msg = (fan_message or "").strip()
+    if is_soft_decline(msg) and not _thread_horny(msg, history_turns, facts=facts):
+        return False
+    recent = [str(t).upper() for t in (mem.get("recent_techniques") or []) if t]
+    if recent and "VICTIM" in recent[-1:]:
+        return False
     streak = _sell_lock_streak(mem or {})
-    if streak >= 2 and not _thread_horny(msg, history_turns, facts=facts):
+    reject = int(mem.get("price_objection_step") or 0)
+    if streak >= 2 or reject >= 2:
+        return True
+    if streak >= 1 and reject >= 1:
         return True
     return False
 
@@ -73,6 +97,21 @@ def evaluate_sell_gate(
     )
 
     if unpaid:
+        victim = victim_eligible(
+            mem,
+            fan_message,
+            facts=facts,
+            history_turns=history_turns,
+            unpaid=True,
+        )
+        if victim:
+            return SellGateResult(
+                attach=False,
+                nudge_unpaid=True,
+                chill=False,
+                victim_beat=True,
+                reason="victim-unpaid-press",
+            )
         nudge = not chill and hot_unpaid_nudge_eligible(
             mem,
             fan_message,
@@ -84,6 +123,7 @@ def evaluate_sell_gate(
                 attach=False,
                 nudge_unpaid=True,
                 chill=False,
+                victim_beat=False,
                 reason="hot-unpaid-nudge",
             )
         if chill:
@@ -91,12 +131,14 @@ def evaluate_sell_gate(
                 attach=False,
                 nudge_unpaid=False,
                 chill=True,
+                victim_beat=False,
                 reason="chill-turn-unpaid",
             )
         return SellGateResult(
             attach=False,
             nudge_unpaid=False,
             chill=False,
+            victim_beat=False,
             reason="unpaid-cold",
         )
 
@@ -105,6 +147,7 @@ def evaluate_sell_gate(
             attach=False,
             nudge_unpaid=False,
             chill=True,
+            victim_beat=False,
             reason="chill-turn",
         )
 
@@ -119,6 +162,7 @@ def evaluate_sell_gate(
             attach=True,
             nudge_unpaid=False,
             chill=False,
+            victim_beat=False,
             reason="heat-close",
         )
 
@@ -134,6 +178,7 @@ def evaluate_sell_gate(
                 attach=True,
                 nudge_unpaid=False,
                 chill=False,
+                victim_beat=False,
                 reason=f"hot-thread score={score}",
             )
 
@@ -141,6 +186,7 @@ def evaluate_sell_gate(
         attach=False,
         nudge_unpaid=False,
         chill=False,
+        victim_beat=False,
         reason="cold-or-early",
     )
 

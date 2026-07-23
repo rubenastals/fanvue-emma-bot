@@ -48,10 +48,19 @@ def test_hot_unpaid_nudge():
     assert not gate.attach
 
 
-def test_sell_streak_chills_cold_followup():
+def test_sell_streak_does_not_chill_when_horny():
+    """Sell streak no longer triggers chill — victim/nudge handles pressure."""
     mem = _mem(recent_techniques=["SELL LOCK", "SELL LOCK"])
     msg = "ok"
-    assert chill_turn(mem, msg)
+    assert not chill_turn(mem, msg)
+
+
+def test_victim_after_sell_streak():
+    mem = _mem(recent_techniques=["SELL LOCK", "SELL LOCK"])
+    gate = evaluate_sell_gate(mem, "still thinking", unpaid=True)
+    assert gate.victim_beat
+    assert gate.nudge_unpaid
+    assert not gate.chill
 
 
 def test_never_hours_block_via_sell_pressure_paused():

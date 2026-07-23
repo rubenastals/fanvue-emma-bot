@@ -612,6 +612,7 @@ def choose_move(
     soft_unpaid: bool = False,
     mem: Optional[dict] = None,
     fan_message: str = "",
+    victim_beat: bool = False,
 ) -> Optional[ActiveMove]:
     """
     Pick ONE move strategically from fan state + pack.
@@ -671,6 +672,7 @@ def choose_move(
             unpaid=bool(unpaid or eff == "ppv_unpaid"),
             fan_pushback=bool(sig.get("fan_pushback")),
             horny_close=horny_close,
+            victim_beat=bool(victim_beat),
         ):
             print("   creative-first: no ACTIVE MOVE — persona + thread beat only")
             return None

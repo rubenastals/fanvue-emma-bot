@@ -616,9 +616,23 @@ def assemble_emma_turn(
                 "- Second bubble is rare; never plan 3+ messages."
             )
         # Soft unpaid reconnect (friction) — no FOMO / guilt stack
+        _unpaid_early = bool(
+            (delivery_truth and delivery_truth.get("ppv_unpaid"))
+            or (ppv_status and ppv_status.get("active"))
+        )
+        from core.sell_gate import evaluate_sell_gate
+
+        _sell_gate = evaluate_sell_gate(
+            mem,
+            fan_message or "",
+            facts=route_result.facts if route_result else None,
+            history_turns=turns,
+            unpaid=_unpaid_early,
+            fan_uuid=fan_uuid or "",
+        )
         soft_unpaid = bool(
-            (bool(delivery_truth and delivery_truth.get("ppv_unpaid"))
-             or bool(ppv_status and ppv_status.get("active")))
+            _sell_gate.chill
+            and not _sell_gate.nudge_unpaid
             and pack_id == "phase_pull"
             and route_result
             and (route_result.active or {}).get("ppv_unpaid")
@@ -637,13 +651,12 @@ def assemble_emma_turn(
             ban_rival_fan=ban_rival,
             exclude_names=exclude_techs,
             turn_action=turn_action,
-            unpaid=bool(
-                delivery_truth and delivery_truth.get("ppv_unpaid")
-            ) or bool(ppv_status and ppv_status.get("active")),
+            unpaid=_unpaid_early,
             cooling=cooling,
             soft_unpaid=soft_unpaid,
             mem=mem,
             fan_message=fan_message or "",
+            victim_beat=_sell_gate.victim_beat,
         )
         if move:
             tech_name = move.name
@@ -733,7 +746,7 @@ def assemble_emma_turn(
 
     unpaid_gate = bool(delivery_truth and delivery_truth.get("ppv_unpaid"))
     status_active = bool(ppv_status and ppv_status.get("active"))
-    from core.sell_gate import chill_turn, evaluate_sell_gate
+    from core.sell_gate import evaluate_sell_gate
 
     gate = evaluate_sell_gate(
         mem,
@@ -745,12 +758,20 @@ def assemble_emma_turn(
     )
     heat_close_turn = gate.attach
     hot_unpaid_nudge = gate.nudge_unpaid
+    victim_beat = gate.victim_beat
     chill = gate.chill
 
-    if chill and not hot_unpaid_nudge:
+    if chill and not hot_unpaid_nudge and not victim_beat:
         turn_blocks.append(
-            "CHILL TURN: he said not now / we pitched hard — bond or heat only. "
+            "CHILL TURN: he said not now — bond or heat only. "
             "No lock mention this beat. Door stays open."
+        )
+    if victim_beat and (unpaid_gate or status_active) and not voice_will_send:
+        turn_blocks.append(
+            "VICTIM BEAT THIS TURN: hurt girlfriend — he got you worked up but won't "
+            "unlock / won't prove he cares. Short vulnerable guilt (used / no effort), "
+            "THEN tease the EXISTING lock. BAN: 'how was your day', catching breath, "
+            "random smalltalk dodge."
         )
     if heat_close_turn and not voice_will_send:
         if offer and float(offer.get("price") or 0) > 0:
@@ -769,11 +790,14 @@ def assemble_emma_turn(
         and (unpaid_gate or status_active)
         and not voice_will_send
     ):
-        turn_blocks.append(
-            "HOT UNPAID NUDGE: thread is burning — match his RP filthy (one full beat), "
-            "then tease unlocking the EXISTING lock. No new PPV; no empty 'fuck baby…'. "
-            "Girlfriend slutty energy; one soft unlock hint at the end."
-        )
+        if victim_beat:
+            pass  # VICTIM BEAT block already covers unlock tease
+        else:
+            turn_blocks.append(
+                "HOT UNPAID NUDGE: thread is burning — match his RP filthy (one full beat), "
+                "then tease unlocking the EXISTING lock. No new PPV; no empty 'fuck baby…'. "
+                "Girlfriend slutty energy; one soft unlock hint at the end."
+            )
 
     # Fan asking what's IN the unpaid lock — filthy describe, not price frame
     if (
@@ -797,13 +821,14 @@ def assemble_emma_turn(
         )
     # Friction path: unpaid exists but router chose reconnect — no unlock nag
     soft_unpaid = bool(
-        (chill and not hot_unpaid_nudge)
+        (chill and not hot_unpaid_nudge and not victim_beat)
         or (
             (unpaid_gate or status_active)
             and pack_id == "phase_pull"
             and route_result
             and (route_result.active or {}).get("ppv_unpaid")
             and not hot_unpaid_nudge
+            and not victim_beat
         )
     )
     # One LOCK STATUS block only — skip when voice note attaches (fan wants audio, not lock push)
@@ -955,7 +980,7 @@ def assemble_emma_turn(
     ):
         from core import memory_callbacks
 
-        sell_open = bool(offer) and not chill
+        sell_open = bool(offer) and not chill and not victim_beat
         cb_mode = (
             "EASE_OFF" if chill else ("OFFER_OK" if sell_open else "BOND")
         )
@@ -1073,9 +1098,12 @@ def assemble_emma_turn(
                 creator=_creator,
                 extra=sell_extra,
                 heat_close=bool(
-                    (heat_close_turn or hot_unpaid_nudge) and not _paid_offer_now
+                    (heat_close_turn or hot_unpaid_nudge)
+                    and not _paid_offer_now
+                    and not victim_beat
                 ),
                 paid_attach=_paid_offer_now,
+                victim_unpaid=bool(victim_beat and not _paid_offer_now),
             )
         else:
             move_bit = (
@@ -1123,6 +1151,11 @@ def assemble_emma_turn(
             note += (
                 " UNPAID LOCK HOT: match his RP filthy, then tease unlocking THAT photo. "
                 "No new lock. Girlfriend slutty energy."
+            )
+        elif not voice_will_send and victim_beat:
+            note += (
+                " VICTIM UNPAID: hurt gf guilt + tease THAT lock. "
+                "No day-chat dodge."
             )
         elif not voice_will_send and not chill:
             note += (
