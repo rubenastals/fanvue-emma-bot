@@ -190,6 +190,8 @@ def _ensure_card_fields(mem: dict) -> None:
         mem["key_fan_quotes"] = []
     if not isinstance(mem.get("interaction_digest"), dict):
         mem["interaction_digest"] = {}
+    if not isinstance(mem.get("callback_usage"), dict):
+        mem["callback_usage"] = {}
     if "open_commitment" not in mem:
         mem["open_commitment"] = None
     if "price_defend_hits" not in mem:
@@ -1507,6 +1509,41 @@ def clear_response_gate(fan_uuid: str, fan_handle: str = "") -> None:
         mem.pop("response_gate_until", None)
         mem.pop("response_gate_reason", None)
         _put(fan_uuid, mem)
+
+
+def get_callback_usage(fan_uuid: str) -> dict:
+    mem = get(fan_uuid) or {}
+    usage = mem.get("callback_usage")
+    return dict(usage) if isinstance(usage, dict) else {}
+
+
+def record_callback_fire(
+    fan_uuid: str,
+    fact_id: str,
+    item: str,
+    *,
+    fan_handle: str = "",
+    at: Optional[datetime] = None,
+) -> None:
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        usage = mem.get("callback_usage")
+        if not isinstance(usage, dict):
+            usage = {}
+        rec = usage.setdefault(fact_id, {"uses": 0})
+        rec["uses"] = int(rec.get("uses", 0)) + 1
+        ts = (at or datetime.now(timezone.utc)).isoformat(timespec="seconds")
+        rec["last_at"] = ts
+        rec["item"] = (item or "")[:120]
+        usage["_last_fire_at"] = ts
+        mem["callback_usage"] = usage
+        _put(fan_uuid, mem)
+
+
+def callback_stats(fan_uuid: str) -> dict:
+    usage = get_callback_usage(fan_uuid)
+    return {k: v for k, v in usage.items() if not str(k).startswith("_")}
 
 
 def set_last_fan_image(

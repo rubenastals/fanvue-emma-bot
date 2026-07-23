@@ -911,6 +911,28 @@ def assemble_emma_turn(
     elif thread_in_boundary_mode(fan_message or "", turns, mem):
         turn_blocks.append(boundary_turn_block())
 
+    if (
+        fan_uuid
+        and not fan_has_pushback(fan_message or "")
+        and not thread_in_boundary_mode(fan_message or "", turns, mem)
+    ):
+        from core import memory_callbacks
+
+        sell_open = bool(offer) and not sell_paused
+        cb_mode = (
+            "EASE_OFF" if sell_paused else ("OFFER_OK" if sell_open else "BOND")
+        )
+        cb = memory_callbacks.pick(
+            fan_uuid,
+            mem,
+            gap_minutes=fan_message_age_minutes,
+            sell_open=sell_open,
+            mode=cb_mode,
+            fan_handle=fan_handle,
+        )
+        if cb:
+            turn_blocks.append(cb)
+
     if voice_will_send:
         turn_blocks.append(
             "VOICE NOTE THIS TURN: An audio file attaches after your text — naturally, no intro. "
