@@ -713,6 +713,12 @@ def run_pass(fv, chats: List[dict], creator_uuid: str) -> int:
         if not messages:
             continue
 
+        from core.welcome import _fan_has_real_chat
+
+        if not _fan_has_real_chat(messages, fan_uuid):
+            print(f"   reengage skip @{fan_handle}: fan never replied")
+            continue
+
         newest = messages[0]
         if _sender_uuid(newest) != creator_uuid:
             continue

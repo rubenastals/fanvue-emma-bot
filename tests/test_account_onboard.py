@@ -105,6 +105,18 @@ def test_welcome_skip_when_fan_already_wrote():
     assert decision.reason == "fan_already_chatted"
 
 
+def test_repesca_skip_welcome_only_no_fan_reply():
+    """Welcome-only thread — mem.messages may lie; history is source of truth."""
+    messages = [
+        _msg(CREATOR, "so glad you subscribed, now we can finally talkk 😋", 60),
+    ]
+    ok, reason = repesca_appropriate(
+        messages, FAN, CREATOR, {"messages": 3}, now=NOW
+    )
+    assert not ok
+    assert reason == "fan_never_replied"
+
+
 def test_repesca_skip_negative_fan():
     messages = [
         _msg(CREATOR, "hey", 20),

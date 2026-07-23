@@ -41,6 +41,7 @@ Si ya les mandamos subscribe-welcome y `status=expired`:
 
 El poller (`reengagement.run_pass`) llama `repesca_appropriate()` además de timing/heat:
 
+- **Skip si el fan nunca respondió** — solo welcome nuestro, cero mensajes del fan → no repesca.
 - Skip si thread live (misma heurística que welcome).
 - Skip si fan negativo / opt-out en últimos mensajes.
 - Skip si ya mandamos 2+ burbujas seguidas o el último msg ya era nudge.

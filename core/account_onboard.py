@@ -237,6 +237,9 @@ def repesca_appropriate(
     if not messages:
         return False, "no_history"
 
+    if not _fan_has_real_chat(messages, fan_uuid):
+        return False, "fan_never_replied"
+
     if int(mem.get("messages") or 0) < 1:
         return False, "never_chatted"
 
