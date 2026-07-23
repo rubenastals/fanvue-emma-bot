@@ -195,6 +195,24 @@ def pick_playbook_move(
     reject = int(sig.get("reject_step") or 0)
     recent = [t.upper() for t in recent_techs if t]
 
+    # Fan called out AI / generic flattery / wrong photo read — bond honestly
+    if (
+        sig.get("fan_pushback")
+        or sig.get("ai_complaint")
+        or sig.get("flattery_skeptic")
+        or sig.get("vision_correction")
+    ):
+        return BOND, "fan-pushback-bond"
+
+    # He already sent a photo — react to it, don't ask for another selfie
+    if sig.get("fan_sent_photo"):
+        if sig.get("horny") or sig.get("compliment"):
+            return HEAT, "post-photo-heat"
+        if "ASK PIC" in recent[-2:]:
+            return BOND, "post-photo-no-ask-pic"
+        if msgs < 12:
+            return HEAT if sig.get("flirting") else BOND, "post-photo-bond"
+
     # 1) Post-purchase / reward pack — first thank, then heat (don't stamp REWARD forever)
     if pid == "reward_purchase":
         if "REWARD" in recent[-2:]:
@@ -203,6 +221,10 @@ def pick_playbook_move(
 
     # 2) Unpaid lock / price objection — ladder (not eternal SELL LOCK chase)
     if unpaid or pid in ("ppv_unpaid", "price_objection"):
+        if sig.get("sell_paused") and not sig.get("buying"):
+            if sig.get("horny"):
+                return HEAT, "sell-cooldown-heat"
+            return BOND, "sell-cooldown-bond"
         # "how do you look in the photo?" → filthy describe, NEVER discount/soft-exit
         if sig.get("ask_lock_tease") and not sig.get("soft_decline"):
             return SELL_LOCK, "unpaid-describe-tease"
@@ -236,6 +258,7 @@ def pick_playbook_move(
             and msgs < 8
             and "ASK PIC" not in recent[-2:]
             and not sig.get("buying")
+            and not sig.get("fan_sent_photo")
         ):
             return ASK_PIC, "shy-ask-pic"
         return BOND, "shy-bond"
@@ -257,6 +280,8 @@ def pick_playbook_move(
             2 <= msgs <= 7
             and "ASK PIC" not in recent[-1:]
             and not any(_ASK_PIC_COOLDOWN.search(t) for t in recent[-1:])
+            and not sig.get("fan_sent_photo")
+            and not sig.get("fan_pushback")
         ):
             # Alternate: even msgs ask pic, odd bond/heat
             if msgs % 2 == 0:

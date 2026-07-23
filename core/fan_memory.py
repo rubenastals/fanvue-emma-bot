@@ -11,7 +11,7 @@ import os
 import re
 import threading
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from db import fan_memory_store
 
@@ -123,6 +123,10 @@ def _blank(fan_handle: str) -> dict:
         "last_nudge_style": None,
         "last_victim_nudge_at": None,
         "last_seen_by_fan_at": None,  # when we first saw isRead on Emma's last msg
+        "last_fan_reaction_at": None,
+        "last_fan_reaction_emoji": None,
+        "last_fan_reaction_msg_uuid": None,
+        "chat_heat_score": 0,
         "last_goodmorning_day": None,
         "welcome_sent_at": None,
         "welcome_kind": None,  # subscribe_delay | first_message | skipped_*
@@ -1106,6 +1110,33 @@ def recent_techniques(fan_uuid: str, *, n: int = 4) -> List[str]:
     return [str(x) for x in recent[-n:] if x]
 
 
+def sell_pressure_paused(
+    mem: Optional[dict],
+    *,
+    recent_techniques: Optional[Sequence[str]] = None,
+    hours: float = 6.0,
+) -> bool:
+    """
+    After soft decline / price push — no unlock nag for a few hours (zero spenders).
+  """
+    mem = mem or {}
+    if float(mem.get("total_spent") or 0) > 0:
+        return False
+    recent = [str(t).upper() for t in (recent_techniques or mem.get("recent_techniques") or []) if t]
+    if any("SOFT EXIT" in t for t in recent[-3:]):
+        return True
+    raw = mem.get("last_reject_at")
+    if not raw:
+        return False
+    try:
+        lr = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if lr.tzinfo is None:
+            lr = lr.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return False
+    return datetime.now(timezone.utc) - lr < timedelta(hours=hours)
+
+
 def set_prefer_spanish(fan_uuid: str, prefer: bool, fan_handle: str = "") -> None:
     from config import config
 
@@ -1252,6 +1283,41 @@ def mark_seen_by_fan(fan_uuid: str, fan_handle: str = "") -> Optional[str]:
         mem["last_seen_by_fan_at"] = stamp
         _put(fan_uuid, mem)
         return stamp
+
+
+def record_fan_reaction(
+    fan_uuid: str,
+    *,
+    emoji: str,
+    message_uuid: str = "",
+    fan_handle: str = "",
+    actor_uuid: str = "",
+) -> None:
+    """Fan reacted to a creator message (webhook creator.message.reaction)."""
+    if not fan_uuid:
+        return
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        if fan_handle:
+            mem["handle"] = fan_handle
+        mem["last_fan_reaction_at"] = _now()
+        mem["last_fan_reaction_emoji"] = (emoji or "")[:16]
+        if message_uuid:
+            mem["last_fan_reaction_msg_uuid"] = message_uuid
+        if actor_uuid:
+            mem["last_fan_reaction_actor"] = actor_uuid
+        _put(fan_uuid, mem)
+
+
+def set_chat_heat_score(fan_uuid: str, score: int, fan_handle: str = "") -> None:
+    if not fan_uuid:
+        return
+    with _LOCK:
+        mem = fan_memory_store.get_fan(fan_uuid) or _blank(fan_handle)
+        _ensure_card_fields(mem)
+        mem["chat_heat_score"] = max(0, min(100, int(score)))
+        _put(fan_uuid, mem)
 
 
 def mark_welcome_sent(

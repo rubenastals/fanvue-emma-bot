@@ -400,9 +400,17 @@ def should_send(
 
     open_voice, open_why = _open_voice_state(mem, history_turns, fan_message)
 
-    # --- COMMITTED FSM: owed → send on this fan turn ---
+    max_day = int(getattr(config, "VOICE_NOTES_MAX_PER_DAY", 2) or 2)
+    spent = float(mem.get("total_spent") or 0)
+    lifetime = int(mem.get("voice_notes_sent") or 0)
+    max_pp = int(getattr(config, "VOICE_NOTES_MAX_PRE_PURCHASE", 3) or 3)
+
+    # --- COMMITTED FSM: owed → send on this fan turn (still capped) ---
     if open_voice:
-        # Any non-reject fan message closes the debt (por favor / dale / ok / …)
+        if _voice_count_today(mem) >= max_day:
+            return False, f"daily cap ({max_day}) blocks FSM"
+        if spent <= 0 and lifetime >= max_pp and not fan_asked_voice(fan_message):
+            return False, f"pre-purchase lifetime cap ({max_pp}) blocks FSM"
         return True, f"FSM open_voice → send ({open_why})"
 
     # --- Opportunistic only (no debt): keep rare; never the pídemelo path ---
@@ -413,12 +421,12 @@ def should_send(
     ):
         return False, "too early in chat"
 
-    # Hard caps — were configured but never enforced (Dan got 6 audios in ~20m)
-    max_day = int(getattr(config, "VOICE_NOTES_MAX_PER_DAY", 2) or 2)
     if _voice_count_today(mem) >= max_day:
         return False, f"daily cap ({max_day})"
     if _mem_voice_fresh(mem):
         return False, "cooldown after last voice"
+    if spent <= 0 and lifetime >= max_pp:
+        return False, f"pre-purchase lifetime cap ({max_pp})"
 
     mode = (getattr(decision, "mode", "") or "").lower()
     if mode in ("hard_sell", "chill"):

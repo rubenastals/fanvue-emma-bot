@@ -695,8 +695,12 @@ def assemble_emma_turn(
 
     unpaid_gate = bool(delivery_truth and delivery_truth.get("ppv_unpaid"))
     status_active = bool(ppv_status and ppv_status.get("active"))
+    sell_paused = fan_memory.sell_pressure_paused(mem)
     # Fan asking what's IN the unpaid lock — filthy describe, not price frame
-    if (unpaid_gate or status_active) and re.search(
+    if (
+        not sell_paused
+        and (unpaid_gate or status_active)
+        and re.search(
         r"(?i)\b("
         r"how\s+do\s+you\s+look|what\s+do\s+you\s+look\s+like|"
         r"what.?s\s+in\s+(the|that)\s+(photo|pic)|"
@@ -704,6 +708,7 @@ def assemble_emma_turn(
         r"c[oó]mo\s+(est[aá]s|sales|te\s+ves)|qu[eé]\s+se\s+ve"
         r")\b",
         fan_message or "",
+    )
     ):
         label = str((ppv_status or {}).get("label") or "").strip()
         label_bit = f' ("{label}")' if label else ""
@@ -717,10 +722,13 @@ def assemble_emma_turn(
         )
     # Friction path: unpaid exists but router chose reconnect — no unlock nag
     soft_unpaid = bool(
-        (unpaid_gate or status_active)
-        and pack_id == "phase_pull"
-        and route_result
-        and (route_result.active or {}).get("ppv_unpaid")
+        sell_paused
+        or (
+            (unpaid_gate or status_active)
+            and pack_id == "phase_pull"
+            and route_result
+            and (route_result.active or {}).get("ppv_unpaid")
+        )
     )
     # One LOCK STATUS block only — skip when voice note attaches (fan wants audio, not lock push)
     if soft_unpaid and not voice_will_send:
@@ -870,6 +878,11 @@ def assemble_emma_turn(
 
         turn_blocks.append(vision_system_block(vision_desc))
 
+    from core.fan_pushback import fan_has_pushback, pushback_turn_block
+
+    if fan_has_pushback(fan_message or ""):
+        turn_blocks.append(pushback_turn_block(fan_message or ""))
+
     if voice_will_send:
         turn_blocks.append(
             "VOICE NOTE THIS TURN: An audio file attaches after your text — naturally, no intro. "
@@ -992,11 +1005,16 @@ def assemble_emma_turn(
         if tech_name:
             note += manipulation.author_nudge(pack_id, tech_name)
     if pack_id == "ppv_unpaid" or (ppv_status and ppv_status.get("active")):
-        if not voice_will_send:
+        if not voice_will_send and not sell_paused:
             note += (
                 " UNPAID LOCK: push ONLY that waiting photo (scroll up). "
                 "No other photo, no video, no bundle, no 'the one I mentioned'. "
                 "Gratis ask → deny, push unlock."
+            )
+        elif sell_paused:
+            note += (
+                " SELL COOLDOWN: he declined / can't pay — NO unlock nag, NO price. "
+                "React to his roleplay or vibe only. Bond or heat, zero $."
             )
     paid_offer_now = bool(
         offer
@@ -1022,8 +1040,15 @@ def assemble_emma_turn(
         note += (
             " FAN PHOTO attached — obey vision block: react to what's IN the pic. "
             "If it's not HIS body / it's your own content / wrong pic: call it out, "
-            "don't fake arousal. Demand HIS pic if he dodged."
+            "don't fake arousal."
         )
+        if not mem.get("last_fan_image_desc"):
+            note += " Demand HIS pic only if he dodged sending one."
+        else:
+            note += (
+                " He ALREADY sent a photo — do NOT ask for another pic or invent "
+                "sunglasses/hats not in the vision description."
+            )
     note = prompt_layers.clip_author(note)
 
     turns_out = [dict(t) for t in turns]

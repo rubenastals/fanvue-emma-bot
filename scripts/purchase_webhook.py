@@ -176,6 +176,23 @@ async def receive(request: Request):
     if etype in ("creator.payment.succeeded",) and fan_uuid and SEND_THANK_YOU:
         _send_thank_you(fan_uuid, amount)
 
+    if etype == "creator.message.reaction":
+        try:
+            from core.fan_memory import record_fan_reaction
+            from core.webhook_events import parse_message_reaction
+
+            react_fan, emoji, msg_uuid = parse_message_reaction(body)
+            if react_fan and emoji:
+                record_fan_reaction(
+                    react_fan,
+                    emoji=emoji,
+                    message_uuid=msg_uuid,
+                    actor_uuid=react_fan,
+                )
+                print(f"   ❤️ reaction stored: {emoji} from {react_fan[:8]}…")
+        except Exception as e:
+            print(f"   ⚠️ reaction store failed: {e}")
+
     return {"status": "ok"}
 
 

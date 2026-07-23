@@ -39,15 +39,20 @@ class Config:
     CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
     CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", REDIS_URL)
 
-    # Re-engagement (hot/cold ladder; see core/reengagement.py)
+    # Re-engagement (hot/cold ladder + visto-gated victim; see core/reengagement.py)
     REENGAGEMENT_INTERVAL_SECONDS = int(os.getenv("REENGAGEMENT_INTERVAL_SECONDS", "1800"))
     INACTIVE_HOURS = int(os.getenv("INACTIVE_HOURS", "12"))
-    NUDGE_HOT_MINUTES = int(os.getenv("NUDGE_HOT_MINUTES", "12"))
+    NUDGE_HOT_MINUTES = int(os.getenv("NUDGE_HOT_MINUTES", "6"))
     NUDGE_COLD_MINUTES = int(os.getenv("NUDGE_COLD_MINUTES", "12"))
+    NUDGE_HOT_SEEN_MINUTES = int(os.getenv("NUDGE_HOT_SEEN_MINUTES", "4"))
+    NUDGE_WARM_SEEN_MINUTES = int(os.getenv("NUDGE_WARM_SEEN_MINUTES", "7"))
+    NUDGE_REACTION_MINUTES = int(os.getenv("NUDGE_REACTION_MINUTES", "3"))
     NUDGE_FIRST_MINUTES = int(
         os.getenv("NUDGE_FIRST_MINUTES", str(max(NUDGE_HOT_MINUTES, NUDGE_COLD_MINUTES)))
     )
-    NUDGE_SECOND_MINUTES = int(os.getenv("NUDGE_SECOND_MINUTES", "45"))
+    NUDGE_HOT_SECOND_MINUTES = int(os.getenv("NUDGE_HOT_SECOND_MINUTES", "18"))
+    NUDGE_COLD_SECOND_MINUTES = int(os.getenv("NUDGE_SECOND_MINUTES", "45"))
+    NUDGE_SECOND_MINUTES = NUDGE_COLD_SECOND_MINUTES
     MAX_NUDGES_PER_EPISODE = int(os.getenv("MAX_NUDGES_PER_EPISODE", "2"))
     VICTIM_AFTER_SEEN_MINUTES = int(os.getenv("VICTIM_AFTER_SEEN_MINUTES", "60"))
     VICTIM_COOLDOWN_HOURS = int(os.getenv("VICTIM_COOLDOWN_HOURS", "12"))
@@ -186,6 +191,7 @@ class Config:
     VOICE_NOTES_ENABLED = os.getenv("VOICE_NOTES_ENABLED", "1") == "1"
     VOICE_NOTES_MIN_MESSAGES = int(os.getenv("VOICE_NOTES_MIN_MESSAGES", "8"))
     VOICE_NOTES_MAX_PER_DAY = int(os.getenv("VOICE_NOTES_MAX_PER_DAY", "2"))
+    VOICE_NOTES_MAX_PRE_PURCHASE = int(os.getenv("VOICE_NOTES_MAX_PRE_PURCHASE", "3"))
     VOICE_NOTES_COOLDOWN_HOURS = float(os.getenv("VOICE_NOTES_COOLDOWN_HOURS", "6"))
     VOICE_NOTES_CHANCE = float(os.getenv("VOICE_NOTES_CHANCE", "0.55"))
     VOICE_NOTE_MAX_CHARS = int(os.getenv("VOICE_NOTE_MAX_CHARS", "320"))

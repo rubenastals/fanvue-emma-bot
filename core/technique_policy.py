@@ -19,6 +19,13 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from config import config
 from core import manipulation
 from core import technique_playbook as playbook
+from core.fan_pushback import (
+    fan_has_pushback,
+    is_ai_complaint,
+    is_flattery_skeptic,
+    is_vision_correction,
+)
+from core.soft_decline import is_soft_decline
 
 # First N messages: romance / heat / ask-his-photo only — dark cards later.
 EARLY_ROMANCE_MAX_MSGS = 8
@@ -245,22 +252,7 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
         )
     )
     # Soft "not now" / clear no — stop unlock chase (not the same as haggling)
-    soft_decline = bool(
-        re.search(
-            r"(?i)\b("
-            r"no,?\s*sorry|not\s+now|maybe\s+later|another\s+moment|"
-            r"otro\s+momento|next\s+time|otro\s+d[ií]a|"
-            r"not\s+so\s+horny|don'?t\s+want\s+to\s+spend|"
-            r"spend\s+(my\s+)?money|no\s+thanks|no\s+gracias|"
-            r"maybe\s+in\s+another|don'?t\s+worry.*another"
-            r")\b",
-            low,
-        )
-        or re.fullmatch(
-            r"(?i)\s*(no|nope|nah|pass|not\s+now)\s*[.!,]?\s*(sorry)?\s*",
-            low,
-        )
-    )
+    soft_decline = is_soft_decline(low)
     # Asking what's IN the unpaid lock — tease/describe, not price fight
     ask_lock_tease = bool(
         re.search(
@@ -332,6 +324,18 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
         and msgs < 8
         and frees < 1
     )
+    fan_sent_photo = bool(mem.get("last_fan_image_desc"))
+    if mem.get("last_fan_image_at"):
+        try:
+            from datetime import datetime, timedelta, timezone
+
+            ts = datetime.fromisoformat(
+                str(mem["last_fan_image_at"]).replace("Z", "+00:00")
+            )
+            fan_sent_photo = datetime.now(timezone.utc) - ts < timedelta(hours=72)
+        except Exception:
+            fan_sent_photo = bool(mem.get("last_fan_image_desc"))
+    fan_pushback = fan_has_pushback(low)
     return {
         "spent": spent,
         "purchases": purchases,
@@ -352,6 +356,11 @@ def _fan_signals(mem: Optional[dict], fan_message: str) -> Dict[str, Any]:
         "soft_clarify": soft_clarify,
         "shy_short": shy_short,
         "zero_spender": spent <= 0 and purchases <= 0,
+        "fan_sent_photo": fan_sent_photo,
+        "fan_pushback": fan_pushback,
+        "ai_complaint": is_ai_complaint(low),
+        "flattery_skeptic": is_flattery_skeptic(low),
+        "vision_correction": is_vision_correction(low),
     }
 
 
@@ -611,6 +620,11 @@ def choose_move(
             sig["msgs"] = int(mem.get("messages") or msgs or 0)
         elif msgs:
             sig["msgs"] = msgs
+        from core import fan_memory as _fm
+
+        sig["sell_paused"] = _fm.sell_pressure_paused(
+            mem, recent_techniques=list(exclude_names or [])
+        )
         # Sync reject ladder into signals
         if reject_count:
             sig["reject_step"] = max(int(sig.get("reject_step") or 0), int(reject_count))
