@@ -665,10 +665,13 @@ def assemble_emma_turn(
                 f"   move: {move.name} fam={move.family_id or '-'} "
                 f"why={move.why} (pack={pack_id})"
             )
-        if recent_emojis and not _cf.enabled():
+        _emoji_rotate = scheme_guard.emoji_rotate_turn_block(turns, n_bubbles=2)
+        if _emoji_rotate:
+            turn_blocks.append(_emoji_rotate)
+        elif recent_emojis:
             turn_blocks.append(
-                f"EMOJI BAN — you used these recently: {recent_emojis}. "
-                "Do NOT repeat these combos. Pick something different or use no emoji."
+                f"EMOJI ROTATE: recent combos {recent_emojis[-3:]}. "
+                "Do NOT repeat — vary or skip emoji this turn."
             )
         # Compact continuity — keep her in the long thread without a fat CONTEXT wall
         beat = scheme_guard.thread_beat_block(turns, mem)

@@ -867,6 +867,105 @@ def recent_emojis(
     return seen[-n:]
 
 
+def emojis_used_recently(
+    history_turns: Optional[List[Dict[str, Any]]], *, n_bubbles: int = 2
+) -> List[str]:
+    """Flat list of emojis from Emma's last N assistant bubbles (ban repeats)."""
+    out: List[str] = []
+    if not history_turns:
+        return out
+    count = 0
+    for turn in reversed(history_turns):
+        if (turn.get("role") or "") != "assistant":
+            continue
+        out.extend(_EMOJI_RE.findall(str(turn.get("content") or "")))
+        count += 1
+        if count >= n_bubbles:
+            break
+    return out
+
+
+_EMOJI_ROTATE_POOL = (
+    "😈",
+    "🔥",
+    "💋",
+    "😏",
+    "🫦",
+    "🥺",
+    "👀",
+    "😤",
+    "💦",
+    "😩",
+    "😘",
+    "💕",
+    "😋",
+    "🙈",
+    "✨",
+)
+
+
+def emoji_rotate_turn_block(
+    history_turns: Optional[List[Dict[str, Any]]], *, n_bubbles: int = 2
+) -> str:
+    """One TURN line — code truth, not a personality essay."""
+    used = emojis_used_recently(history_turns, n_bubbles=n_bubbles)
+    if not used:
+        return ""
+    # De-dupe preserving order
+    seen: set[str] = set()
+    unique: List[str] = []
+    for e in used:
+        if e not in seen:
+            seen.add(e)
+            unique.append(e)
+    avoid = " ".join(unique[:8])
+    alts = " ".join(_EMOJI_ROTATE_POOL[:10])
+    extra = ""
+    if "🥵" in unique:
+        extra = " 🥵 is overused — pick something else or skip emoji."
+    return (
+        f"EMOJI ROTATE: your last {n_bubbles} bubbles used: {avoid}. "
+        f"Do NOT repeat those — rotate ({alts}) or use zero emoji.{extra}"
+    )
+
+
+def vary_stale_emojis(
+    reply: str,
+    history_turns: Optional[List[Dict[str, Any]]],
+    *,
+    n_bubbles: int = 2,
+) -> tuple[str, bool]:
+    """
+    Swap emojis that repeat from Emma's last N bubbles.
+    Deterministic belt — keeps voice, kills 🥵🥵🥵 stamps.
+    """
+    text = reply or ""
+    if not text.strip():
+        return text, False
+    stale = set(emojis_used_recently(history_turns, n_bubbles=n_bubbles))
+    if not stale:
+        return text, False
+    used_in_reply = set(_EMOJI_RE.findall(text))
+    changed = False
+    for emoji in sorted(stale, key=len, reverse=True):
+        if emoji not in text:
+            continue
+        pool = [
+            e
+            for e in _EMOJI_ROTATE_POOL
+            if e not in stale and e not in used_in_reply
+        ]
+        if not pool:
+            text = text.replace(emoji, "", 1)
+            changed = True
+            continue
+        alt = pool[0]
+        text = text.replace(emoji, alt, 1)
+        used_in_reply.add(alt)
+        changed = True
+    return text.strip(), changed
+
+
 def sticky_ay_open(text: str) -> bool:
     """True when reply opens with the overused 'Ay, qué rico/pillín…' stamp."""
     first = (text or "").strip().split("\n", 1)[0]

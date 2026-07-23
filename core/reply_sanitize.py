@@ -1351,6 +1351,13 @@ def apply_post_draft(
     from core import creative_first as _cf
 
     _loop_belts = (not _creative) or _cf.keep_loop_belts()
+    if _loop_belts and turns:
+        varied, emoji_swapped = scheme_guard.vary_stale_emojis(reply, turns)
+        if emoji_swapped:
+            print(
+                f"   🔁 stale emoji rotated ({reply[:40]!r} → {varied[:40]!r})"
+            )
+            reply = varied
     _pushback_mode = thread_in_pushback_mode(
         fan_message or "", turns, _pb_mem
     )

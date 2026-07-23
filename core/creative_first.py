@@ -74,7 +74,8 @@ def minimal_author_note(
         note = (
             f"[{creator} on WhatsApp. React to his LAST message using recent thread + "
             "CLIENT CARD. ENGLISH. 1 short bubble (~60-90c). Girlfriend vibe, not sales "
-            "script. Do not repeat your last 2 beats."
+            "script. Emojis: vary or skip — never repeat 🥵/same stamp from your last 2 bubbles. "
+            "Do not repeat your last 2 beats."
         )
     if extra.strip():
         note += f" {extra.strip()}"
