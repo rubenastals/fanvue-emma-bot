@@ -32,6 +32,7 @@ from core.farewell import (
     reengage_paused,
 )
 from core.account_onboard import repesca_appropriate
+from core.fan_pushback import reengage_blocked
 
 # Tier timing (minutes unless noted)
 NUDGE_HOT_MINUTES = int(os.getenv("NUDGE_HOT_MINUTES", "6"))
@@ -701,8 +702,15 @@ def run_pass(fv, chats: List[dict], creator_uuid: str) -> int:
         if not mem or int(mem.get("messages") or 0) < 1:
             continue
 
-        if reengage_paused(mem) or mem.get("pushback_active"):
-            reason = mem.get("reengage_pause_reason") or mem.get("pushback_reason") or "pushback"
+        if reengage_paused(mem) or reengage_blocked(mem):
+            reason = (
+                mem.get("reengage_pause_reason")
+                or mem.get("pushback_reason")
+                or mem.get("fan_boundary_reason")
+                or "pushback"
+            )
+            if mem.get("fan_boundary_active") or mem.get("photo_refusal_active"):
+                reason = mem.get("fan_boundary_reason") or "fan_boundary"
             print(f"   reengage skip @{fan_handle}: paused ({reason})")
             continue
 

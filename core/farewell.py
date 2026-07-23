@@ -211,21 +211,24 @@ def clear_conversation_closed(
     fan_uuid: str,
     *,
     fan_handle: str = "",
+    preserve_reengage_pause: bool = False,
 ) -> None:
-    """Fan reopened — allow re-engage again."""
+    """Fan reopened — allow re-engage again (unless boundary pause must stay)."""
     from core import fan_memory
 
     if not fan_uuid:
         return
+    patch: dict = {
+        "conversation_closed_at": "",
+        "conversation_closed_reason": "",
+    }
+    if not preserve_reengage_pause:
+        patch["reengage_paused_until_fan_writes"] = False
+        patch["reengage_pause_reason"] = ""
     try:
         fan_memory.patch_fanvue_platform(
             fan_uuid,
-            {
-                "conversation_closed_at": "",
-                "conversation_closed_reason": "",
-                "reengage_paused_until_fan_writes": False,
-                "reengage_pause_reason": "",
-            },
+            patch,
             fan_handle=fan_handle,
         )
     except Exception:

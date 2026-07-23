@@ -243,6 +243,11 @@ def repesca_appropriate(
     if int(mem.get("messages") or 0) < 1:
         return False, "never_chatted"
 
+    if mem.get("fan_boundary_active") or mem.get("photo_refusal_active"):
+        return False, "fan_boundary"
+    if mem.get("pushback_active"):
+        return False, "pushback"
+
     fan_texts: list[str] = []
     for msg in messages[:8]:
         if _sender_uuid(msg) == fan_uuid:

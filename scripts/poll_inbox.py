@@ -526,8 +526,15 @@ def _handle_fan_chat_body(
         from core.fan_pushback import fan_has_pushback, is_fan_boundary
 
         if fan_reopened_conversation(text):
-            clear_conversation_closed(fan_uuid, fan_handle=fan_handle)
-            if not fan_has_pushback(text):
+            _boundary_sticky = bool(
+                mem.get("fan_boundary_active") or mem.get("photo_refusal_active")
+            )
+            clear_conversation_closed(
+                fan_uuid,
+                fan_handle=fan_handle,
+                preserve_reengage_pause=_boundary_sticky,
+            )
+            if not fan_has_pushback(text) and not _boundary_sticky:
                 fan_memory.clear_pushback_active(fan_uuid, fan_handle=fan_handle)
         if is_fan_boundary(text):
             fan_memory.mark_fan_boundary_active(

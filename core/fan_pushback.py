@@ -217,6 +217,16 @@ def thread_in_pushback_mode(
     return pushback_in_turns(turns)
 
 
+def reengage_blocked(mem: Optional[dict]) -> bool:
+    """Hard stop for auto nudges — boundary/pushback/refusal still hot in fan_memory."""
+    mem = mem or {}
+    if mem.get("fan_boundary_active") or mem.get("photo_refusal_active"):
+        return True
+    if mem.get("pushback_active"):
+        return True
+    return False
+
+
 def vision_mentions_sunglasses(description: str) -> bool:
     return bool(re.search(r"(?i)\bsunglasses\b", description or ""))
 
