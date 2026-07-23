@@ -9,7 +9,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT))
 
 from core.account_onboard import repesca_appropriate
-from core.fan_pushback import reengage_blocked
+from core.fan_pushback import pick_boundary_fallback, reengage_blocked
 from core.farewell import clear_conversation_closed
 from core import reply_supervisor as sup
 
@@ -33,8 +33,6 @@ def test_repesca_skips_boundary_memory():
 
 
 def test_clear_closed_preserves_reengage_pause():
-  # patch_fanvue_platform is exercised via fan_memory in integration;
-  # here we only assert the farewell helper forwards the flag shape.
     import inspect
 
     sig = inspect.signature(clear_conversation_closed)
@@ -60,6 +58,23 @@ def test_supervisor_accepts_ok_draft(monkeypatch):
     assert out == "hey babe what's up"
 
 
+def test_boundary_fallback_answers_free_time_question():
+    msg = "okayy thankss\nyou are sweet 😊\nwhat do you like to do in your free time"
+    out = pick_boundary_fallback(msg)
+    assert "game" not in out.lower()
+    assert "umamusume" not in out.lower()
+    assert any(
+        w in out.lower()
+        for w in ("gym", "chill", "you", "sweet", "phone", "home", "tiktok")
+    )
+
+
+def test_boundary_fallback_thanks_not_game():
+    out = pick_boundary_fallback("okay thanks you're sweet")
+    assert "game" not in out.lower()
+    assert any(w in out.lower() for w in ("sweet", "thank", "cute", "smile"))
+
+
 def test_supervisor_fallback_on_reject(monkeypatch):
     monkeypatch.setattr(sup, "enabled", lambda: True)
     calls = {"n": 0}
@@ -69,10 +84,15 @@ def test_supervisor_fallback_on_reject(monkeypatch):
         return sup.SupervisorVerdict(ok=False, why="pushy sell after boundary")
 
     monkeypatch.setattr(sup, "evaluate_reply", _eval)
+    monkeypatch.setattr(
+        sup,
+        "_contextual_fallback_llm",
+        lambda _a, hint="": "honestly gym and scrolling my phone lol… you?",
+    )
     assembled = SimpleNamespace(
-        fan_message="stop asking for pictures",
+        fan_message="what do you like to do in your free time",
         turns=[
-            {"role": "user", "content": "stop asking for pictures"},
+            {"role": "user", "content": "what do you like to do in your free time"},
         ],
         messages=[],
         fan_uuid="fan-1",
@@ -85,4 +105,5 @@ def test_supervisor_fallback_on_reject(monkeypatch):
         call=lambda _m: "still bad",
     )
     assert "$7" not in out
+    assert "game" not in out.lower()
     assert calls["n"] >= 1

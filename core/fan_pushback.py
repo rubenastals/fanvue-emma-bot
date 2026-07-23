@@ -296,20 +296,84 @@ _SKEPTIC_FALLBACKS = (
 )
 
 _PHOTO_REFUSAL_FALLBACKS = (
-    "okay fair… mystery it is. tell me more about that game then",
-    "haha respect — we can keep it like that. so what are you playing rn?",
-    "got it, no pressure. keep going, i'm listening",
-    "fair enough babe… so umamusume? explain it to me like i'm dumb lol",
+    "okay fair… no pressure. what's on your mind?",
+    "got it, we can keep it chill. tell me something about your day",
+    "respect — i'm listening. what were you saying?",
+    "fair enough… keep talking, i'm here",
 )
 
 
-def pick_photo_refusal_fallback(*, banned: set[str] | None = None) -> str:
+def _last_fan_text(fan_message: str, turns: Optional[List[Dict[str, Any]]]) -> str:
+    """Prefer coalesced fan_message; else newest user turn."""
+    msg = (fan_message or "").strip()
+    if msg:
+        return msg
+    for turn in reversed(turns or []):
+        if (turn.get("role") or "") == "user":
+            t = (turn.get("content") or "").strip()
+            if t:
+                return t
+    return ""
+
+
+def pick_boundary_fallback(
+    fan_message: str,
+    *,
+    turns: Optional[List[Dict[str, Any]]] = None,
+    banned: Optional[set[str]] = None,
+) -> str:
+    """
+    Warm reply after boundary/refusal — must match what HE actually said.
+    Never reuse game/hobby stamps from another fan thread.
+    """
     banned = banned or set()
-    for line in _PHOTO_REFUSAL_FALLBACKS:
+    text = _last_fan_text(fan_message, turns)
+    low = text.lower()
+
+    pools: tuple[str, ...]
+    if re.search(
+        r"(?i)\b(thank|thanks|sweet|cute|kind|nice of you|appreciate)\b",
+        low,
+    ):
+        pools = (
+            "aw you're sweet too 🙈",
+            "haha thank you… you're making me smile",
+            "that's cute of you honestly",
+        )
+    elif re.search(
+        r"(?i)\b("
+        r"free time|what do you like|hobbies|what do you do|"
+        r"interests|outside of work|when you'?re not"
+        r")\b",
+        low,
+    ):
+        pools = (
+            "honestly gym, music, and scrolling my phone too much lol… you?",
+            "usually gym or just chilling at home… what about you?",
+            "gym, cooking badly, and tiktok rabbit holes lol. your turn",
+        )
+    elif re.search(r"(?i)\b(how are you|how'?s it going|what'?s up|wyd)\b", low):
+        pools = (
+            "pretty good, lazy day lol… you?",
+            "doing alright… what's up with you?",
+        )
+    else:
+        pools = _PHOTO_REFUSAL_FALLBACKS
+
+    for line in pools:
         norm = re.sub(r"\s+", " ", (line or "").lower().strip())
         if norm not in banned:
             return line
-    return _PHOTO_REFUSAL_FALLBACKS[0]
+    return pools[0]
+
+
+def pick_photo_refusal_fallback(
+    fan_message: str = "",
+    *,
+    turns: Optional[List[Dict[str, Any]]] = None,
+    banned: set[str] | None = None,
+) -> str:
+    return pick_boundary_fallback(fan_message, turns=turns, banned=banned)
 
 
 def pick_pushback_fallback(fan_message: str, *, banned: set[str] | None = None) -> str:

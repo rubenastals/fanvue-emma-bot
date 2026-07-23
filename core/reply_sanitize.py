@@ -1441,7 +1441,11 @@ def apply_post_draft(
                 _norm_bubble(str(t.get("content") or ""))
                 for t in (turns or [])[-8:]
             }
-            reply = pick_photo_refusal_fallback(banned=banned)
+            reply = pick_photo_refusal_fallback(
+                fan_message or "",
+                turns=turns,
+                banned=banned,
+            )
             print(
                 "   📷 boundary mode — stripped sell/pic pressure "
                 f"({before_pr[:56]!r} → {reply!r})"

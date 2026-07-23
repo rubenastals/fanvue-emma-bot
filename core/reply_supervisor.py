@@ -158,9 +158,56 @@ def evaluate_reply(
         return None
 
 
-def _pick_fallback(assembled: "AssembledTurn", *, banned: set[str]) -> str:
+def _contextual_fallback_llm(
+    assembled: "AssembledTurn",
+    *,
+    hint: str = "",
+) -> Optional[str]:
+    """One fast bubble that answers HIS last line — used when static fallbacks would lie."""
+    model = (
+        getattr(config, "REPLY_SUPERVISOR_MODEL", None)
+        or getattr(config, "DEEPSEEK_FAST_MODEL", None)
+        or config.DEEPSEEK_MODEL
+    )
+    user = (
+        f"RECENT THREAD:\n{_thread_snippet(assembled.turns)}\n\n"
+        f"HIS LAST MESSAGE:\n{(assembled.fan_message or '').strip()[:500]}\n\n"
+        f"ISSUE: {(hint or 'reply was off-topic or pushy').strip()[:200]}\n\n"
+        "Write ONE short WhatsApp bubble (English, ~90 chars max) that:\n"
+        "- Answers or reacts to what HE actually said last\n"
+        "- Warm girlfriend tone, zero sell, zero pic pressure\n"
+        "- Do NOT mention games/hobbies he didn't bring up\n"
+        "Reply text only, no quotes:"
+    )
+    kwargs: Dict[str, Any] = dict(
+        model=model,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You write one natural Fanvue DM as Sophia/Emma. "
+                    "Short, human, in context. No markdown."
+                ),
+            },
+            {"role": "user", "content": user},
+        ],
+        temperature=0.7,
+        max_tokens=120,
+    )
+    if getattr(config, "DEEPSEEK_DISABLE_THINKING", False):
+        kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+    try:
+        resp = _client().chat.completions.create(**kwargs)
+        out = (resp.choices[0].message.content or "").strip().strip("\"'")
+        return out if len(out) >= 8 else None
+    except Exception as exc:
+        print(f"   ⚠️ supervisor contextual fallback failed: {exc}")
+        return None
+
+
+def _pick_fallback(assembled: "AssembledTurn", *, banned: set[str], hint: str = "") -> str:
     from core.fan_pushback import (
-        pick_photo_refusal_fallback,
+        pick_boundary_fallback,
         pick_pushback_fallback,
         thread_in_boundary_mode,
         thread_in_pushback_mode,
@@ -171,11 +218,21 @@ def _pick_fallback(assembled: "AssembledTurn", *, banned: set[str]) -> str:
     if thread_in_boundary_mode(
         assembled.fan_message or "", assembled.turns, mem
     ):
-        return pick_photo_refusal_fallback(banned=banned)
+        llm = _contextual_fallback_llm(assembled, hint=hint)
+        if llm:
+            return llm
+        return pick_boundary_fallback(
+            assembled.fan_message or "",
+            turns=assembled.turns,
+            banned=banned,
+        )
     if thread_in_pushback_mode(
         assembled.fan_message or "", assembled.turns, mem
     ):
         return pick_pushback_fallback(assembled.fan_message or "", banned=banned)
+    llm = _contextual_fallback_llm(assembled, hint=hint)
+    if llm:
+        return llm
     return "hey… tell me what you meant by that"
 
 
@@ -231,6 +288,6 @@ def supervise_reply(
         _norm_bubble(str(t.get("content") or ""))
         for t in (assembled.turns or [])[-8:]
     }
-    fb = _pick_fallback(assembled, banned=banned)
+    fb = _pick_fallback(assembled, banned=banned, hint=hint)
     print(f"   🛡 supervisor fallback → {fb!r}")
     return fb
