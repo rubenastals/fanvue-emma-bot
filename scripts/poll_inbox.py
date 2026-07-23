@@ -1165,6 +1165,11 @@ def _handle_fan_chat_body(
         _will_attach_photo = bool(offer and not unpaid)
 
         try:
+            # Refresh thin CLIENT CARD before draft (async extract may lag).
+            try:
+                memory_extractor.ensure_card_ready(fan_uuid, fan_handle)
+            except Exception:
+                pass
             # Keep "Emma is typing…" alive during the (multi-second) DeepSeek call.
             with _typing_keepalive(fv, fan_uuid):
                 if use_v2:

@@ -986,33 +986,40 @@ def assemble_emma_turn(
     # Lean author: pack + MANDATORY technique nudge
     if lean and simple:
         from core import technique_policy as _tp
+        from core import creative_first as _cf
         from core.account_context import creator_display_name
 
         _creator = creator_display_name()
-        move_bit = (
-            _tp.author_steer(tech_name)
-            if tech_name
-            else " Skip dark-psych moves this turn (comfort/cooling)."
-        )
-        note = (
-            f"[{_creator} on WhatsApp. ENGLISH ONLY — even if he writes Spanish. "
-            "Horny girlfriend texting — NOT a sales agent, NOT an essay. "
-            "Informal chat slang OK (u/rn/idk/lol/haha/babe). "
-            "Light punctuation, lowercase fine, react first. "
-            "Usually ONE short bubble (~60-90 chars). Max 2 bubbles total. Pet name most turns. "
-            "Emojis only if natural — vary or skip; never same combo twice. "
-            "Filthy when he's hot; bratty then warm. "
-            "ZERO Spanish words (no mira/bebé/joder/guapo). "
-            "No quotation marks around his words. "
-            "No Ay…/Mmm… openers. No would-you-like / exclusive content / special offer. "
-            "Answer his LAST message in context of the recent thread — "
-            "do not ignore what he said minutes ago in THIS chat. "
-            "ANTI-LOOP: never repeat the same question/beat from your last 2 replies. "
-            "Never loop abandonment lines (most guys leave / poof they're gone / you're quiet). "
-            "Early chat: seduce / ask his pics — save guilt-rival-emergency for later. "
-            f"{move_bit.strip()} Readable but messy like real DMs. "
-            "Sell only what STATUS attaches.]"
-        )
+        sell_extra = ""
+        if tech_name:
+            sell_extra = _tp.author_steer(tech_name).strip()
+        if _cf.enabled():
+            note = _cf.minimal_author_note(creator=_creator, extra=sell_extra)
+        else:
+            move_bit = (
+                _tp.author_steer(tech_name)
+                if tech_name
+                else " Skip dark-psych moves this turn (comfort/cooling)."
+            )
+            note = (
+                f"[{_creator} on WhatsApp. ENGLISH ONLY — even if he writes Spanish. "
+                "Horny girlfriend texting — NOT a sales agent, NOT an essay. "
+                "Informal chat slang OK (u/rn/idk/lol/haha/babe). "
+                "Light punctuation, lowercase fine, react first. "
+                "Usually ONE short bubble (~60-90 chars). Max 2 bubbles total. Pet name most turns. "
+                "Emojis only if natural — vary or skip; never same combo twice. "
+                "Filthy when he's hot; bratty then warm. "
+                "ZERO Spanish words (no mira/bebé/joder/guapo). "
+                "No quotation marks around his words. "
+                "No Ay…/Mmm… openers. No would-you-like / exclusive content / special offer. "
+                "Answer his LAST message in context of the recent thread — "
+                "do not ignore what he said minutes ago in THIS chat. "
+                "ANTI-LOOP: never repeat the same question/beat from your last 2 replies. "
+                "Never loop abandonment lines (most guys leave / poof they're gone / you're quiet). "
+                "Early chat: seduce / ask his pics — save guilt-rival-emergency for later. "
+                f"{move_bit.strip()} Readable but messy like real DMs. "
+                "Sell only what STATUS attaches.]"
+            )
     elif lean:
         from core.account_context import creator_display_name
 

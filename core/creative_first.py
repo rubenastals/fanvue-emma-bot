@@ -28,3 +28,20 @@ def skip_active_move(
     ):
         return False
     return True
+
+
+def keep_loop_belts() -> bool:
+    """Deterministic anti-loop belts (love-bomb, duplicate) — safe in creative-first."""
+    return enabled()
+
+
+def minimal_author_note(*, creator: str, extra: str = "") -> str:
+    """One short steer — thread + card drive the reply, not a rule essay."""
+    note = (
+        f"[{creator} on WhatsApp. React to his LAST message using recent thread + "
+        "CLIENT CARD. ENGLISH. 1 short bubble (~60-90c). Girlfriend vibe, not sales "
+        "script. Do not repeat your last 2 beats."
+    )
+    if extra.strip():
+        note += f" {extra.strip()}"
+    return note + "]"

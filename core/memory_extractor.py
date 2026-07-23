@@ -141,7 +141,6 @@ def update_fan_card(fan_uuid: str, fan_handle: str = "") -> Optional[Dict[str, A
     if not isinstance(data, dict):
         return None
 
-    # Drop empty profile keys
     profile = data.get("profile") if isinstance(data.get("profile"), dict) else {}
     profile = {
         k: str(v).strip()
@@ -164,6 +163,28 @@ def update_fan_card(fan_uuid: str, fan_handle: str = "") -> Optional[Dict[str, A
     }
     fan_memory.apply_card_update(fan_uuid, payload, fan_handle=fan_handle)
     return payload
+
+
+def ensure_card_ready(fan_uuid: str, fan_handle: str = "") -> bool:
+    """
+    Sync memory extract before draft when the card is thin but the thread is long.
+    Stops amnesia when async extract has not caught up yet.
+    """
+    mem = fan_memory.get(fan_uuid) or {}
+    msgs = int(mem.get("messages") or 0)
+    if msgs < 10:
+        return False
+    has_summary = bool((mem.get("summary") or "").strip())
+    has_facts = bool(mem.get("facts"))
+    if has_summary and has_facts:
+        return False
+    with _running_lock:
+        if _running.get(fan_uuid):
+            return False
+    result = update_fan_card(fan_uuid, fan_handle)
+    if result:
+        print(f"   memory: sync card before reply (msgs={msgs})")
+    return bool(result)
 
 
 def update_fan_card_async(fan_uuid: str, fan_handle: str = "") -> None:

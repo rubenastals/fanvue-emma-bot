@@ -1001,6 +1001,10 @@ def thread_beat_block(
         lines.append("- Recent thread:")
         lines.extend(f"  · {r}" for r in recent)
 
+    summary = str(mem.get("summary") or "").strip()
+    if summary and len(recent) < 3:
+        lines.append(f"- Open thread (memory): {summary[:220]}")
+
     facts = [str(f).strip() for f in (mem.get("facts") or []) if str(f).strip()]
     if facts:
         lines.append("- Card facts (only if still true): " + "; ".join(facts[-3:])[:180])

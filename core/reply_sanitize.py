@@ -970,6 +970,8 @@ def _soft_exit_stamp_without_lock(reply: str, *, lock_active: bool) -> bool:
         return False
     return bool(_SOFT_EXIT_PPV_STAMP.search(reply or ""))
 
+
+def _char_budgets() -> tuple:
     """max_len per bubble, max bubbles, soft total chars for one reply."""
     max_len = max(60, int(getattr(config, "BUBBLE_MAX_CHARS", 100) or 100))
     max_bubbles = max(1, int(getattr(config, "MAX_BUBBLES", 2) or 2))
@@ -978,6 +980,18 @@ def _soft_exit_stamp_without_lock(reply: str, *, lock_active: bool) -> bool:
         int(getattr(config, "REPLY_SOFT_MAX_CHARS", 120) or 120),
     )
     return max_len, max_bubbles, soft_total
+
+
+def _strip_soft_exit_phrases(reply: str) -> str:
+    """Drop PPV-wait stamp lines; keep the rest of a good draft."""
+    text = (reply or "").strip()
+    if not text:
+        return text
+    parts = re.split(r"\n{1,}", text)
+    kept = [p.strip() for p in parts if p.strip() and not _SOFT_EXIT_PPV_STAMP.search(p)]
+    if kept:
+        return "\n".join(kept)
+    return _SOFT_EXIT_PPV_STAMP.sub("", text).strip()
 
 
 # Dangling clause / mid-thought tails (stylistic "…" alone is OK; "and then" is not)
@@ -1312,6 +1326,9 @@ def apply_post_draft(
     _pb_mem: dict = fan_memory.get(fan_uuid) or {} if fan_uuid else {}
     _reconciling = boundary_reconciling(fan_message or "", _pb_mem)
     _creative = bool(getattr(config, "CREATIVE_FIRST", True))
+    from core import creative_first as _cf
+
+    _loop_belts = (not _creative) or _cf.keep_loop_belts()
     _pushback_mode = thread_in_pushback_mode(
         fan_message or "", turns, _pb_mem
     )
@@ -1356,7 +1373,7 @@ def apply_post_draft(
             f"({before_sb[:56]!r} → {reply!r})"
         )
 
-    if not _creative and _LOVE_BOMB_LOOP.search(reply or "") and _early_bond_phase(fan_uuid, turns):
+    if _loop_belts and _LOVE_BOMB_LOOP.search(reply or "") and _early_bond_phase(fan_uuid, turns):
         before_lb = reply
         banned = {
             _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
@@ -1368,7 +1385,7 @@ def apply_post_draft(
             f"({before_lb[:56]!r} → {reply!r})"
         )
     elif (
-        not _creative
+        _loop_belts
         and _LOVE_BOMB_LOOP.search(reply or "")
         and _love_bomb_in_history(turns)
         and not _pushback_mode
@@ -1384,7 +1401,7 @@ def apply_post_draft(
             f"({before_lb[:56]!r} → {reply!r})"
         )
     elif (
-        not _creative
+        _loop_belts
         and _LOVE_BOMB_LOOP.search(reply or "")
         and _love_bomb_count(turns) >= 2
         and not _pushback_mode
@@ -1400,7 +1417,7 @@ def apply_post_draft(
             f"({before_lb[:56]!r} → {reply!r})"
         )
 
-    if not _creative and _assistant_duplicate_in_history(reply or "", turns):
+    if _loop_belts and _assistant_duplicate_in_history(reply or "", turns):
         before_dup = reply
         reply = _lang_fallback(want_spanish=want_spanish, history_turns=turns)
         print(
@@ -1479,18 +1496,25 @@ def apply_post_draft(
 
     if _soft_exit_stamp_without_lock(reply or "", lock_active=bool(lock_active or status_active or unpaid_gate)):
         before_se = reply
-        banned = {
-            _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
-        }
-        reply = pick_boundary_fallback(
-            fan_message or "",
-            turns=turns,
-            banned=banned,
-        )
-        print(
-            "   🚫 soft-exit PPV stamp (no lock) — replaced "
-            f"({before_se[:56]!r} → {reply!r})"
-        )
+        if _creative:
+            reply = _strip_soft_exit_phrases(reply or "")
+            print(
+                "   🚫 soft-exit PPV stamp (no lock) — stripped phrase "
+                f"({before_se[:56]!r} → {reply!r})"
+            )
+        else:
+            banned = {
+                _norm_bubble(str(t.get("content") or "")) for t in (turns or [])[-8:]
+            }
+            reply = pick_boundary_fallback(
+                fan_message or "",
+                turns=turns,
+                banned=banned,
+            )
+            print(
+                "   🚫 soft-exit PPV stamp (no lock) — replaced "
+                f"({before_se[:56]!r} → {reply!r})"
+            )
 
     # Retired sticky stamp + IRL/video commands (text chat only — confuses fans)
     if is_banned_reply_stamp(reply or ""):
@@ -1833,12 +1857,12 @@ def apply_post_draft(
             print("   🎙️ stripped residual voice stage crumbs")
 
     # Continuity: never resend the same short stamp / near-duplicate bubble
-    if not _creative and is_banned_reply_stamp(reply or ""):
+    if _loop_belts and is_banned_reply_stamp(reply or ""):
         reply = coerce_sendable_reply(
             reply, want_spanish=want_spanish, history_turns=turns
         )
         print("   continuity: banned stamp → safe engage line")
-    elif not _creative and scheme_guard.continuity_loop(reply, turns):
+    elif _loop_belts and scheme_guard.continuity_loop(reply, turns):
         if scheme_guard.too_similar_to_last_assistant(
             reply, turns
         ) or (
@@ -1855,7 +1879,7 @@ def apply_post_draft(
             print("   continuity: loop/repeat — noted (no LLM)")
 
     # Kill the retired sticky EN stamp if it ever reappears from history/model
-    if not _creative and is_banned_reply_stamp(reply or ""):
+    if _loop_belts and is_banned_reply_stamp(reply or ""):
         reply = coerce_sendable_reply(
             reply, want_spanish=want_spanish, history_turns=turns
         )

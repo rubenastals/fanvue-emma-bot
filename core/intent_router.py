@@ -402,7 +402,7 @@ def _soft_active(
             fan_message or "",
         )
     )
-    if facts.recent_reject and not facts.recent_purchase and not _ask_lock:
+    if is_price_pushback(fan_message or "") and not facts.recent_purchase and not _ask_lock:
         active["price_objection"] = True
 
     if facts.ask_free and facts.frees_done >= 1:
