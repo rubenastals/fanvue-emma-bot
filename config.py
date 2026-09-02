@@ -34,6 +34,8 @@ class Config:
     DATABASE_URL = os.getenv("DATABASE_URL")
     REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     ACCOUNT_ID = os.getenv("ACCOUNT_ID", "emma")
+    # Master kill-switch: CHATTER_ENABLED=0 exits poller at boot (also see core/chatter_control.py)
+    CHATTER_ENABLED = os.getenv("CHATTER_ENABLED", "1") == "1"
 
     # Celery
     CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)

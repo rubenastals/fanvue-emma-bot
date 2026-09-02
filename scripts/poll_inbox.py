@@ -1801,8 +1801,18 @@ def main():
     aid = account_id()
 
     from core.account_context import creator_display_name, validate_account_boot
+    from core.chatter_control import is_chatter_paused
 
     validate_account_boot(strict=True)
+
+    if is_chatter_paused(aid):
+        from config import config as _boot_cfg
+
+        if not _boot_cfg.CHATTER_ENABLED:
+            print("⏸️  CHATTER_ENABLED=0 — poller exiting (no auto-reply)")
+        else:
+            print(f"⏸️  chatter paused for account={aid} — poller exiting")
+        sys.exit(0)
 
     from config import config as _cfg
     from core.prompt_core import get_active_persona, PROMPT_VERSION
@@ -2003,6 +2013,11 @@ def main():
                     last_lore_reload = time.time()
                     if lorebook.ensure_fresh(force=True):
                         print("\n📖 lorebook reloaded from disk\n", flush=True)
+
+                if is_chatter_paused(aid):
+                    print("p", end="", flush=True)
+                    time.sleep(max(args.interval, 5))
+                    continue
 
                 try:
                     from core.oauth_rescue import is_broken, notify_rescue
