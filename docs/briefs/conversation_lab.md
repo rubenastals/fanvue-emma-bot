@@ -27,3 +27,13 @@ Hard, on feat/conversation-lab. New storage is additive and isolated. Review thr
 ## 7. Plan de rollback
 
 Stop the separate lab process and revert this branch's commit. Optional tracing defaults off. Production persistence and send behavior require no rollback or migration.
+
+## 8. Calibración de estilo — 28 de octubre de 2026
+
+El operador eligió la alternativa B de un duelo de tono juguetón, correspondiente a DeepSeek V4.1 Flash. Es una preferencia humana sobre una respuesta concreta, no una puntuación general del modelo. Hipótesis: un personaje de laboratorio con humor breve, reacciones específicas y menos preguntas mecánicas se acercará a esa preferencia.
+
+Se probó sustituir únicamente el párrafo de estilo de `lab/fixtures/persona.md`; el ejemplo elegido no se incorporó al prompt. Se compararon DeepSeek y Grok con el mismo personaje revisado en seis casos existentes (recuerdo, precio, objeción, baja comercial, acceso a una compra e identidad) y el mismo diálogo de seis turnos. Se completaron las 24 respuestas reales previstas, guardando las versiones del prompt, las salidas y los costes. En el diálogo, cada modelo conserva sus propias respuestas anteriores. La revisión automática es cualitativa y separada de la preferencia humana. Sin repeticiones ni un control simultáneo con el prompt anterior, esta ronda no demuestra una mejora causada por el ajuste ni superioridad estadística.
+
+La variante (`lab-persona-aed0eae53c9f`) no demostró una mejora suficiente para conservarla: DeepSeek encadenó preguntas en sus cuatro primeros turnos y ofreció un pack alternativo en el caso de objeción, pese a `CONTINUE_CHAT`. Se restauró la persona que produjo la B elegida. El lote de terminal usa por defecto DeepSeek como candidato de estilo y Grok como comparación; los demás modelos siguen disponibles. Los casos, proveedores y persona de producción permanecen iguales. Los problemas de descripciones ficticias y rutas de acceso no verificadas se mantienen visibles para evaluarlos por separado.
+
+La ejecución descubrió además un falso positivo reproducible del validador: «Hoy no quieres comprar nada» se interpretaba como propuesta comercial. Se corrige después de la ronda con una regresión negativa y propuestas reales como controles positivos, sin modificar las inferencias, las decisiones ni las advertencias históricas guardadas.

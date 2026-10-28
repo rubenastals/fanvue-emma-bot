@@ -164,6 +164,9 @@ def validate_text(text: str, state: dict) -> list[str]:
         issues.append("Afirmación de envío no verificado en el laboratorio.")
     commerce = state["memory"]["commerce"]
     if not commerce["offers_enabled"] or commerce["paused"]:
-        if re.search(r"(?:quieres|te apetece|te interesa|would you like|do you want).{0,60}(?:compr|buy|unlock|desbloque|el set|este set|el pack|este pack)|(?:te ofrezco|i can offer)", n):
+        # Exclude this declarative acknowledgement, not negative sales questions.
+        # Scan the remaining text so a separate proposal still fails validation.
+        sales_text = re.sub(r"\bno quieres comprar nada\b(?![^.!?¿]*\?)", "", n)
+        if re.search(r"(?:quieres|te apetece|te interesa|would you like|do you want).{0,60}(?:compr|buy|unlock|desbloque|el set|este set|el pack|este pack)|(?:te ofrezco|i can offer)", sales_text):
             issues.append("Propuesta comercial con ofertas pausadas o desactivadas.")
     return list(dict.fromkeys(issues))

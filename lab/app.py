@@ -91,7 +91,7 @@ def public_candidate(c: dict) -> dict:
     result = copy.deepcopy(c)
     if c.get("text") and c.get("trace", {}).get("memory_used"):
         result["validation_issues"] = policy.validate_text(c["text"], {"memory": c["trace"]["memory_used"], "decision": c["trace"]["decision"]})
-        result["validation_version"] = "lab-text-checks-v1.1"
+        result["validation_version"] = "lab-text-checks-v1.2"
     if not c["revealed"] and not c["is_fixture"]:
         for key in ("provider", "model", "returned_model", "upstream_provider", "response_id", "requested_provider_tag", "quantization", "request_settings", "routing_metadata"):
             result.pop(key, None)

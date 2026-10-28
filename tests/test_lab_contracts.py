@@ -237,6 +237,45 @@ def test_transparency_is_not_flagged_as_identity_denial():
     assert validate_text("Okay, I should acknowledge the user. Hola, Dani.", state)
 
 
+@pytest.mark.parametrize("scenario", ["today", "optout"])
+def test_negative_purchase_acknowledgement_can_be_approved(tmp_path, scenario):
+    from lab.app import public_candidate
+    acknowledgement = "Te llamo Dani. Hoy no quieres comprar nada; solo seguir hablando."
+    async def exercise(client, app):
+        state = await new(client, scenario)
+        candidate = (await generate(client, state))["candidates"][0]
+        historical = {**candidate, "text": acknowledgement,
+                      "validation_issues": ["Propuesta comercial con ofertas pausadas o desactivadas."]}
+        refreshed = public_candidate(historical)
+        assert refreshed["validation_issues"] == []
+        assert refreshed["validation_version"] == "lab-text-checks-v1.2"
+        assert historical["validation_issues"]  # read-time revalidation preserves the stored record
+        response = await client.post(f"/lab/sessions/{state['id']}/review", json={
+            "expected_revision": state["revision"], "candidate_id": candidate["id"],
+            "action": "approve", "edited_text": acknowledgement})
+        assert response.status_code == 200, response.text
+        assert response.json()["messages"][-1]["content"] == acknowledgement
+    run(tmp_path, exercise)
+
+
+@pytest.mark.parametrize("scenario", ["today", "optout"])
+@pytest.mark.parametrize("text", [
+    "Hoy no quieres comprar nada. ¿Quieres ver el pack?",
+    "¿No quieres comprar nada?",
+])
+def test_acknowledgement_does_not_hide_sales_questions(tmp_path, scenario, text):
+    async def exercise(client, app):
+        state = await new(client, scenario)
+        candidate = (await generate(client, state))["candidates"][0]
+        response = await client.post(f"/lab/sessions/{state['id']}/review", json={
+            "expected_revision": state["revision"], "candidate_id": candidate["id"],
+            "action": "approve", "edited_text": text})
+        assert response.status_code == 409
+        assert "Propuesta comercial" in response.json()["detail"]
+        assert app.state.store.get(state["id"])["revision"] == state["revision"]
+    run(tmp_path, exercise)
+
+
 def test_session_history_does_not_reveal_candidates(tmp_path):
     async def exercise(client, app):
         state = await new(client)

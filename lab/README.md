@@ -68,6 +68,17 @@ Los informes muestran valoraciones humanas y su tamaño de muestra. Los resultad
 
 `--live` habilita solicitudes reales que pueden consumir saldo. Máximo cuatro modelos y 48 respuestas por ejecución. Usa `--repetitions 2` para repetir casos y `--output lab/.data/my-round.json` para elegir la exportación. El comando no puntúa: guarda resultados para su revisión. La interfaz permite también crear lotes y abrir sus sesiones.
 
+Sin `--models`, se comparan **DeepSeek V4.1 Flash 1017 y Grok 4.7**. El operador eligió una respuesta de DeepSeek como referencia de tono juguetón; esa preferencia sobre un ejemplo no equivale a una evaluación comercial completa. El prompt de laboratorio conserva la versión que produjo esa respuesta: una variante posterior de estilo se probó en 24 respuestas y se descartó al no demostrar una mejora clara. El detalle del experimento está en `docs/briefs/conversation_lab.md`.
+
+Para continuar cada modelo con los mismos seis mensajes de prueba, conservando sus propias respuestas anteriores:
+
+```bash
+.venv/bin/python -m lab.evaluate --live --dialogue \
+  --output lab/.data/dialogue-new-round.json
+```
+
+El guion aprueba los borradores sintéticos mediante `reviewer=test_harness`; eso permite continuar el diálogo y no crea valoraciones humanas. Una respuesta incompleta o bloqueada por el validador detiene esa conversación. En una ronda, esa comprobación produjo un falso positivo sobre una reafirmación negativa de compra; la corrección conserva las advertencias originales y la interfaz las reevalúa con una versión identificable.
+
 ## Relación con el motor actual
 
 El laboratorio reutiliza `core.prompt_layers` y su presupuesto, pero usa una persona de prueba breve y almacenamiento propio. Su redacción se normaliza solo en los espacios exteriores; no se aplica el sanitizador histórico. La traza identifica esta diferencia para no confundir una comparación de modelos con una prueba del comportamiento actual del poller.

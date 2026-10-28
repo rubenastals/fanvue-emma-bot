@@ -13,7 +13,9 @@ import httpx
 from lab.app import create_app
 from lab.policy import SCENARIO_MAP
 
-DEFAULT_MODELS = ["x-ai/grok-4.7", "deepseek/deepseek-v4.1-flash-1017", "qwen/qwen3.8-27b", "mistralai/mistral-small-2603"]
+# Keep the operator's selected style candidate and the comparison finalist.
+# Other catalogue models remain available through --models and the UI.
+DEFAULT_MODELS = ["deepseek/deepseek-v4.1-flash-1017", "x-ai/grok-4.7"]
 DIALOGUE_TURNS = [
     None,
     "Por cierto, prefiero Dani. Lo de Daniel me suena a cuando me riñen 😂",
