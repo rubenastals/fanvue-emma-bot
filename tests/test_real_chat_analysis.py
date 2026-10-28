@@ -1,5 +1,6 @@
 """Private import/analysis contracts; synthetic data and mock HTTP only."""
 import asyncio
+import builtins
 import json
 import logging
 import stat
@@ -293,4 +294,66 @@ def test_unexpected_high_reported_cost_prevents_a_second_request():
                                               transport=httpx.MockTransport(handler)))
     assert len(requests) == 1
     assert result["reportedCostUsd"] == 0.49
+
+
+@pytest.mark.parametrize("request_times_out", [False, True])
+def test_analyze_cli_persists_and_flushes_outcome_before_runner_shutdown(
+        tmp_path, monkeypatch, capsys, request_times_out):
+    source_path, output_path = tmp_path / "prepared.json", tmp_path / "analysis.json"
+    source_path.write_text(json.dumps(prepared()))
+    monkeypatch.setattr(module, "load_dotenv", lambda *args, **kwargs: None)
+    monkeypatch.setenv("OPENROUTER_API_KEY", TEST_KEY)
+    if request_times_out:
+        monkeypatch.setattr(module, "REQUEST_TIMEOUT_SECONDS", 0.001)
+
+    requests, flushes, shutdown_checks = [], [], []
+    real_analyze, runner_close = module.analyze_sample, asyncio.Runner.close
+
+    async def handler(request):
+        requests.append(request)
+        if request_times_out:
+            await asyncio.sleep(1)
+        return httpx.Response(200, json=response())
+
+    async def analyze_with_mock_transport(*args, **kwargs):
+        return await real_analyze(*args, transport=httpx.MockTransport(handler), **kwargs)
+
+    def record_print(*args, **kwargs):
+        flushes.append(kwargs.get("flush"))
+        builtins.print(*args, **kwargs)
+
+    def check_before_shutdown(runner):
+        # This runs before executor teardown and before asyncio.run returns.
+        # The previous CLI order had no file or summary at this boundary.
+        assert output_path.is_file()
+        saved = json.loads(output_path.read_text())
+        output = capsys.readouterr().out
+        summary = json.loads(output)
+        assert summary["status"] == "saved"
+        assert summary["saved"] == str(output_path)
+        assert flushes == [True]
+        assert TEST_KEY not in output and "Hoy no quiero" not in output
+        if request_times_out:
+            assert saved["requestsMade"] == summary["requestsMade"] == 1
+            assert saved["missingCostCount"] == summary["missingCostCount"] == 1
+            assert saved["reportedCostUsd"] == summary["reportedCostUsd"] == 0
+            assert saved["results"][0]["costUsd"] is None
+            assert saved["results"][0]["status"] == "error"
+            assert saved["results"][0]["errorCode"] == summary["models"][0]["errorCode"] == "timeout"
+        else:
+            assert saved["requestsMade"] == summary["requestsMade"] == 2
+            assert saved["missingCostCount"] == summary["missingCostCount"] == 0
+            assert saved["reportedCostUsd"] == summary["reportedCostUsd"] == 0.002
+            assert all(record["status"] == "unreviewed_analysis" for record in saved["results"])
+        shutdown_checks.append(True)
+        return runner_close(runner)
+
+    monkeypatch.setattr(module, "analyze_sample", analyze_with_mock_transport)
+    monkeypatch.setattr(module, "print", record_print, raising=False)
+    monkeypatch.setattr(asyncio.Runner, "close", check_before_shutdown)
+    status = module.main(["--analyze", "--input", str(source_path), "--output", str(output_path),
+                          "--models", *module.MODEL_ROUTES])
+    assert status == (2 if request_times_out else 0)
+    assert len(requests) == (1 if request_times_out else 2)
+    assert shutdown_checks == [True]
 

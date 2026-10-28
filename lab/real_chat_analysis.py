@@ -429,6 +429,20 @@ async def analyze_sample(prepared: dict, models: list[str], *, api_key: str,
     }
 
 
+async def _analyze_and_save(prepared: dict, models: list[str], *, api_key: str,
+                            destination: Path, max_estimated_cost_usd: float) -> int:
+    result = await analyze_sample(prepared, models, api_key=api_key,
+                                  max_estimated_cost_usd=max_estimated_cost_usd)
+    # Persist the completed outcome before asyncio.run closes its executor.
+    # A cancelled request can leave a blocking worker alive during shutdown.
+    path = write_private_json(destination, result)
+    print(json.dumps({"status": "saved", "saved": str(path), "requestsMade": result["requestsMade"],
+                      "reportedCostUsd": result["reportedCostUsd"], "missingCostCount": result["missingCostCount"],
+                      "models": [{"model": r["model"], "status": r["status"], "errorCode": r.get("errorCode")}
+                                 for r in result["results"]]}), flush=True)
+    return 0 if len(result["results"]) == len(models) and all(r["status"] == "unreviewed_analysis" for r in result["results"]) else 2
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -456,13 +470,9 @@ def main(argv: list[str] | None = None) -> int:
             validate_prepared(source)
             load_dotenv(ROOT / ".env.lab", override=False)
             destination = validate_output_path(args.output or PRIVATE_DIR / f"analysis-{stamp}.json")
-            result = asyncio.run(analyze_sample(source, args.models, api_key=os.getenv("OPENROUTER_API_KEY", ""),
-                                               max_estimated_cost_usd=args.max_estimated_cost_usd))
-            path = write_private_json(destination, result)
-            print(json.dumps({"status": "saved", "saved": str(path), "requestsMade": result["requestsMade"],
-                              "reportedCostUsd": result["reportedCostUsd"], "missingCostCount": result["missingCostCount"],
-                              "models": [{"model": r["model"], "status": r["status"], "errorCode": r.get("errorCode")} for r in result["results"]]}))
-            return 0 if len(result["results"]) == len(args.models) and all(r["status"] == "unreviewed_analysis" for r in result["results"]) else 2
+            return asyncio.run(_analyze_and_save(source, args.models, api_key=os.getenv("OPENROUTER_API_KEY", ""),
+                                                destination=destination,
+                                                max_estimated_cost_usd=args.max_estimated_cost_usd))
         return 0
     except AnalysisError as error:
         print(json.dumps({"status": "error", "code": error.code, "message": str(error)}, ensure_ascii=False))

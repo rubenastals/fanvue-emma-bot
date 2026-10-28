@@ -60,6 +60,24 @@ Grok queda fijado a `xai/zdr`. Si cualquiera de esos endpoints no cumple la pol�
 
 ZDR del endpoint y la caché no controlan por sí solos los ajustes de registro y uso de entradas/salidas de la cuenta de OpenRouter. Revisar que sus opciones de logging/uso de contenido estén desactivadas. La herramienta no accede a esos ajustes y no promete ausencia absoluta de retención legal, de seguridad o de metadatos.
 
+## Plazo de la petición y cierre del proceso
+
+Los 45 segundos limitan la petición asíncrona, pero no garantizan que el proceso termine en ese plazo. Tras capturar un timeout, un trabajador bloqueante pendiente puede retrasar el cierre del ejecutor de `asyncio.run`. En Python 3.12.14, ese cierre puede esperar 300 segundos. El aviso de que un trabajador no terminó confirma la espera de cierre, **no identifica por sí solo DNS ni demuestra que el modelo estuviera generando durante ese tiempo**.
+
+El CLI guarda el resultado privado y vacía a stdout el resumen permitido **antes de ese cierre**. Conserva el estado de error, `costUsd: null` y `missingCostCount` cuando el coste no se conoce; un archivo guardado no implica un análisis válido. La política de no continuar al segundo modelo tras un error o coste desconocido sigue intacta.
+
+Para imponer además un plazo al proceso completo, en entornos con GNU `timeout` se puede ejecutar:
+
+```bash
+timeout --signal=TERM --kill-after=5s 120s \
+  .venv/bin/python -m lab.real_chat_analysis --analyze \
+  --input lab/.data/private-real-chats/muestra-preparada.json \
+  --output lab/.data/private-real-chats/analisis.json \
+  --models deepseek/deepseek-v4.1-flash-1017 x-ai/grok-4.7
+```
+
+Este límite deja margen para dos peticiones de 45 segundos y concede cinco segundos después de TERM antes de KILL. Si termina el proceso, revisar el archivo JSON válido ya guardado para conocer qué peticiones se registraron; si no existe un resultado completo, el desenlace sigue siendo desconocido. No equiparar el código de salida de `timeout` con un error del modelo. Detener el proceso tampoco confirma que el proveedor haya cancelado la inferencia o que el coste sea cero: no reintentar automáticamente una petición de resultado o coste desconocido.
+
 ## Qué produce
 
 El resultado `fanvue.chat-analysis-result.v1` contiene observaciones no gráficas sobre tono, continuidad, ritmo, aceptación o rechazo comercial explícito y límites expresados. Cada observación debe citar IDs existentes de la copia; el validador rechaza referencias inventadas, campos de borradores y salidas de herramientas. El modelo trata el texto histórico como datos no confiables, no como instrucciones.
@@ -74,6 +92,6 @@ La autorización de los clientes para este uso no sustituye los requisitos aplic
 .venv/bin/python -m pytest tests/test_real_chat_analysis.py -q
 ```
 
-Las pruebas sólo usan mensajes sintéticos no explícitos y `httpx.MockTransport`. Cubren minimización y datos ausentes, límites, rutas de salida privadas, exclusión de metadatos, ZDR/caché/enrutamiento, presupuesto, fallos sin reintentos, referencias inventadas y formatos de respuesta prohibidos. No consumen créditos ni necesitan claves reales.
+Las pruebas sólo usan mensajes sintéticos no explícitos y `httpx.MockTransport`. Cubren minimización y datos ausentes, límites, rutas de salida privadas, exclusión de metadatos, ZDR/caché/enrutamiento, presupuesto, fallos sin reintentos, referencias inventadas y formatos de respuesta prohibidos. Verifican además que tanto el éxito como el timeout se guardan y se comunican con flush antes de comenzar el cierre del ejecutor, preservando los costes desconocidos. No consumen créditos ni necesitan claves reales.
 
 Documentación consultada el 28-10-2026: [enrutamiento y max_price](https://openrouter.ai/docs/guides/routing/provider-selection), [caché de respuestas](https://openrouter.ai/docs/guides/features/response-caching), [ZDR](https://openrouter.ai/docs/guides/features/zdr).
