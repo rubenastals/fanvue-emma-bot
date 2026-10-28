@@ -11,6 +11,7 @@ Production defaults (SIMPLE_PROMPT=1, LEAN_CREATIVE=1):
 """
 from __future__ import annotations
 
+from time import perf_counter
 from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
@@ -45,6 +46,7 @@ from core.reply_sanitize import (  # noqa: F401
     _trim_dangling_clause,
 )
 from core.reply_types import AssembledTurn  # noqa: F401
+from core.turn_trace import TurnTrace
 
 _CLIENT: Optional[OpenAI] = None
 
@@ -67,7 +69,12 @@ def _client() -> OpenAI:
     return _CLIENT
 
 
-def _call_creative(assembled: AssembledTurn, msgs: List[Dict[str, str]]) -> str:
+def _call_creative(
+    assembled: AssembledTurn,
+    msgs: List[Dict[str, str]],
+    *,
+    trace: Optional[TurnTrace] = None,
+) -> str:
     """One DeepSeek completion + first-pass _sanitize_reply."""
     kwargs = dict(
         model=config.DEEPSEEK_MODEL,
@@ -80,10 +87,18 @@ def _call_creative(assembled: AssembledTurn, msgs: List[Dict[str, str]]) -> str:
     )
     if getattr(config, "DEEPSEEK_DISABLE_THINKING", False):
         kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
-    resp = _client().chat.completions.create(**kwargs)
+    started = perf_counter() if trace is not None else None
+    try:
+        resp = _client().chat.completions.create(**kwargs)
+    except Exception as exc:
+        if trace is not None:
+            trace.record_error("provider", exc)
+        raise
+    latency_ms = (perf_counter() - started) * 1000 if started is not None else 0
+    raw = resp.choices[0].message.content or ""
     offer = assembled.offer
-    return _sanitize_reply(
-        (resp.choices[0].message.content or "").strip(),
+    sanitized = _sanitize_reply(
+        raw.strip(),
         want_spanish=assembled.want_spanish,
         fan_name=assembled.usable_name,
         name_confirmed=assembled.name_confirmed,
@@ -97,6 +112,15 @@ def _call_creative(assembled: AssembledTurn, msgs: List[Dict[str, str]]) -> str:
         ghost_free_ban=assembled.ghost_free_ban,
         voice_will_send=bool(assembled.voice_will_send),
     )
+    if trace is not None:
+        trace.record_completion(
+            model=config.DEEPSEEK_MODEL,
+            raw=raw,
+            first_sanitized=sanitized,
+            latency_ms=latency_ms,
+            usage=getattr(resp, "usage", None),
+        )
+    return sanitized
 
 
 def generate_emma_reply(
@@ -117,6 +141,7 @@ def generate_emma_reply(
     turn_action: Optional[Any] = None,
     response_timing_plan: Optional[Any] = None,
     fan_message_age_minutes: Optional[float] = None,
+    trace: Optional[TurnTrace] = None,
 ) -> Tuple[str, TurnDecision]:
     """
     Assemble → creative draft → sanitize.
@@ -141,9 +166,16 @@ def generate_emma_reply(
         response_timing_plan=response_timing_plan,
         fan_message_age_minutes=fan_message_age_minutes,
     )
+    if trace is not None:
+        trace.record_context(assembled.messages)
 
     def _call(msgs: List[Dict[str, str]]) -> str:
+        if trace is not None:
+            return _call_creative(assembled, msgs, trace=trace)
         return _call_creative(assembled, msgs)
 
     reply = _call(assembled.messages)
-    return apply_post_draft(reply, assembled, call=_call)
+    result = apply_post_draft(reply, assembled, call=_call)
+    if trace is not None:
+        trace.record_final(result[0])
+    return result
