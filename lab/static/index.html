@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Laboratorio privado de conversación: casos ficticios, memoria verificable y comparación de modelos.">
+  <title>Chat Lab · fanv.ai</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script defer src="/static/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#conversation">Ir a la conversación</a>
+  <div class="app-shell" id="lab-app">
+    <header class="app-header">
+      <a class="brand" href="/" aria-label="fanv.ai Chat Lab"><span class="brand-symbol" aria-hidden="true">fv</span><span>fanv<span class="brand-dot">.</span>ai</span><span class="brand-divider" aria-hidden="true"></span><span class="brand-product">Chat Lab</span></a>
+      <div class="header-actions"><span class="badge environment-badge"><span class="status-dot" aria-hidden="true"></span>Laboratorio aislado</span><button class="button quiet" id="report-button" type="button">Resultados</button><button class="button" id="export-button" type="button">Exportar</button></div>
+    </header>
+
+    <div class="intro-row"><div><p class="eyebrow">DISEÑAR · PROBAR · COMPARAR</p><h1>Una buena conversación se prueba.</h1><p class="intro-copy">Mismo contexto, distintas respuestas. Revisa la memoria y elige qué merece continuar.</p></div><p class="isolation-note">Clientes y compras ficticios.<br>Sin envíos a Fanvue.</p></div>
+
+    <section class="provider-section" aria-labelledby="providers-title">
+      <div class="section-heading"><div><h2 id="providers-title">Modelos de esta prueba</h2><p class="muted small" id="provider-summary">Cargando configuración…</p></div><div class="provider-heading-actions"><button class="button small-button" id="toggle-models-button" type="button" aria-expanded="true" aria-controls="model-picker">Ocultar modelos</button><button class="button small-button" id="refresh-config-button" type="button">Actualizar conexiones</button></div></div>
+      <div id="model-picker"><div class="model-tools"><label for="model-search">Buscar modelo</label><input id="model-search" type="search" placeholder="Nombre o identificador de OpenRouter"><button class="button small-button" id="catalog-button" type="button">Actualizar catálogo OpenRouter</button></div>
+      <div class="provider-options" id="provider-options"></div>
+      </div>
+      <p class="mode-notice" id="mode-notice">Las respuestas de ejemplo permiten probar los controles. La calidad de un modelo se valora con inferencias reales.</p>
+    </section>
+
+    <div class="global-message" id="global-message" role="status" aria-live="polite"><span id="status-text">Conectando con el laboratorio…</span><progress id="busy-progress" aria-label="Operación en curso" hidden></progress></div>
+    <div class="error-banner" id="error-banner" role="alert" hidden></div>
+
+    <main class="workspace">
+      <aside class="case-sidebar" aria-labelledby="cases-title">
+        <div class="sidebar-heading"><h2 id="cases-title">Casos</h2><span class="count" id="case-count">—</span></div>
+        <nav id="scenario-list" class="scenario-list" aria-label="Casos de conversación"></nav>
+        <div class="sidebar-bottom"><button class="button full-width" id="batch-button" type="button">Evaluar todos los casos</button><p class="small muted">Una respuesta por modelo y caso, conservando el mismo contexto.</p></div>
+      </aside>
+
+      <section class="conversation-panel" id="conversation" aria-labelledby="conversation-title">
+        <div class="conversation-heading"><div class="fan-identity"><div class="avatar" id="fan-avatar" aria-hidden="true">—</div><div><h2 id="conversation-title">Cargando caso…</h2><p class="muted small" id="session-meta">Emma · personaje IA de prueba</p></div></div><div class="conversation-actions"><button class="button small-button" id="reset-button" type="button">Nuevo intento</button><button class="button small-button" id="pause-button" type="button">Pausar</button></div></div>
+        <div class="session-badges" id="session-badges"></div>
+        <p class="pause-notice" id="pause-notice" hidden>Control humano activo. Reanuda el caso para generar o aprobar una respuesta.</p>
+        <div class="transcript" id="transcript" aria-label="Historial de conversación"></div>
+        <form class="fan-composer" id="fan-form"><label for="fan-message">Escribe como el fan ficticio</label><textarea id="fan-message" rows="2" maxlength="4000" placeholder="Continúa la conversación para poner a prueba la memoria…"></textarea><div class="composer-footer"><span class="small muted">Ctrl o ⌘ + Intro para añadir el turno</span><button class="button" id="send-turn-button" type="submit">Añadir mensaje</button></div></form>
+
+        <section class="candidates-section" aria-labelledby="candidates-title"><div class="section-heading"><div><h2 id="candidates-title">Respuestas candidatas</h2><p class="muted small" id="comparison-description">Genera una respuesta al último mensaje.</p></div><button class="button primary" id="generate-button" type="button">Generar respuesta</button></div><div id="comparison-history"></div><div class="candidate-grid" id="candidates"></div><div class="comparison-footer"><button class="button quiet" id="reveal-button" type="button" hidden>Revelar modelos</button><p class="small muted" id="comparison-footnote">Solo la respuesta que apruebes se añade a la conversación.</p></div></section>
+      </section>
+
+      <aside class="inspector" aria-labelledby="inspector-title"><div class="inspector-heading"><h2 id="inspector-title">Qué sabe y qué decide</h2><span class="small muted" id="revision-label">Revisión —</span></div><div class="tabs" role="tablist" aria-label="Inspector"><button class="tab" id="memory-tab" role="tab" aria-selected="true" aria-controls="memory-panel" data-tab="memory" type="button">Memoria</button><button class="tab" id="decision-tab" role="tab" aria-selected="false" aria-controls="decision-panel" data-tab="decision" type="button">Decisión</button><button class="tab" id="context-tab" role="tab" aria-selected="false" aria-controls="context-panel" data-tab="context" type="button">Contexto</button></div><div id="memory-panel" role="tabpanel" aria-labelledby="memory-tab"></div><div id="decision-panel" role="tabpanel" aria-labelledby="decision-tab" hidden></div><div id="context-panel" role="tabpanel" aria-labelledby="context-tab" hidden></div></aside>
+    </main>
+
+    <section class="reports-section" id="reports-section" aria-labelledby="reports-title" hidden><div class="section-heading"><div><p class="eyebrow">EVIDENCIA, NO IMPRESIONES</p><h2 id="reports-title">Valoración de las pruebas</h2></div><button class="button quiet" id="close-reports-button" type="button">Cerrar resultados</button></div><div id="reports-content"></div><div id="history-results"></div><div id="batch-results"></div></section>
+    <footer class="app-footer"><span>fanv.ai · Laboratorio de conversación</span><span>Las pruebas funcionales no demuestran calidad ni conversión comercial.</span></footer>
+  </div>
+  <noscript>Este laboratorio necesita JavaScript para comunicarse con su backend.</noscript>
+</body>
+</html>

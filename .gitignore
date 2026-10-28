@@ -34,6 +34,8 @@ __pycache__/
 venv/
 .pytest_cache/
 .mypy_cache/
+lab/.data/
+lab/test-results/
 # Node (Cursor fixer SDK)
 node_modules/
 tools/fixer/node_modules/
