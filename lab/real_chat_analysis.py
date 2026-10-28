@@ -241,7 +241,10 @@ class PreparedConversation(StrictModel):
     messages: list[PreparedMessage] = Field(min_length=1, max_length=100)
 
 
-def validate_prepared(prepared: dict) -> dict:
+def validate_prepared(prepared: dict, *, research_binding: Path | None = None) -> dict:
+    if isinstance(prepared, dict) and prepared.get("schemaVersion") == "fanvue.research-analysis-input.v1":
+        from lab.research_sample import validate_research_prepared
+        return validate_research_prepared(prepared, research_binding)
     if not isinstance(prepared, dict) or prepared.get("schemaVersion") != PREPARED_SCHEMA or prepared.get("purpose") != "analysis_only_no_replies":
         raise AnalysisError("not_prepared", "Analiza únicamente la copia creada con --prepare-only.")
     conversations = prepared.get("conversations")
@@ -306,13 +309,17 @@ Máximo 16 observaciones y 8 limitaciones; al menos una limitación. Sin borrado
 """
 
 
-def make_request(prepared: dict, model: str) -> dict:
+def make_request(prepared: dict, model: str, *, research_binding: Path | None = None) -> dict:
     if model not in MODEL_ROUTES:
         raise AnalysisError("model_not_allowed", "El modelo no está permitido en el análisis privado.")
-    payload = validate_prepared(prepared)
+    payload = validate_prepared(prepared, research_binding=research_binding)
+    prompt = SYSTEM_PROMPT
+    if prepared.get("schemaVersion") == "fanvue.research-analysis-input.v1":
+        from lab.research_sample import SYSTEM_PROMPT as research_prompt
+        prompt = research_prompt
     return {
         "model": model, "stream": False, "max_completion_tokens": MAX_OUTPUT_TOKENS,
-        "messages": [{"role": "system", "content": SYSTEM_PROMPT},
+        "messages": [{"role": "system", "content": prompt},
                      {"role": "user", "content": _json_bytes(payload).decode("utf-8")}],
         "response_format": {"type": "json_object"},
         "provider": {"only": [MODEL_ROUTES[model]], "allow_fallbacks": False,
@@ -328,7 +335,10 @@ def estimated_cost_ceiling(request: dict) -> float:
     return round((input_bound * MAX_PRICE["prompt"] + MAX_OUTPUT_TOKENS * MAX_PRICE["completion"]) / 1_000_000, 6)
 
 
-def validate_analysis(value: object, prepared: dict) -> dict:
+def validate_analysis(value: object, prepared: dict, *, research_binding: Path | None = None) -> dict:
+    if isinstance(prepared, dict) and prepared.get("schemaVersion") == "fanvue.research-analysis-input.v1":
+        from lab.research_sample import validate_research_analysis
+        return validate_research_analysis(value, prepared, research_binding)
     try:
         analysis = AnalysisDocument.model_validate(value).model_dump()
     except ValidationError:
@@ -365,12 +375,13 @@ async def _request_json(client: httpx.AsyncClient, headers: dict, request: dict)
 
 
 async def analyze_sample(prepared: dict, models: list[str], *, api_key: str,
-                         max_estimated_cost_usd: float = 0.50, transport=None) -> dict:
+                         max_estimated_cost_usd: float = 0.50, transport=None,
+                         research_binding: Path | None = None) -> dict:
     if not 1 <= len(models) <= 2 or len(set(models)) != len(models):
         raise AnalysisError("invalid_models", "Elige uno o dos modelos distintos permitidos.")
     if not isinstance(api_key, str) or not api_key.strip():
         raise AnalysisError("missing_key", "Configura OPENROUTER_API_KEY en el entorno o .env.lab.")
-    requests = [make_request(prepared, model) for model in models]
+    requests = [make_request(prepared, model, research_binding=research_binding) for model in models]
     ceiling = sum(estimated_cost_ceiling(request) for request in requests)
     if type(max_estimated_cost_usd) not in (int, float) or not math.isfinite(max_estimated_cost_usd) or not 0 < max_estimated_cost_usd <= 2 or ceiling > max_estimated_cost_usd:
         raise AnalysisError("estimated_budget_exceeded", "La estimación conservadora supera el presupuesto; reduce la muestra o los modelos.")
@@ -400,7 +411,7 @@ async def analyze_sample(prepared: dict, models: list[str], *, api_key: str,
                 message = choice["message"]
                 if data.get("error") or data.get("status") in ("error", "failed", "incomplete") or choice.get("error") or message.get("tool_calls") or message.get("function_call") or message.get("refusal") or choice.get("finish_reason") != "stop":
                     raise AnalysisError("incomplete_or_rejected", "El modelo no devolvió un análisis completo sin herramientas.")
-                analysis = validate_analysis(json.loads(message["content"]), prepared)
+                analysis = validate_analysis(json.loads(message["content"]), prepared, research_binding=research_binding)
                 record.update(status="unreviewed_analysis", analysis=analysis)
             except AnalysisError as error:
                 record["errorCode"] = error.code
@@ -415,8 +426,12 @@ async def analyze_sample(prepared: dict, models: list[str], *, api_key: str,
             # Unknown costs may include billed inference. Do not spend again blindly.
             if record["costUsd"] is None or record["status"] == "error":
                 break
+    research = prepared.get("schemaVersion") == "fanvue.research-analysis-input.v1"
     return {
-        "schemaVersion": "fanvue.chat-analysis-result.v1", "purpose": "analysis_only_no_replies",
+        "schemaVersion": "fanvue.research-analysis-result.v1" if research else "fanvue.chat-analysis-result.v1",
+        "purpose": "analysis_only_no_replies",
+        **({"analysisPurpose": prepared["payload"]["analysisPurpose"],
+            "partition": prepared["payload"]["partition"], "provenance": prepared["provenance"]} if research else {}),
         "createdAt": datetime.now(timezone.utc).isoformat(),
         "preparedSha256": hashlib.sha256(_json_bytes(prepared)).hexdigest(),
         "requestedModels": models, "requestsMade": len(records),
@@ -430,9 +445,11 @@ async def analyze_sample(prepared: dict, models: list[str], *, api_key: str,
 
 
 async def _analyze_and_save(prepared: dict, models: list[str], *, api_key: str,
-                            destination: Path, max_estimated_cost_usd: float) -> int:
+                            destination: Path, max_estimated_cost_usd: float,
+                            research_binding: Path | None = None) -> int:
     result = await analyze_sample(prepared, models, api_key=api_key,
-                                  max_estimated_cost_usd=max_estimated_cost_usd)
+                                  max_estimated_cost_usd=max_estimated_cost_usd,
+                                  research_binding=research_binding)
     # Persist the completed outcome before asyncio.run closes its executor.
     # A cancelled request can leave a blocking worker alive during shutdown.
     path = write_private_json(destination, result)
