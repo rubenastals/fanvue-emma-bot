@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "fanvue.chat-dataset-review.v1",
+  "purpose": "non_explicit_response_training",
+  "source": {
+    "accountId": "REPLACE_PRIVATE_ACCOUNT_ID",
+    "connectionId": "REPLACE_PRIVATE_CONNECTION_ID",
+    "handle": "REPLACE_PRIVATE_HANDLE",
+    "classification": "real_customer",
+    "classificationBasis": "REPLACE_WITH_CUSTOMER_PROVENANCE_ALREADY_CHECKED",
+    "rawFile": "raw.json",
+    "rawBytesSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "rawCanonicalSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "preparedBytesSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "authorizationBasis": "REPLACE_WITH_EXISTING_AUTHORIZATION_SCOPE_AND_PROVENANCE",
+  "reviewer": "REPLACE_REVIEWER",
+  "reviewedAt": "2026-10-30T00:00:00Z",
+  "approvalScope": "entire_example_privacy_and_non_explicit",
+  "split": {
+    "seed": "client-chats-20261030-before-model-evaluation-v1",
+    "holdoutPercent": 20
+  },
+  "conversations": [
+    {
+      "id": "chat_001",
+      "stableKey": "REPLACE_PRIVATE_STABLE_CONVERSATION_KEY",
+      "sourceConversationIndex": 0,
+      "sourceMessageStart": 0
+    }
+  ],
+  "examples": [
+    {
+      "id": "candidate_001",
+      "conversationId": "chat_001",
+      "contextMessageIds": ["message_001"],
+      "targetMessageIds": ["message_002"],
+      "status": "pending",
+      "textOnlySufficient": false
+    }
+  ]
+}
