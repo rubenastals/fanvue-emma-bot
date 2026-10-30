@@ -1,5 +1,9 @@
 # Laboratorio de conversación
 
+Para convertir una copia privada ya minimizada en ejemplos no explícitos revisados
+y casos reservados, consulta [Dataset privado de respuestas revisadas](../docs/REVIEWED_CHAT_DATASET.md).
+Ese exportador es offline y no ejecuta entrenamiento de modelos.
+
 Aplicación local en español para probar conversaciones sintéticas, comparar hasta cuatro modelos de OpenRouter y valorar sus respuestas con nombres ocultos. Es un proceso independiente: no lee conversaciones reales, no utiliza el almacén del poller y no envía mensajes ni cobra en Fanvue.
 
 ## Arranque
